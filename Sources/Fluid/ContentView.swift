@@ -1086,6 +1086,8 @@ struct ContentView: View {
             self.navigateToApp(.aiEnhancements)
         case .history:
             self.navigateToApp(.history)
+        case .meetingTranscription:
+            self.navigateToApp(.meetingTools)
         }
     }
 
@@ -4371,7 +4373,6 @@ struct ContentView: View {
             },
             rewriteModeCallback: {
                 guard !self.presentExclusiveActivityBlockIfNeeded() else { return }
-                guard !self.showPrivateAIEditModeUnavailableIfNeeded() else { return }
 
                 self.captureRecordingContext()
 
