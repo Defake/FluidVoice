@@ -43,9 +43,9 @@ private actor TranscriptionExecutor {
 }
 
 private nonisolated func logTranscriptionExecutorPhase(_ phase: String, sessionID: Int?) {
-    guard let sessionID else { return }
+    guard DebugLogger.diagnosticsEnabled, let sessionID else { return }
     let timestamp = ProcessInfo.processInfo.systemUptime
-    DebugLogger.shared.info(
+    DebugLogger.shared.debug(
         "ASR_BENCH t=\(timestamp) session=\(sessionID) final_queue_\(phase) mainThread=\(Thread.isMainThread)",
         source: "ASRBenchmark"
     )
@@ -56,8 +56,9 @@ private nonisolated func logStreamingProviderOperationReturn(
     operationID: UUID,
     route: String
 ) {
+    guard DebugLogger.diagnosticsEnabled else { return }
     let returnedAt = ProcessInfo.processInfo.systemUptime
-    DebugLogger.shared.info(
+    DebugLogger.shared.debug(
         "ASR_BENCH t=\(returnedAt) streaming_provider_operation_return " +
             "session=\(sessionID) operation=\(operationID.uuidString) route=\(route)",
         source: "ASRBenchmark"
@@ -799,8 +800,8 @@ final class ASRService: ObservableObject {
         return Int(((Date().timeIntervalSince1970 - start) * 1000).rounded())
     }
 
-    private func benchmarkLog(_ message: String) {
-        DebugLogger.shared.benchmark("ASR_BENCH", message: "session=\(self.benchmarkSessionID) \(message)", source: "ASRBenchmark")
+    private func benchmarkLog(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("ASR_BENCH", message: "session=\(self.benchmarkSessionID) \(message())", source: "ASRBenchmark")
     }
 
     /// Gets a provider for a specific model (without changing the active selection)
@@ -2939,9 +2940,9 @@ final class ASRService: ObservableObject {
                 defer { delayedFinalStatusTask.cancel() }
                 result = try await self.transcriptionExecutor.run(benchmarkSessionID: self.benchmarkSessionID) { [provider] in
                     let executionStartedAt = ProcessInfo.processInfo.systemUptime
-                    DebugLogger.shared.info("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
+                    DebugLogger.shared.debug("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
                     defer {
-                        DebugLogger.shared.info("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
+                        DebugLogger.shared.debug("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
                     }
                     return try await provider.transcribeFinal(pcm)
                 }

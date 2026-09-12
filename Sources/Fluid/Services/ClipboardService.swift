@@ -51,6 +51,7 @@ enum ClipboardAudit {
     }
 
     nonisolated static func recordShortcut(type: CGEventType, event: CGEvent) {
+        guard DebugLogger.diagnosticsEnabled else { return }
         guard let metadata = self.shortcutMetadata(type: type, event: event) else { return }
         DebugLogger.shared.benchmark("CLIPBOARD_INPUT", message: metadata, source: "ClipboardAudit")
     }
@@ -70,17 +71,19 @@ enum ClipboardAudit {
 
     static func record(
         _ event: String,
-        pasteboard: NSPasteboard = .general,
-        detail: String = "",
+        pasteboard: @autoclosure () -> NSPasteboard = .general,
+        detail: @autoclosure () -> String = "",
         file: String = #fileID,
         line: Int = #line
     ) {
+        guard DebugLogger.diagnosticsEnabled else { return }
+        let pasteboard = pasteboard()
         let startedAt = ProcessInfo.processInfo.systemUptime
         let metadata = self.metadata(for: pasteboard)
         let auditMs = (ProcessInfo.processInfo.systemUptime - startedAt) * 1000
         DebugLogger.shared.benchmark(
             "CLIPBOARD_AUDIT",
-            message: "schema=1 pid=\(ProcessInfo.processInfo.processIdentifier) event=\(event) caller=\(file):\(line) \(detail) \(metadata) auditMs=\(auditMs)",
+            message: "schema=1 pid=\(ProcessInfo.processInfo.processIdentifier) event=\(event) caller=\(file):\(line) \(detail()) \(metadata) auditMs=\(auditMs)",
             source: "ClipboardAudit"
         )
     }

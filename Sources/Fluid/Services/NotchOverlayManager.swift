@@ -534,8 +534,8 @@ final class NotchOverlayManager {
         }
     }
 
-    private static func overlayBench(_ message: String) {
-        DebugLogger.shared.benchmark("OVERLAY_BENCH", message: "notch \(message)", source: "OverlayBenchmark")
+    private static func overlayBench(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("OVERLAY_BENCH", message: "notch \(message())", source: "OverlayBenchmark")
     }
 
     private static func elapsedMs(since start: TimeInterval) -> Int {

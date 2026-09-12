@@ -516,8 +516,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.overlayVisible = false
     }
 
-    private func overlayBench(_ message: String) {
-        DebugLogger.shared.benchmark("OVERLAY_BENCH", message: "manager \(message)", source: "OverlayBenchmark")
+    private func overlayBench(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("OVERLAY_BENCH", message: "manager \(message())", source: "OverlayBenchmark")
     }
 
     private func setupMenuBarSafely() {

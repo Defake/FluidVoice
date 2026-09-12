@@ -155,7 +155,7 @@ final class TranscriptionHistoryWriter: @unchecked Sendable {
                     }.sorted { $0.timestamp > $1.timestamp }
                     // The transaction is committed and every payload decoded before retiring legacy storage.
                     self.defaults.removeObject(forKey: self.legacyKey)
-                    DebugLogger.shared.info("HISTORY_BENCH loaded entries=\(entries.count) storage=sqlite", source: "TranscriptionHistoryStore")
+                    DebugLogger.shared.debug("HISTORY_BENCH loaded entries=\(entries.count) storage=sqlite", source: "TranscriptionHistoryStore")
                     continuation.resume(returning: entries)
                 } catch {
                     continuation.resume(throwing: error)
@@ -178,7 +178,7 @@ final class TranscriptionHistoryWriter: @unchecked Sendable {
                 try database.write(upserts: records, deletes: deletes, replacing: replacing)
                 if replacing { self.writeError = nil }
                 let finishedAt = ProcessInfo.processInfo.systemUptime
-                DebugLogger.shared.info(
+                DebugLogger.shared.debug(
                     "HISTORY_BENCH t=\(finishedAt) background=true upserts=\(upserts.count) deletes=\(deletes.count) " +
                         "replace=\(replacing) bytes=\(records.reduce(0) { $0 + $1.payload.count }) totalMs=\((finishedAt - startedAt) * 1000)",
                     source: "TranscriptionHistoryStore"

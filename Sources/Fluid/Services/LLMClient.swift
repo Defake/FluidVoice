@@ -1062,11 +1062,11 @@ final nonisolated class LLMClient: @unchecked Sendable {
 
     // MARK: - Logging Helpers
 
-    private func benchmark(_ config: Config, _ message: String) {
-        guard let id = config.benchmarkID else { return }
+    private func benchmark(_ config: Config, _ message: @autoclosure () -> String) {
+        guard DebugLogger.diagnosticsEnabled, let id = config.benchmarkID else { return }
         DebugLogger.shared.benchmark(
             "LLM_BENCH",
-            message: "id=\(id) \(message)",
+            message: "id=\(id) \(message())",
             source: "LLMBenchmark"
         )
     }

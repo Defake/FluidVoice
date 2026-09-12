@@ -3,6 +3,16 @@ import Foundation
 final nonisolated class DebugLogger: @unchecked Sendable {
     static let shared = DebugLogger()
 
+    /// Production builds exclude verbose diagnostics; local Release investigations
+    /// explicitly opt in with FLUIDVOICE_DIAGNOSTICS at compile time.
+    static let diagnosticsEnabled: Bool = {
+        #if DEBUG || FLUIDVOICE_DIAGNOSTICS
+        true
+        #else
+        false
+        #endif
+    }()
+
     /// Request-local correlation survives actor hops without mutable global state.
     /// Capture explicitly before handing work to a DispatchQueue or detached task.
     @TaskLocal static var pipelineID: String?
@@ -26,7 +36,9 @@ final nonisolated class DebugLogger: @unchecked Sendable {
 
     private init() {}
 
-    func log(_ message: String, level: LogLevel = .info, source: String = "App") {
+    func log(_ message: @autoclosure () -> String, level: LogLevel = .info, source: String = "App") {
+        guard level != .debug || Self.diagnosticsEnabled else { return }
+        let message = message()
         let pipelineID = Self.pipelineID
         self.queue.async {
             self.write(message, level: level, source: source, pipelineID: pipelineID)
@@ -40,6 +52,7 @@ final nonisolated class DebugLogger: @unchecked Sendable {
         source: String = "App",
         _ message: @escaping @Sendable () -> String
     ) {
+        guard level != .debug || Self.diagnosticsEnabled else { return }
         let pipelineID = Self.pipelineID
         self.queue.async {
             self.write(message(), level: level, source: source, pipelineID: pipelineID)
@@ -56,9 +69,11 @@ final nonisolated class DebugLogger: @unchecked Sendable {
             pipelineID: pipelineID
         )
 
-        // Always persist diagnostics so issues can be debugged even if UI debug mode is off.
+        // Retain ordinary support logs in production; verbose diagnostics are gated before enqueueing.
         FileLogger.shared.append(line: formattedLine)
+        #if DEBUG || FLUIDVOICE_DIAGNOSTICS
         print(formattedLine)
+        #endif
     }
 
     private func formatLogLine(timestamp: String, level: LogLevel, source: String, message: String, pipelineID: String?) -> String {
@@ -73,9 +88,10 @@ nonisolated extension DebugLogger {
         self.log(message, level: .info, source: source)
     }
 
-    func benchmark(_ marker: String, message: String, source: String = "Benchmark") {
+    func benchmark(_ marker: String, message: @autoclosure () -> String, source: String = "Benchmark") {
+        guard Self.diagnosticsEnabled else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        self.info("\(marker) t=\(String(format: "%.6f", now)) \(message)", source: source)
+        self.info("\(marker) t=\(String(format: "%.6f", now)) \(message())", source: source)
     }
 
     func warning(_ message: String, source: String = "App") {
@@ -86,7 +102,8 @@ nonisolated extension DebugLogger {
         self.log(message, level: .error, source: source)
     }
 
-    func debug(_ message: String, source: String = "App") {
-        self.log(message, level: .debug, source: source)
+    func debug(_ message: @autoclosure () -> String, source: String = "App") {
+        guard Self.diagnosticsEnabled else { return }
+        self.log(message(), level: .debug, source: source)
     }
 }

@@ -574,7 +574,7 @@ final class TranscriptionHistoryStore: ObservableObject {
                 self.persistenceError = "History could not be saved. Keep FluidVoice open and retry. \(error.localizedDescription)"
             }
         }
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "HISTORY_BENCH enqueueMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000) upserts=\(upserts.count) deletes=\(deletes.count)",
             source: "TranscriptionHistoryStore"
         )

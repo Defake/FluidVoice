@@ -76,6 +76,7 @@ final class TypingService {
     /// Logging toggle (off by default). Enable by setting env FLUID_TYPING_LOGS=1
     /// or UserDefaults bool for key "enableTypingLogs".
     private nonisolated static var isLoggingEnabled: Bool {
+        guard DebugLogger.diagnosticsEnabled else { return false }
         if let env = ProcessInfo.processInfo.environment["FLUID_TYPING_LOGS"], env == "1" { return true }
         return UserDefaults.standard.bool(forKey: "enableTypingLogs")
     }
@@ -635,8 +636,8 @@ final class TypingService {
         }
     }
 
-    private func bench(_ message: String) {
-        DebugLogger.shared.benchmark("TYPING_BENCH", message: message, source: "TypingBenchmark")
+    private func bench(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("TYPING_BENCH", message: message(), source: "TypingBenchmark")
     }
 
     private func recordInsertionLatency(

@@ -241,7 +241,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         let elapsedMs = Int(((Date().timeIntervalSince1970 - startedAt) * 1000).rounded())
         let audioMs = Int((Double(samples.count) / 16_000.0 * 1000).rounded())
         let rtf = audioMs > 0 ? Double(elapsedMs) / Double(audioMs) : 0
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             """
             ASR_BENCH provider_streaming_done samples=\(samples.count) audioMs=\(audioMs) \
             elapsedMs=\(elapsedMs) textChars=\(text.trimmingCharacters(in: .whitespacesAndNewlines).count) \
@@ -354,7 +354,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             let resetStartedAt = ProcessInfo.processInfo.systemUptime
             self.resetIncrementalSession()
             let resetFinishedAt = ProcessInfo.processInfo.systemUptime
-            DebugLogger.shared.info(
+            DebugLogger.shared.debug(
                 "ASR_BENCH t=\(resetFinishedAt) incremental_reset_done elapsedMs=\((resetFinishedAt - resetStartedAt) * 1000)",
                 source: "ASRBenchmark"
             )
@@ -456,7 +456,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         let appendFinishedAt = ProcessInfo.processInfo.systemUptime
         let result = try await session.finish(finalAudioSamples: samples)
         let finishFinishedAt = ProcessInfo.processInfo.systemUptime
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "ASR_BENCH incremental_final_split acceptedBefore=\(acceptedBeforeFinal) " +
                 "appended=\(samples.count - acceptedBeforeFinal) " +
                 "appendMs=\(Self.milliseconds(from: startedAt, to: appendFinishedAt)) " +
@@ -662,10 +662,11 @@ final class FluidAudioProvider: TranscriptionProvider {
         usedFallback: Bool,
         source: String = "full"
     ) {
+        guard DebugLogger.diagnosticsEnabled else { return }
         let elapsedMs = Int(((Date().timeIntervalSince1970 - startedAt) * 1000).rounded())
         let audioMs = Int((Double(samples.count) / 16_000.0 * 1000).rounded())
         let rtf = audioMs > 0 ? Double(elapsedMs) / Double(audioMs) : 0
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             """
             ASR_BENCH provider_final_done samples=\(samples.count) audioMs=\(audioMs) \
             elapsedMs=\(elapsedMs) textChars=\(text.trimmingCharacters(in: .whitespacesAndNewlines).count) \
@@ -681,10 +682,11 @@ final class FluidAudioProvider: TranscriptionProvider {
         startedAt: TimeInterval,
         inputSampleCount: Int
     ) {
+        guard DebugLogger.diagnosticsEnabled else { return }
         let elapsedMs = Int(((Date().timeIntervalSince1970 - startedAt) * 1000).rounded())
         let audioMs = Int((Double(sampleCount) / 16_000.0 * 1000).rounded())
         let rtf = audioMs > 0 ? Double(elapsedMs) / Double(audioMs) : 0
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             """
             ASR_BENCH provider_streaming_delta_done samples=\(sampleCount) inputSamples=\(inputSampleCount) \
             audioMs=\(audioMs) elapsedMs=\(elapsedMs) textChars=\(text.count) \

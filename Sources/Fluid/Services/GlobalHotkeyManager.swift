@@ -2401,6 +2401,7 @@ final class GlobalHotkeyManager: NSObject {
     }
 
     private func logStopInput(requestedAt: TimeInterval, route: String) {
+        guard DebugLogger.diagnosticsEnabled else { return }
         var fields = "stop_request stopRequestedAt=\(requestedAt) route=\(route)"
         if let input = self.currentInputTiming {
             fields += " inputReceivedAt=\(input.receivedAt) eventType=\(input.eventType)"

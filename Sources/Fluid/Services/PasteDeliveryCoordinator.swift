@@ -495,8 +495,8 @@ final class SystemPasteboardManager: PasteboardManaging {
         )
     }
 
-    private func log(_ message: String) {
-        DebugLogger.shared.benchmark("TYPING_BENCH", message: message, source: "TypingBenchmark")
+    private func log(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("TYPING_BENCH", message: message(), source: "TypingBenchmark")
     }
 
     private static func elapsedMs(since start: TimeInterval) -> Int {
@@ -711,8 +711,8 @@ final class PasteDeliveryCoordinator {
         self.log("failure_restore generation=\(generation) reason=\(reason) success=\(didRestore)")
     }
 
-    private func log(_ message: String) {
-        DebugLogger.shared.benchmark("TYPING_BENCH", message: message, source: "TypingBenchmark")
+    private func log(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("TYPING_BENCH", message: message(), source: "TypingBenchmark")
     }
 
     private static func elapsedMs(since start: TimeInterval) -> Int {

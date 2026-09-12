@@ -2577,8 +2577,7 @@ struct ContentView: View {
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
-        let loadAverageField = self.benchmarkLoadAverage()
-        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil") loadAvg1m=\(loadAverageField)")
+        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil") loadAvg1m=\(self.benchmarkLoadAverage())")
         defer {
             self.appBench("pipeline_handler_return id=\(pipelineID) elapsedMs=\((ProcessInfo.processInfo.systemUptime - pipelineStartedAt) * 1000) deliveryMayBePending=true")
         }
@@ -4777,8 +4776,8 @@ extension ContentView {
         return loadSampleCount > 0 ? String(format: "%.1f", loadAverages[0]) : "nil"
     }
 
-    private func appBench(_ message: String) {
-        DebugLogger.shared.benchmark("APP_BENCH", message: message, source: "AppBenchmark")
+    private func appBench(_ message: @autoclosure () -> String) {
+        DebugLogger.shared.benchmark("APP_BENCH", message: message(), source: "AppBenchmark")
     }
 
     private func logAIProcessCall(
