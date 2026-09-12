@@ -412,6 +412,7 @@ def summarize(run):
     }
     context = {
         "insertion_mode": typing_request["fields"].get("mode") if typing_request else None,
+        "load_average_1m": numeric_field(pipeline_begin, "loadAvg1m"),
         "clipboard_command_status": "command_posted" if command_posted else (
             delivery_failed["fields"].get("reason") if delivery_failed else None),
         "clipboard_settlement_status": clipboard_status,
@@ -634,8 +635,10 @@ def render_terminal_stages(rows, width=None, stages=None, title="DICTATION TIMIN
         "All durations in milliseconds (ms). — = not measured.", width) + [""]
     for index, row in enumerate(rows, 1):
         mode = row["context"]["insertion_mode"] or "unknown mode"
+        load = row["context"].get("load_average_1m")
+        load_label = f"  load {load:.1f}" if load is not None else ""
         lines.extend(textwrap.wrap(
-            f"#{index}  {row['time']}  {(row['id'] or '?')[:8]}  {mode}", width))
+            f"#{index}  {row['time']}  {(row['id'] or '?')[:8]}  {mode}{load_label}", width))
     for offset in range(0, len(rows), per_table):
         batch = rows[offset:offset + per_table]
         widths = [label_width] + [value_width] * len(batch)

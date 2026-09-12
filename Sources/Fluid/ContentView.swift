@@ -2577,7 +2577,10 @@ struct ContentView: View {
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
-        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil")")
+        var loadAverages = [Double](repeating: 0, count: 3)
+        let loadSampleCount = getloadavg(&loadAverages, 3)
+        let loadAverageField = loadSampleCount > 0 ? String(format: "%.1f", loadAverages[0]) : "nil"
+        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil") loadAvg1m=\(loadAverageField)")
         defer {
             self.appBench("pipeline_handler_return id=\(pipelineID) elapsedMs=\((ProcessInfo.processInfo.systemUptime - pipelineStartedAt) * 1000) deliveryMayBePending=true")
         }
