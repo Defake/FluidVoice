@@ -192,6 +192,9 @@ final class BottomOverlayWindowController {
         self.window?.alphaValue = 0
         Self.overlayBench("bottom_hide_alpha_return elapsedMs=\(Self.elapsedMs(since: startedAt))")
         self.window?.orderOut(nil)
+        // Ordering changes ride the current CA transaction. Commit now so the panel
+        // leaves the screen with the paste instead of when main next goes idle.
+        CATransaction.flush()
         Self.overlayBench("bottom_hide_order_out_return elapsedMs=\(Self.elapsedMs(since: startedAt))")
         waiters.forEach { $0.resume(returning: .hidden) }
 
@@ -207,6 +210,7 @@ final class BottomOverlayWindowController {
             self.parkWindowOffscreen()
             self.window?.alphaValue = 1
             self.window?.orderFrontRegardless()
+            CATransaction.flush()
         }
     }
 
