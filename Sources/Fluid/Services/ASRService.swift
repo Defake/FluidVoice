@@ -4502,10 +4502,14 @@ final class ASRService: ObservableObject {
                     )
                     let priorityUIDs = SettingsStore.shared.microphonePriority.map(\.uid)
                     let livenessRequiresRecovery =
-                        (self.isRunning &&
-                            resolvedInput?.uid != microphonePreferenceCoordinator.confirmedActiveInputUID) ||
-                        (self.hasPreparedAudioCapture &&
-                            resolvedInput?.id != self.directAudioLifecycleController.snapshot.deviceID)
+                        (
+                            self.isRunning &&
+                                resolvedInput?.uid != microphonePreferenceCoordinator.confirmedActiveInputUID
+                        ) ||
+                        (
+                            self.hasPreparedAudioCapture &&
+                                resolvedInput?.id != self.directAudioLifecycleController.snapshot.deviceID
+                        )
                     let shouldReconcileInputSelection = AudioCaptureIdlePolicy.shouldReconcileInputSelection(
                         priorityInputUIDs: priorityUIDs,
                         migrationPending: migrationPending,
@@ -5476,21 +5480,35 @@ final class ASRService: ObservableObject {
 
     private let typingService = TypingService() // Reuse instance to avoid conflicts
 
-    func typeTextToActiveField(_ text: String) {
-        self.typeTextToActiveField(text, preferredTargetPID: nil, textReadyAt: nil)
+    @MainActor
+    func typeTextToActiveField(_ text: String) async -> TextDeliveryResult {
+        await self.typeTextToActiveField(text, preferredTargetPID: nil, textReadyAt: nil)
     }
 
-    func typeTextToActiveField(_ text: String, preferredTargetPID: pid_t?, textReadyAt: TimeInterval? = nil) {
-        self.typeOutputPlanToActiveField(.plain(text), preferredTargetPID: preferredTargetPID, textReadyAt: textReadyAt)
+    @MainActor
+    func typeTextToActiveField(
+        _ text: String,
+        preferredTargetPID: pid_t?,
+        textReadyAt: TimeInterval? = nil,
+        preserveTranscriptOnClipboard: Bool = false
+    ) async -> TextDeliveryResult {
+        await self.typeOutputPlanToActiveField(
+            .plain(text),
+            preferredTargetPID: preferredTargetPID,
+            textReadyAt: textReadyAt,
+            preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
+        )
     }
 
+    @MainActor
     func typeOutputPlanToActiveField(
         _ plan: DictationLiteralOutputPlan,
         preferredTargetPID: pid_t?,
         textReadyAt: TimeInterval? = nil,
+        toggleStopRequestedAt: TimeInterval? = nil,
         tracksDictionaryCorrections: Bool = false,
-        completion: (@MainActor (TypingService.DeliveryOutcome) -> Void)? = nil
-    ) {
+        preserveTranscriptOnClipboard: Bool = false
+    ) async -> TextDeliveryResult {
         let requestedAt = ProcessInfo.processInfo.systemUptime
         let textReadyAge = textReadyAt.map { Int(((requestedAt - $0) * 1000).rounded()) }
         let text = plan.plainText
@@ -5499,12 +5517,13 @@ final class ASRService: ObservableObject {
             message: "asr_type_request chars=\(text.count) preferredPID=\(preferredTargetPID.map { String($0) } ?? "nil") textReadyAgeMs=\(textReadyAge.map { String($0) } ?? "nil")",
             source: "TypingBenchmark"
         )
-        self.typingService.typeOutputPlanInstantly(
+        let result = await self.typingService.typeOutputPlanInstantly(
             plan,
             preferredTargetPID: preferredTargetPID,
             textReadyAt: textReadyAt,
+            toggleStopRequestedAt: toggleStopRequestedAt,
             tracksDictionaryCorrections: tracksDictionaryCorrections,
-            completion: completion
+            preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
         )
         let dispatchedAt = ProcessInfo.processInfo.systemUptime
         let textReadyToDispatchMs = textReadyAt.map {
@@ -5512,18 +5531,21 @@ final class ASRService: ObservableObject {
         } ?? "nil"
         DebugLogger.shared.benchmark(
             "TYPING_BENCH",
-            message: "asr_type_dispatched chars=\(text.count) preferredPID=\(preferredTargetPID.map { String($0) } ?? "nil") textReadyToDispatchMs=\(textReadyToDispatchMs)",
+            message: "asr_type_dispatched chars=\(text.count) preferredPID=\(preferredTargetPID.map { String($0) } ?? "nil") result=\(String(describing: result)) textReadyToDispatchMs=\(textReadyToDispatchMs)",
             source: "TypingBenchmark"
         )
+        return result
     }
 
     func typeOutputPlanToActiveFieldAndWait(
         _ plan: DictationLiteralOutputPlan,
         preferredTargetPID: pid_t?,
         textReadyAt: TimeInterval? = nil,
+        toggleStopRequestedAt: TimeInterval? = nil,
         tracksDictionaryCorrections: Bool = false,
         postInsertionKey: SettingsStore.SpokenSendKey? = nil,
-        requiredFocusTarget: TypingService.CapturedFocusTarget? = nil
+        requiredFocusTarget: TypingService.CapturedFocusTarget? = nil,
+        preserveTranscriptOnClipboard: Bool = false
     ) async -> TypingService.DeliveryOutcome {
         let requestedAt = ProcessInfo.processInfo.systemUptime
         let textReadyAge = textReadyAt.map { Int(((requestedAt - $0) * 1000).rounded()) }
@@ -5538,9 +5560,11 @@ final class ASRService: ObservableObject {
                 plan,
                 preferredTargetPID: preferredTargetPID,
                 textReadyAt: textReadyAt,
+                toggleStopRequestedAt: toggleStopRequestedAt,
                 tracksDictionaryCorrections: tracksDictionaryCorrections,
                 postInsertionKey: postInsertionKey,
-                requiredFocusTarget: requiredFocusTarget
+                requiredFocusTarget: requiredFocusTarget,
+                preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
             ) { outcome in
                 continuation.resume(returning: outcome)
             }

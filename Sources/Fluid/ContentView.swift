@@ -2033,15 +2033,19 @@ struct ContentView: View {
     private func deliverSpokenSend(
         _ outputPlan: DictationLiteralOutputPlan,
         targetPID: pid_t?,
-        textReadyAt: TimeInterval
+        textReadyAt: TimeInterval,
+        toggleStopRequestedAt: TimeInterval?,
+        preserveTranscriptOnClipboard: Bool
     ) async -> TypingService.DeliveryOutcome {
         let sendsExistingDraft = outputPlan.plainText.isEmpty
         let outcome = await self.asr.typeOutputPlanToActiveFieldAndWait(
             outputPlan,
             preferredTargetPID: targetPID,
             textReadyAt: textReadyAt,
+            toggleStopRequestedAt: toggleStopRequestedAt,
             postInsertionKey: self.settings.spokenSendKey,
-            requiredFocusTarget: self.recordingFocusTarget
+            requiredFocusTarget: self.recordingFocusTarget,
+            preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
         )
         if outcome.didDispatchAction {
             NotchContentState.shared.setSpokenSendIndicatorState(.sent)
@@ -2080,11 +2084,20 @@ struct ContentView: View {
     private func captureRecordingTargetContext() {
         // Capture the focused target PID BEFORE any overlay/UI changes.
         // Used to restore focus when the user interacts with overlay dropdowns.
-        let focusTarget = TypingService.captureSystemFocusTarget()
-        self.recordingFocusTarget = focusTarget
-        let focusedPID = focusTarget?.pid
+        let targetContext = TypingService.captureRecordingTargetContext()
+        if let targetContext, let element = targetContext.element {
+            self.recordingFocusTarget = TypingService.CapturedFocusTarget(
+                pid: targetContext.pid,
+                window: targetContext.window,
+                element: element
+            )
+        } else {
+            self.recordingFocusTarget = TypingService.captureSystemFocusTarget()
+        }
+        NotchContentState.shared.recordingTargetContext = targetContext
+        NotchContentState.shared.recordingTargetPID = targetContext?.pid
+            ?? self.recordingFocusTarget?.pid
             ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-        NotchContentState.shared.recordingTargetPID = focusedPID
 
         let info = self.getCurrentAppInfo()
         self.recordingAppInfo = info
@@ -2114,19 +2127,12 @@ struct ContentView: View {
     }
 
     private func resolveTypingTargetPID() -> (pid: pid_t?, shouldRestoreOriginalFocus: Bool) {
-        let originalPID = NotchContentState.shared.recordingTargetPID
-        let currentFocusedPID = TypingService.captureSystemFocusedPID()
-            ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-
-        let selfBundleID = Bundle.main.bundleIdentifier
-        if let currentFocusedPID,
-           let app = NSRunningApplication(processIdentifier: currentFocusedPID),
-           app.bundleIdentifier != selfBundleID
-        {
-            return (currentFocusedPID, currentFocusedPID == originalPID)
+        guard let context = NotchContentState.shared.recordingTargetContext else {
+            return (NotchContentState.shared.recordingTargetPID, true)
         }
-
-        return (originalPID, true)
+        let isStillFocused = context.pid == TypingService.currentFocusedPID() &&
+            (context.element == nil || TypingService.isCapturedFocusStillActive(context))
+        return (context.pid, !isStillFocused)
     }
 
     // MARK: - Commented out app-specific prompts - using general processing only
@@ -2551,14 +2557,14 @@ struct ContentView: View {
 
     // MARK: - Stop and Process Transcription
 
-    private func stopAndProcessTranscription(route: DictationOutputRoute = .normal) async {
+    private func stopAndProcessTranscription(route: DictationOutputRoute = .normal, toggleStopRequestedAt: TimeInterval? = nil) async {
         let pipelineID = UUID().uuidString
         await DebugLogger.$pipelineID.withValue(pipelineID) {
-            await self.processStoppedTranscription(route: route, pipelineID: pipelineID)
+            await self.processStoppedTranscription(route: route, pipelineID: pipelineID, toggleStopRequestedAt: toggleStopRequestedAt)
         }
     }
 
-    private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String) async {
+    private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
         self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue)")
@@ -2870,19 +2876,14 @@ struct ContentView: View {
             )
         }
         // When FluidVoice itself is frontmost, the bound editor already receives `finalText`.
-        // Avoid re-inserting or overwriting the clipboard in that self-target case.
         let shouldCopyToClipboard = shouldPersistOutputs &&
             !sendsExistingDraft &&
             SettingsStore.shared.copyTranscriptionToClipboard &&
             !isFluidFrontmost
-
-        if shouldCopyToClipboard {
-            ClipboardService.copyToClipboard(finalText)
-        }
+        let shouldTypeExternally = shouldPersistOutputs && !isFluidFrontmost
 
         var didTypeExternally = false
-        var didScheduleOverlayHideAfterDelivery = false
-        let shouldTypeExternally = shouldPersistOutputs && !isFluidFrontmost
+        var didFailTextDelivery = false
 
         DebugLogger.shared.debug(
             "Typing decision → frontmost: \(frontmostName), fluidFrontmost: \(isFluidFrontmost), editorFocused: \(self.isTranscriptionFocused), willTypeExternally: \(shouldTypeExternally)",
@@ -2899,24 +2900,33 @@ struct ContentView: View {
                 && (sendsExistingDraft || !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 && targetMatchesRecordingFocus
                 && !self.isSpokenSendBlockedApp(appInfo)
-            // Submit insertion first, then retire the overlay in this same main
-            // turn. The worker can paste concurrently; dismissal must not queue
-            // behind history notifications or a subsequent SwiftUI render.
+            // Dispatch insertion as soon as the destination app is ready; the
+            // overlay hides asynchronously after output so it cannot delay paste.
+            let focusReady: Bool
             if typingTarget.shouldRestoreOriginalFocus {
-                await self.restoreFocusToRecordingTarget()
+                focusReady = await self.restoreFocusToRecordingTarget()
+            } else {
+                focusReady = true
             }
+
             if spokenSendAllowed {
                 NotchContentState.shared.setSpokenSendIndicatorState(.sending)
                 NotchOverlayManager.shared.updateTranscriptionText("Sending")
             }
-            self.appBench(
-                "text_ready_to_type_request elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - finalTextReadyAt) * 1000).rounded()))"
-            )
-            if spokenSendAllowed {
+
+            let deliveryResult: TextDeliveryResult
+            if !focusReady {
+                deliveryResult = .recoverableFailure(.targetRestoreFailed)
+            } else if spokenSendAllowed {
+                self.appBench(
+                    "text_ready_to_type_request elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - finalTextReadyAt) * 1000).rounded()))"
+                )
                 let deliveryOutcome = await self.deliverSpokenSend(
                     finalOutputPlan,
                     targetPID: typingTarget.pid,
-                    textReadyAt: finalTextReadyAt
+                    textReadyAt: finalTextReadyAt,
+                    toggleStopRequestedAt: toggleStopRequestedAt,
+                    preserveTranscriptOnClipboard: shouldCopyToClipboard
                 )
                 self.logPipelineCompletion(
                     outcome: String(describing: deliveryOutcome),
@@ -2925,28 +2935,35 @@ struct ContentView: View {
                     textReadyAt: finalTextReadyAt
                 )
                 didTypeExternally = deliveryOutcome.didInsert
+                deliveryResult = deliveryOutcome.didInsert || deliveryOutcome.didDispatchAction
+                    ? .commandPosted
+                    : .recoverableFailure(.pasteCommandFailed)
             } else {
-                let shouldHideOverlayAfterDelivery = !shouldShowAIProcessingFailure
-                    && !stopOverlay.didRequestHide
-                self.asr.typeOutputPlanToActiveField(
+                self.appBench(
+                    "text_ready_to_type_request elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - finalTextReadyAt) * 1000).rounded()))"
+                )
+                deliveryResult = await self.asr.typeOutputPlanToActiveField(
                     finalOutputPlan,
                     preferredTargetPID: typingTarget.pid,
                     textReadyAt: finalTextReadyAt,
+                    toggleStopRequestedAt: toggleStopRequestedAt,
                     tracksDictionaryCorrections: true,
-                    completion: { outcome in
-                        self.handleTypingDelivery(
-                            outcome,
-                            pipelineID: pipelineID,
-                            pipelineStartedAt: pipelineStartedAt,
-                            textReadyAt: finalTextReadyAt,
-                            shouldHideOverlay: shouldHideOverlayAfterDelivery && spokenSendRequested,
-                            expectedOverlayLifecycleID: expectedOverlayLifecycleID
-                        )
-                    }
+                    preserveTranscriptOnClipboard: shouldCopyToClipboard
                 )
-                self.hideOverlayForDispatchedPaste(shouldHide: shouldHideOverlayAfterDelivery && !spokenSendRequested, lifecycleID: expectedOverlayLifecycleID)
-                didScheduleOverlayHideAfterDelivery = shouldHideOverlayAfterDelivery
-                didTypeExternally = true
+                didTypeExternally = deliveryResult.wasDispatched
+                self.handleTypingDelivery(
+                    deliveryResult.wasDispatched ? .inserted : .insertionFailed,
+                    pipelineID: pipelineID,
+                    pipelineStartedAt: pipelineStartedAt,
+                    textReadyAt: finalTextReadyAt,
+                    shouldHideOverlay: deliveryResult.wasDispatched && !shouldShowAIProcessingFailure && !stopOverlay.didRequestHide && !spokenSendRequested,
+                    expectedOverlayLifecycleID: expectedOverlayLifecycleID
+                )
+            }
+
+            guard self.overlayLifecycleID == expectedOverlayLifecycleID else {
+                self.appBench("delivery_ui_skipped reason=stale_recording")
+                return
             }
             if spokenSendRequested, !spokenSendAllowed {
                 NotchContentState.shared.setSpokenSendIndicatorState(.failed)
@@ -2959,13 +2976,22 @@ struct ContentView: View {
                     try? await Task.sleep(nanoseconds: 650_000_000)
                 }
             }
+            guard self.overlayLifecycleID == expectedOverlayLifecycleID else { return }
             NotchContentState.shared.setSpokenSendIndicatorState(.hidden)
-            if !shouldShowAIProcessingFailure,
-               !stopOverlay.didRequestHide,
-               !didScheduleOverlayHideAfterDelivery
-            {
-                NotchOverlayManager.shared.updateTranscriptionText("")
+
+            if case let .recoverableFailure(failure) = deliveryResult {
+                didFailTextDelivery = true
+                self.showTextDeliveryFailure(failure, transcript: finalText)
+            } else if !shouldShowAIProcessingFailure, !stopOverlay.didRequestHide {
                 self.hideOverlayAfterOutput()
+            }
+            // Delivery UI must complete before correction tracking queries Accessibility.
+            if didTypeExternally, !spokenSendAllowed {
+                AutomaticDictionaryCorrectionTracker.shared.beginObservingInsertion(
+                    finalOutputPlan.plainText,
+                    targetPID: typingTarget.pid
+                )
+                self.appBench("dictionary_tracking_scheduled afterDeliveryUI=true")
             }
         }
 
@@ -2980,7 +3006,7 @@ struct ContentView: View {
             }
         }
 
-        if !didTypeExternally, !shouldShowAIProcessingFailure, !stopOverlay.didRequestHide {
+        if !didTypeExternally, !shouldShowAIProcessingFailure, !didFailTextDelivery, !stopOverlay.didRequestHide {
             self.hideOverlayAfterOutput()
         }
         if !shouldTypeExternally {
@@ -3200,6 +3226,54 @@ struct ContentView: View {
         NotchContentState.shared.setSpokenSendIndicatorState(shouldSend ? .detected : .hidden)
     }
 
+    private func showTextDeliveryFailure(_ failure: TextDeliveryFailure, transcript: String) {
+        let failure = failure != .emptyText && !AXIsProcessTrusted() ? TextDeliveryFailure.accessibilityNotTrusted : failure
+        DebugLogger.shared.warning("Text delivery failed: \(failure.rawValue)", source: "ContentView")
+        NotchContentState.shared.recordTextDeliveryFailure(failure, transcript: transcript)
+        guard failure.userFacingMessage != nil else {
+            self.hideOverlayAfterOutput()
+            return
+        }
+        self.menuBarManager.finishProcessingKeepingOverlayVisible()
+    }
+
+    private func showPrivateAIEditModeUnavailableIfNeeded() -> Bool {
+        let settings = SettingsStore.shared
+        let providerID = settings.rewriteModeLinkedToGlobal
+            ? settings.selectedProviderID
+            : settings.rewriteModeSelectedProviderID
+        guard PrivateFeatures.privateAIProvider,
+              providerID.trimmingCharacters(in: .whitespacesAndNewlines) ==
+              PrivateAIProviderFeature.shared.providerID
+        else {
+            return false
+        }
+
+        guard !self.asr.isRunningOrStarting,
+              !NotchContentState.shared.isProcessing
+        else {
+            return true
+        }
+
+        self.menuBarManager.setOverlayMode(.edit)
+        self.advanceOverlayLifecycle()
+        let expectedOverlayLifecycleID = self.overlayLifecycleID
+        self.menuBarManager.showRecordingOverlayImmediately()
+        NotchContentState.shared.showAIProcessingFailure(
+            message: "Edit Mode cannot be used with Fluid-1",
+            canRetry: false
+        )
+        self.menuBarManager.finishProcessingKeepingOverlayVisible()
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard self.overlayLifecycleID == expectedOverlayLifecycleID else { return }
+            NotchContentState.shared.clearAIProcessingFailure()
+            await self.menuBarManager.finishProcessingAndHideOverlay()
+        }
+        return true
+    }
+
     private func advanceOverlayLifecycle() {
         self.spokenSendAutoStopTask?.cancel()
         self.spokenSendAutoStopTask = nil
@@ -3209,6 +3283,7 @@ struct ContentView: View {
         self.spokenSendLastVoiceActivityAt = ProcessInfo.processInfo.systemUptime
         self.overlayLifecycleID &+= 1
         NotchContentState.shared.clearAIProcessingFailure()
+        NotchContentState.shared.clearTextDeliveryFailure()
     }
 
     private func handleSpokenSendPartialTranscription(_ text: String) {
@@ -3508,7 +3583,10 @@ struct ContentView: View {
                 return
             }
             if typingTarget.shouldRestoreOriginalFocus {
-                await self.restoreFocusToRecordingTarget()
+                guard await self.restoreFocusToRecordingTarget() else {
+                    self.showTextDeliveryFailure(.targetRestoreFailed, transcript: text)
+                    return
+                }
             }
             let appInfo = self.getCurrentAppInfo()
             let outputPlan = ASRService.makeDictationLiteralOutputPlan(
@@ -3517,8 +3595,41 @@ struct ContentView: View {
                 bundleID: appInfo.bundleId,
                 windowTitle: appInfo.windowTitle
             )
-            self.asr.typeOutputPlanToActiveField(outputPlan, preferredTargetPID: typingTarget.pid)
-            DebugLogger.shared.info("Actions: Pasted latest transcription into focused field", source: "ContentView")
+            let result = await self.asr.typeOutputPlanToActiveField(
+                outputPlan,
+                preferredTargetPID: typingTarget.pid
+            )
+            if case let .recoverableFailure(failure) = result {
+                self.showTextDeliveryFailure(failure, transcript: text)
+            } else {
+                DebugLogger.shared.info("Actions: Pasted latest transcription into focused field", source: "ContentView")
+            }
+        }
+    }
+
+    @MainActor
+    private func retryTextDelivery(_ transcript: String) async {
+        guard !transcript.isEmpty else { return }
+
+        self.menuBarManager.setProcessing(true)
+        NotchOverlayManager.shared.updateTranscriptionText("Inserting")
+        let typingTarget = self.resolveTypingTargetPID()
+        if typingTarget.shouldRestoreOriginalFocus,
+           !(await self.restoreFocusToRecordingTarget())
+        {
+            self.showTextDeliveryFailure(.targetRestoreFailed, transcript: transcript)
+            return
+        }
+
+        let result = await self.asr.typeTextToActiveField(
+            transcript,
+            preferredTargetPID: typingTarget.pid,
+            preserveTranscriptOnClipboard: SettingsStore.shared.copyTranscriptionToClipboard
+        )
+        if case let .recoverableFailure(failure) = result {
+            self.showTextDeliveryFailure(failure, transcript: transcript)
+        } else {
+            self.hideOverlayAfterOutput()
         }
     }
 
@@ -3613,24 +3724,29 @@ struct ContentView: View {
         let frontmostApp = NSWorkspace.shared.frontmostApplication
         let isFluidFrontmost = frontmostApp?.bundleIdentifier == Bundle.main.bundleIdentifier
 
-        if SettingsStore.shared.copyTranscriptionToClipboard, !isFluidFrontmost {
-            ClipboardService.copyToClipboard(finalText)
-        }
-
-        let focusedPID = TypingService.captureSystemFocusedPID()
-            ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-        NotchContentState.shared.recordingTargetPID = focusedPID
+        let targetContext = TypingService.captureRecordingTargetContext()
+        NotchContentState.shared.recordingTargetContext = targetContext
+        NotchContentState.shared.recordingTargetPID = targetContext?.pid
 
         let shouldTypeExternally = !isFluidFrontmost
         if shouldTypeExternally {
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                await self.restoreFocusToRecordingTarget()
+                guard await self.restoreFocusToRecordingTarget() else {
+                    self.showTextDeliveryFailure(.targetRestoreFailed, transcript: finalText)
+                    return
+                }
             }
-            self.asr.typeOutputPlanToActiveField(
+            let result = await self.asr.typeOutputPlanToActiveField(
                 outputPlan,
-                preferredTargetPID: typingTarget.pid
+                preferredTargetPID: typingTarget.pid,
+                preserveTranscriptOnClipboard: SettingsStore.shared.copyTranscriptionToClipboard
             )
+            if case let .recoverableFailure(failure) = result {
+                self.showTextDeliveryFailure(failure, transcript: finalText)
+            }
+        } else if SettingsStore.shared.copyTranscriptionToClipboard {
+            ClipboardService.copyToClipboard(finalText)
         }
     }
 
@@ -3735,13 +3851,9 @@ struct ContentView: View {
             self.pendingAIReprocessText = nil
         }
 
-        if SettingsStore.shared.copyTranscriptionToClipboard {
-            ClipboardService.copyToClipboard(finalText)
-        }
-
-        let focusedPID = TypingService.captureSystemFocusedPID()
-            ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-        NotchContentState.shared.recordingTargetPID = focusedPID
+        let targetContext = TypingService.captureRecordingTargetContext()
+        NotchContentState.shared.recordingTargetContext = targetContext
+        NotchContentState.shared.recordingTargetPID = targetContext?.pid
 
         let frontmostApp = NSWorkspace.shared.frontmostApplication
         let isFluidFrontmost = frontmostApp?.bundleIdentifier?.contains("fluid") == true
@@ -3749,12 +3861,22 @@ struct ContentView: View {
         if shouldTypeExternally {
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                await self.restoreFocusToRecordingTarget()
+                guard await self.restoreFocusToRecordingTarget() else {
+                    self.showTextDeliveryFailure(.targetRestoreFailed, transcript: finalText)
+                    return
+                }
             }
-            self.asr.typeOutputPlanToActiveField(
+            let result = await self.asr.typeOutputPlanToActiveField(
                 outputPlan,
-                preferredTargetPID: typingTarget.pid
+                preferredTargetPID: typingTarget.pid,
+                preserveTranscriptOnClipboard: SettingsStore.shared.copyTranscriptionToClipboard
             )
+            if case let .recoverableFailure(failure) = result {
+                self.showTextDeliveryFailure(failure, transcript: finalText)
+                return
+            }
+        } else if SettingsStore.shared.copyTranscriptionToClipboard {
+            ClipboardService.copyToClipboard(finalText)
         }
 
         NotchOverlayManager.shared.updateTranscriptionText("")
@@ -3794,20 +3916,27 @@ struct ContentView: View {
         if !self.rewriteModeService.rewrittenText.isEmpty {
             DebugLogger.shared.info("Rewrite successful, typing result (chars: \(self.rewriteModeService.rewrittenText.count))", source: "ContentView")
 
-            // Copy to clipboard as backup
-            if SettingsStore.shared.copyTranscriptionToClipboard {
-                ClipboardService.copyToClipboard(self.rewriteModeService.rewrittenText)
-            }
-
             // Type the rewritten text
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                await self.restoreFocusToRecordingTarget()
+                guard await self.restoreFocusToRecordingTarget() else {
+                    self.showTextDeliveryFailure(
+                        .targetRestoreFailed,
+                        transcript: self.rewriteModeService.rewrittenText
+                    )
+                    return
+                }
             }
-            self.asr.typeTextToActiveField(
+            let deliveryResult = await self.asr.typeTextToActiveField(
                 self.rewriteModeService.rewrittenText,
-                preferredTargetPID: typingTarget.pid
+                preferredTargetPID: typingTarget.pid,
+                preserveTranscriptOnClipboard: SettingsStore.shared.copyTranscriptionToClipboard
             )
+            if case let .recoverableFailure(failure) = deliveryResult {
+                self.showTextDeliveryFailure(failure, transcript: self.rewriteModeService.rewrittenText)
+                return
+            }
+
             // Clear the rewrite service state for next use
             self.rewriteModeService.clearState()
             self.hideOverlayAfterOutput()
@@ -4010,43 +4139,22 @@ struct ContentView: View {
         }
     }
 
-    /// Best-effort: re-activate the app that was focused when recording started.
-    /// Skips the AX restore work when the captured text element is already focused.
-    private func restoreFocusToRecordingTarget() async {
-        guard let pid = NotchContentState.shared.recordingTargetPID else { return }
+    /// Restores only the window and element captured when recording started.
+    private func restoreFocusToRecordingTarget() async -> Bool {
+        guard let context = NotchContentState.shared.recordingTargetContext else { return false }
+        let pid = context.pid
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.appBench("focus_restore_start targetPID=\(pid)")
-        if let focusTarget = self.recordingFocusTarget, focusTarget.pid == pid {
-            if TypingService.isExactFocusTargetActive(focusTarget) {
-                self.appBench("focus_restore_result activated=false element=true elapsedMs=0 reason=already_focused")
-                return
-            }
-            let activated = TypingService.activateApp(pid: pid)
-            let focusedElementRestored = TypingService.restoreFocusTarget(focusTarget)
-            self.appBench(
-                "focus_restore_result activated=\(activated) element=\(focusedElementRestored) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
-            )
-            return
-        }
-        if TypingService.isCapturedFocusStillActive(for: pid) {
-            self.appBench("focus_restore_result activated=false element=true elapsedMs=0 reason=already_focused")
-            DebugLogger.shared.debug(
-                "Restore focus skipped; captured element still focused, targetPID: \(pid)",
-                source: "ContentView"
-            )
-            self.appBench("focus_restore_settle_done delayMs=0")
-            return
-        }
-        let activated = TypingService.activateApp(pid: pid)
-        let focusedElementRestored = TypingService.restoreCapturedFocus(in: pid)
+        let result = await TypingService.prepareTargetForDelivery(context)
         self.appBench(
-            "focus_restore_result activated=\(activated) element=\(focusedElementRestored) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
+            "focus_restore_result result=\(result.rawValue) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )
         DebugLogger.shared.debug(
-            "Restore focus -> appActivated: \(activated), elementFocusRestored: \(focusedElementRestored), targetPID: \(pid)",
+            "Restore focus result: \(result.rawValue), targetPID: \(pid)",
             source: "ContentView"
         )
         self.appBench("focus_restore_settle_done delayMs=0")
+        return result.isReady
     }
 
     // MARK: - ASR Model Management
@@ -4144,6 +4252,11 @@ struct ContentView: View {
         NotchContentState.shared.onPasteLastRequested = {
             self.pasteLastDictationFromHistory()
         }
+        NotchContentState.shared.onRetryTextDeliveryRequested = { transcript in
+            Task { @MainActor in
+                await self.retryTextDelivery(transcript)
+            }
+        }
         NotchContentState.shared.onUndoLastAIRequested = {
             self.undoLastAIProcessingFromHistory()
         }
@@ -4184,10 +4297,13 @@ struct ContentView: View {
                 )
                 self.beginDictationRecording(for: .primary, mode: .dictate)
             },
-            stopAndProcessCallback: {
+            stopAndProcessCallback: { toggleStopRequestedAt in
                 let route = self.currentDictationOutputRouteForHotkeyStop()
                 DebugLogger.shared.info("Hotkey stop callback using route: \(route.rawValue)", source: "ContentView")
-                await self.stopAndProcessTranscription(route: route)
+                await self.stopAndProcessTranscription(
+                    route: route,
+                    toggleStopRequestedAt: toggleStopRequestedAt
+                )
             },
             promptModeCallback: {
                 DebugLogger.shared.info("Prompt mode triggered", source: "ContentView")

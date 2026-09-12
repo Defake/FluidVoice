@@ -782,7 +782,7 @@ struct SettingsView: View {
                                             icon: "arrow.down.doc",
                                             iconColor: .secondary,
                                             title: "Paste Last Transcription",
-                                            description: "Re-insert your most recent transcription without using the clipboard"
+                                            description: "Re-insert your most recent transcription using your selected insertion method"
                                         ),
                                         shortcut: self.pasteLastTranscriptionShortcut,
                                         isRecording: self.isRecording(.pasteLast),
@@ -965,7 +965,7 @@ struct SettingsView: View {
 
                                     self.optionToggleRow(
                                         title: "Share Detailed Anonymous Analytics",
-                                        description: "Share anonymous daily feature, onboarding, and model metrics. " +
+                                        description: "Share anonymous daily feature, insertion performance, onboarding, and model metrics. " +
                                             "When off, FluidVoice still records the anonymous daily activity signal and, in beta builds, daily ASR and Fluid Intelligence timing summaries. " +
                                             "Never includes transcription text or prompts.",
                                         isOn: self.detailedAnalyticsToggleBinding
