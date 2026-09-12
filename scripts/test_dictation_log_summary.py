@@ -742,6 +742,87 @@ class DictationLogSummaryTests(unittest.TestCase):
             self.assertIn("do not add these rows", output.getvalue())
             self.assertIn("| Dispatch → text visibly entered | — |", output.getvalue())
 
+    def direct_completion_fixture(self, completion=1.3, callback_result="", *extra):
+        return self.parse(
+            row("APP_BENCH", 1.0, "pipeline_begin id=A pipelineID=A toggleStopRequestedAt=0.9"),
+            row("APP_BENCH", 1.1, "text_ready pipelineID=A"),
+            row("TYPING_BENCH", 1.2, "request mode=direct pipelineID=A"),
+            row("TYPING_BENCH", completion, "complete result=commandPosted pipelineID=A"),
+            row("TYPING_BENCH", 1.8, "asr_type_dispatched pipelineID=A " + callback_result),
+            *extra,
+        )
+
+    def test_direct_normal_and_spoken_send_end_before_later_callback(self):
+        for callback_result in ("result=commandPosted", ""):
+            with self.subTest(callback_result=callback_result):
+                rows = self.direct_completion_fixture(callback_result=callback_result)
+                add_pipeline_breakdown(rows)
+                self.assertEqual(rows[0]["pipeline"]["total_ms"], 400)
+                self.assertEqual(rows[0]["dispatch_uptime"], 1.3)
+                self.assertNotEqual(rows[0]["pipeline"]["total_ms"], 900)
+
+    def test_direct_invalid_missing_or_future_completion_is_not_an_endpoint(self):
+        for timestamp in (None, float("nan"), float("inf"), -1, 1.15, 2.0):
+            with self.subTest(timestamp=timestamp):
+                rows = self.direct_completion_fixture(completion=timestamp)
+                add_pipeline_breakdown(rows)
+                self.assertIsNone(rows[0]["pipeline"]["total_ms"])
+        rows = self.direct_completion_fixture()
+        rows[0]["events"] = [e for e in rows[0]["events"] if e["name"] != "complete"]
+        add_pipeline_breakdown(rows)
+        self.assertIsNone(rows[0]["pipeline"]["total_ms"])
+
+    def test_direct_failed_completion_and_cancellation_suppress_success(self):
+        for failure in ("cancel", "delivery_failed", "recoverableFailure(pasteCommandFailed)"):
+            rows = self.direct_completion_fixture()
+            if failure == "cancel":
+                rows[0]["outcome"] = "cancelled"
+            else:
+                rows[0]["events"].append(dict(family="TYPING_BENCH", t=1.4,
+                    name="delivery_failed" if failure == "delivery_failed" else "complete",
+                    fields={} if failure == "delivery_failed" else {"result": failure}))
+            add_pipeline_breakdown(rows)
+            self.assertIsNone(rows[0]["pipeline"]["total_ms"])
+
+    def test_direct_completion_requires_correlation_and_late_id_returns_to_original_run(self):
+        for scope in ("", "pipelineID=UNKNOWN"):
+            rows = self.parse(
+                row("APP_BENCH", 1, "pipeline_begin id=A pipelineID=A toggleStopRequestedAt=0.9"),
+                row("TYPING_BENCH", 1.3, "complete result=commandPosted " + scope))
+            add_pipeline_breakdown(rows)
+            self.assertIsNone(rows[0]["pipeline"]["total_ms"])
+        rows = self.parse(
+            row("APP_BENCH", 1, "pipeline_begin id=A pipelineID=A toggleStopRequestedAt=0.9"),
+            row("APP_BENCH", 2, "pipeline_begin id=B pipelineID=B toggleStopRequestedAt=1.9"),
+            row("TYPING_BENCH", 1.3, "complete result=commandPosted pipelineID=A"))
+        add_pipeline_breakdown(rows)
+        self.assertEqual(rows[0]["pipeline"]["total_ms"], 400)
+        self.assertIsNone(rows[1]["pipeline"]["total_ms"])
+
+    def test_clipboard_and_injection_return_keep_precedence_over_completion(self):
+        rows = self.direct_completion_fixture()
+        rows[0]["events"].append(dict(family="TYPING_BENCH", name="command_posted", t=1.25, fields={}))
+        add_pipeline_breakdown(rows)
+        self.assertEqual(rows[0]["dispatch_uptime"], 1.25)
+        rows = self.direct_completion_fixture()
+        rows[0]["phase_uptime"]["injection_return"] = 1.26
+        add_pipeline_breakdown(rows)
+        self.assertEqual(rows[0]["dispatch_uptime"], 1.26)
+
+    def test_delivery_and_pipeline_suppress_same_failed_or_cancelled_run(self):
+        for failure in ("cancel", "delivery_failed", "recoverableFailure(pasteCommandFailed)"):
+            rows = self.latency_fixture()
+            if failure == "cancel":
+                rows[0]["outcome"] = "cancelled"
+            else:
+                rows[0]["events"].append(dict(family="TYPING_BENCH", t=1.4,
+                    name="delivery_failed" if failure == "delivery_failed" else "complete",
+                    fields={} if failure == "delivery_failed" else {"result": failure}))
+            add_pipeline_breakdown(rows)
+            add_delivery_breakdown(rows)
+            self.assertIsNone(rows[0]["pipeline"]["total_ms"])
+            self.assertIsNone(rows[0]["delivery"]["total_ms"])
+
 
 if __name__ == "__main__":
     unittest.main()

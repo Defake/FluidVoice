@@ -823,10 +823,22 @@ DELIVERY_STAGES = [
 ]
 
 
+def delivery_was_unsuccessful(row):
+    """Keep every dispatch report consistent for failed or cancelled output."""
+    return row["outcome"] == "cancelled" or any(
+        e["family"] == "TYPING_BENCH" and (
+            e["name"] == "delivery_failed" or
+            e["fields"].get("result", "").startswith("recoverableFailure"))
+        for e in row["events"]
+    )
+
+
 def add_delivery_breakdown(rows):
     for row in rows:
         p = row["phase_uptime"]
         start, end = p["text_ready"], p["command_posted"]
+        if delivery_was_unsuccessful(row):
+            end = None
         intervals = [
             ("prepare_ms", start, p["typing_request"]),
             ("queue_ms", p["typing_request"], p["clipboard_slot_acquired"]),
@@ -892,21 +904,33 @@ def add_pipeline_breakdown(rows):
         if start is None:
             start = row["stop_uptime"]
             row["pipeline_start_basis"] = "handler_only"
+        def valid_time(value):
+            return (start is not None and math.isfinite(start) and value is not None
+                    and math.isfinite(value) and value >= start)
+
         commands = [e["t"] for e in row["events"] if e["family"] == "TYPING_BENCH"
-                    and e["name"] == "command_posted" and e["t"] is not None]
-        end = max(commands) if commands else p["injection_return"]
-        # Direct typing may only expose its final dispatch callback.
+                    and e["name"] == "command_posted" and valid_time(e["t"])]
+        end = max(commands) if commands else (p["injection_return"] if valid_time(p["injection_return"]) else None)
+        # Current direct insertion logs completion before optional Spoken Send
+        # waits. Its later ASR callback lacks result= and is not the text endpoint.
+        if end is None:
+            callback_times = [e["t"] for e in row["events"] if e["family"] == "TYPING_BENCH"
+                              and e["name"] == "asr_type_dispatched" and valid_time(e["t"])]
+            request = p["typing_request"]
+            completions = [e["t"] for e in row["events"] if e["family"] == "TYPING_BENCH"
+                           and e["name"] == "complete" and e["fields"].get("result") == "commandPosted"
+                           and valid_time(e["t"])
+                           and (request is None or (valid_time(request) and e["t"] >= request))
+                           and (not callback_times or e["t"] <= min(callback_times))]
+            end = max(completions) if completions else None
+        # Older direct typing may only expose its final dispatch callback.
         if end is None:
             callback = next((e for e in row["events"] if e["family"] == "TYPING_BENCH"
                              and e["name"] == "asr_type_dispatched"
-                             and e["fields"].get("result") == "commandPosted"), None)
+                             and e["fields"].get("result") == "commandPosted"
+                             and valid_time(e["t"])), None)
             end = callback["t"] if callback else None
-        if row["outcome"] == "cancelled" or any(
-            e["family"] == "TYPING_BENCH" and (
-                e["name"] == "delivery_failed" or
-                e["fields"].get("result", "").startswith("recoverableFailure"))
-            for e in row["events"]
-        ):
+        if delivery_was_unsuccessful(row):
             end = None
         ai_end = p["ai_return"] if p["ai_return"] is not None else p["ai_failure"]
         intervals = [
