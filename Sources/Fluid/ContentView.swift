@@ -2577,9 +2577,7 @@ struct ContentView: View {
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
-        var loadAverages = [Double](repeating: 0, count: 3)
-        let loadSampleCount = getloadavg(&loadAverages, 3)
-        let loadAverageField = loadSampleCount > 0 ? String(format: "%.1f", loadAverages[0]) : "nil"
+        let loadAverageField = self.benchmarkLoadAverage()
         self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil") loadAvg1m=\(loadAverageField)")
         defer {
             self.appBench("pipeline_handler_return id=\(pipelineID) elapsedMs=\((ProcessInfo.processInfo.systemUptime - pipelineStartedAt) * 1000) deliveryMayBePending=true")
@@ -4771,6 +4769,12 @@ extension ContentView {
         let settings = SettingsStore.shared
         settings.setDictationPromptSelection(selection, for: .secondary)
         self.beginDictationRecording(for: .secondary, mode: mode)
+    }
+
+    private func benchmarkLoadAverage() -> String {
+        var loadAverages = [Double](repeating: 0, count: 3)
+        let loadSampleCount = getloadavg(&loadAverages, 3)
+        return loadSampleCount > 0 ? String(format: "%.1f", loadAverages[0]) : "nil"
     }
 
     private func appBench(_ message: String) {

@@ -781,7 +781,7 @@ final class GlobalHotkeyManager: NSObject {
         thread.start()
         ready.wait()
 
-        let runLoop = createdRunLoop ?? CFRunLoopGetMain()!
+        let runLoop: CFRunLoop = createdRunLoop ?? CFRunLoopGetMain()
         self.keyboardTapRunLoop = runLoop
         self.keyboardTapThread = thread
         return runLoop
