@@ -694,9 +694,21 @@ final class GlobalHotkeyManager: NSObject {
             eventsOfInterest: Self.keyboardEventMask(),
             callback: { proxy, type, event, refcon -> Unmanaged<CGEvent>? in
                 guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+                if GlobalHotkeyManager.isSynthesizedTypingEvent(event) {
+                    return Unmanaged.passUnretained(event)
+                }
                 let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(refcon)
                     .takeUnretainedValue()
-                return manager.handleKeyEvent(proxy: proxy, type: type, event: event)
+                if Thread.isMainThread {
+                    return MainActor.assumeIsolated {
+                        manager.handleKeyEvent(proxy: proxy, type: type, event: event)
+                    }
+                }
+                return DispatchQueue.main.sync {
+                    MainActor.assumeIsolated {
+                        manager.handleKeyEvent(proxy: proxy, type: type, event: event)
+                    }
+                }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         )
@@ -712,7 +724,7 @@ final class GlobalHotkeyManager: NSObject {
             return false
         }
 
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CFRunLoopAddSource(self.keyboardTapRunLoopStartingIfNeeded(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
         if !self.isEventTapEnabled() {
@@ -728,22 +740,51 @@ final class GlobalHotkeyManager: NSObject {
     }
 
     private nonisolated func cleanupEventTap() {
-        Self.tearDown(tap: self.eventTap, source: self.runLoopSource)
+        Self.tearDown(tap: self.eventTap, source: self.runLoopSource, runLoop: self.keyboardTapRunLoop ?? CFRunLoopGetMain())
         self.eventTap = nil
         self.runLoopSource = nil
         self.clearPrimaryShortcutPressState()
         self.cleanupMouseTaps()
     }
 
-    private nonisolated static func tearDown(tap: CFMachPort?, source: CFRunLoopSource?) {
+    private nonisolated static func tearDown(
+        tap: CFMachPort?,
+        source: CFRunLoopSource?,
+        runLoop: CFRunLoop = CFRunLoopGetMain()
+    ) {
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
             CFMachPortInvalidate(tap)
         }
         if let source {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
             CFRunLoopSourceInvalidate(source)
         }
+    }
+
+    /// Starts (once) a dedicated thread whose run loop services the keyboard tap.
+    private nonisolated func keyboardTapRunLoopStartingIfNeeded() -> CFRunLoop {
+        if let runLoop = self.keyboardTapRunLoop { return runLoop }
+
+        let ready = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var createdRunLoop: CFRunLoop?
+        let thread = Thread {
+            createdRunLoop = CFRunLoopGetCurrent()
+            // A port keeps the loop alive while no tap source is attached.
+            let keepAlive = NSMachPort()
+            RunLoop.current.add(keepAlive, forMode: .common)
+            ready.signal()
+            CFRunLoopRun()
+        }
+        thread.name = "com.fluidvoice.hotkey-event-tap"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        ready.wait()
+
+        let runLoop = createdRunLoop ?? CFRunLoopGetMain()!
+        self.keyboardTapRunLoop = runLoop
+        self.keyboardTapThread = thread
+        return runLoop
     }
 
     nonisolated static func keyboardEventMask() -> CGEventMask {
