@@ -147,10 +147,11 @@ final class RewriteModeService: ObservableObject {
     }
 
     @MainActor
-    func acceptRewrite() async {
-        guard !self.rewrittenText.isEmpty else { return }
+    func acceptRewrite(_ text: String) async {
+        // The panel may clear its state before this queued action starts.
+        guard !text.isEmpty else { return }
         NSApp.hide(nil) // Restore focus to the previous app
-        _ = await self.typingService.typeTextInstantly(self.rewrittenText)
+        _ = await self.typingService.typeTextInstantly(text)
     }
 
     func clearState() {

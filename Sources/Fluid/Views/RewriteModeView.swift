@@ -136,8 +136,9 @@ struct RewriteModeView: View {
                                 Spacer()
 
                                 Button("Replace Original") {
+                                    let text = self.service.rewrittenText
                                     Task { @MainActor in
-                                        await self.service.acceptRewrite()
+                                        await self.service.acceptRewrite(text)
                                     }
                                     self.onClose?()
                                 }
