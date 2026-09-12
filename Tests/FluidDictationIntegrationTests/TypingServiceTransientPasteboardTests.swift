@@ -99,6 +99,25 @@ final class TypingServiceTransientPasteboardTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), secret)
     }
 
+    func testClipboardShortcutAuditIgnoresOrdinaryTypingAndDoesNotMutateEvents() throws {
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 8, keyDown: true))
+        event.flags = []
+        XCTAssertNil(ClipboardAudit.shortcutMetadata(type: .keyDown, event: event))
+        event.flags = .maskCommand
+        event.setIntegerValueField(.eventSourceUserData, value: 1234)
+        let flags = event.flags
+        let timestamp = event.timestamp
+        let result = try XCTUnwrap(ClipboardAudit.shortcutMetadata(type: .keyDown, event: event))
+        XCTAssertTrue(result.contains("keyCode=8"))
+        XCTAssertTrue(result.contains("userData=1234"))
+        XCTAssertEqual(event.flags, flags)
+        XCTAssertEqual(event.timestamp, timestamp)
+        XCTAssertEqual(event.getIntegerValueField(.eventSourceUserData), 1234)
+        XCTAssertNil(ClipboardAudit.shortcutMetadata(type: .keyUp, event: event))
+        event.setIntegerValueField(.keyboardEventKeycode, value: 0)
+        XCTAssertNil(ClipboardAudit.shortcutMetadata(type: .keyDown, event: event))
+    }
+
     func testRecoveryActivationDoesNotRaiseAllWindowsOfTargetApp() {
         // Issue #748: recovery must NOT raise every window of the target app.
         let options = TypingService.recoveryActivationOptions

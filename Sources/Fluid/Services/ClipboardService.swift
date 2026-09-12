@@ -38,6 +38,23 @@ enum ClipboardService {
 
 /// Event-bound metadata only: no clipboard text, URLs, data payloads, or polling.
 enum ClipboardAudit {
+    /// Physical ANSI C/X/V candidates only; do not collect ordinary typing.
+    /// Raw key codes avoid doing keyboard-layout queries in the event tap.
+    nonisolated static func shortcutMetadata(type: CGEventType, event: CGEvent) -> String? {
+        guard type == .keyDown, event.flags.contains(.maskCommand) else { return nil }
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        guard [7, 8, 9].contains(keyCode) else { return nil }
+        let sourcePID = event.getIntegerValueField(.eventSourceUnixProcessID)
+        let targetPID = event.getIntegerValueField(.eventTargetUnixProcessID)
+        let userData = event.getIntegerValueField(.eventSourceUserData)
+        return "keyCode=\(keyCode) flags=\(event.flags.rawValue) sourcePID=\(sourcePID) targetPID=\(targetPID) userData=\(userData) eventTimestamp=\(event.timestamp)"
+    }
+
+    nonisolated static func recordShortcut(type: CGEventType, event: CGEvent) {
+        guard let metadata = self.shortcutMetadata(type: type, event: event) else { return }
+        DebugLogger.shared.benchmark("CLIPBOARD_INPUT", message: metadata, source: "ClipboardAudit")
+    }
+
     static func metadata(for pasteboard: NSPasteboard) -> String {
         let before = pasteboard.changeCount
         let items = pasteboard.pasteboardItems ?? []

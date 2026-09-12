@@ -694,6 +694,7 @@ final class GlobalHotkeyManager: NSObject {
             eventsOfInterest: Self.keyboardEventMask(),
             callback: { proxy, type, event, refcon -> Unmanaged<CGEvent>? in
                 guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+                ClipboardAudit.recordShortcut(type: type, event: event)
                 if GlobalHotkeyManager.isSynthesizedTypingEvent(event) {
                     return Unmanaged.passUnretained(event)
                 }
