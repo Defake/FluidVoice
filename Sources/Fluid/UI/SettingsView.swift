@@ -878,7 +878,8 @@ struct SettingsView: View {
                                             }
                                         }
                                         .pickerStyle(.menu)
-                                        .frame(width: 170, alignment: .trailing)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .frame(minWidth: 170, alignment: .trailing)
                                     }
                                     .settingsSearchTarget(.textInsertionMode)
                                     Divider().opacity(0.2)
