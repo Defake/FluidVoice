@@ -506,6 +506,9 @@ final class SystemPasteCommandPoster: PasteCommandPosting {
 
         vDown.flags = .maskCommand
         vUp.flags = .maskCommand
+        // Mark the paste as ours so the hotkey tap passes it through untouched.
+        vDown.setIntegerValueField(.eventSourceUserData, value: TypingService.synthesizedEventUserData)
+        vUp.setIntegerValueField(.eventSourceUserData, value: TypingService.synthesizedEventUserData)
 
         // The coordinator verifies pasteboard ownership before reaching this point,
         // so the temporary item is ready to consume without an additional delay.
