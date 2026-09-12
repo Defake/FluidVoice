@@ -6,6 +6,25 @@ import Foundation
 import XCTest
 
 final class HotkeyShortcutTests: XCTestCase {
+    func testInputDeliveryTimingKeepsClocksSeparate() {
+        let input = HotkeyInputTiming(
+            receivedAt: 100, eventTimestamp: 5_000_000_000, eventType: 12, receivedTimestamp: 5_050_000_000
+        )
+        XCTAssertEqual(input.deliveryAgeMs, 50)
+        XCTAssertEqual(input.receivedAt, 100)
+        XCTAssertEqual(input.eventTimestamp, 5_000_000_000)
+        XCTAssertEqual(input.eventType, 12)
+    }
+
+    func testInputDeliveryTimingRejectsMissingAndFutureEventTimestamps() {
+        let missing = HotkeyInputTiming(receivedAt: 100, eventTimestamp: 0, eventType: 12, receivedTimestamp: 5_000_000_000)
+        XCTAssertNil(missing.deliveryAgeMs)
+        let future = HotkeyInputTiming(receivedAt: 100, eventTimestamp: 6_000_000_000, eventType: 12, receivedTimestamp: 5_000_000_000)
+        XCTAssertNil(future.deliveryAgeMs)
+        let immediate = HotkeyInputTiming(receivedAt: 100, eventTimestamp: 5_000_000_000, eventType: 12, receivedTimestamp: 5_000_000_000)
+        XCTAssertEqual(immediate.deliveryAgeMs, 0)
+    }
+
     private let legacyHotkeyShortcutKey = "HotkeyShortcutKey"
     private let primaryDictationShortcutsKey = "PrimaryDictationShortcuts"
     private let pasteLastTranscriptionShortcutKey = "PasteLastTranscriptionHotkeyShortcut"

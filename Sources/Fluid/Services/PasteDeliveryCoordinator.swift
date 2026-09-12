@@ -552,7 +552,9 @@ final class PasteDeliveryCoordinator {
         preserveTranscriptOnClipboard: Bool,
         onCommandPosted: ((TimeInterval) -> Void)? = nil
     ) async -> TextDeliveryResult {
+        let slotRequestedAt = ProcessInfo.processInfo.systemUptime
         await self.acquireDeliverySlot()
+        let slotAcquiredAt = ProcessInfo.processInfo.systemUptime
         var settlementOwnsSlot = false
         defer {
             if !settlementOwnsSlot { self.releaseDeliverySlot() }
@@ -561,6 +563,7 @@ final class PasteDeliveryCoordinator {
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.generation &+= 1
         let generation = self.generation
+        self.log("clipboard_slot_acquired generation=\(generation) waitMs=\((slotAcquiredAt - slotRequestedAt) * 1000)")
         let originalSnapshot = self.pasteboard.captureSnapshot()
 
         guard let originalSnapshot else {
@@ -634,9 +637,11 @@ final class PasteDeliveryCoordinator {
 
     private func scheduleSettlement(sessionID: String, generation: UInt64) {
         let settlementDelayNanoseconds = self.settlementDelayNanoseconds
+        let scheduledAt = ProcessInfo.processInfo.systemUptime
         let task = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: settlementDelayNanoseconds)
             guard !Task.isCancelled else { return }
+            self?.log("settlement_begin generation=\(generation) elapsedMs=\((ProcessInfo.processInfo.systemUptime - scheduledAt) * 1000) scheduledDelayMs=\(settlementDelayNanoseconds / 1_000_000)")
             self?.settleIfCurrent(sessionID: sessionID, generation: generation)
         }
         self.lease?.settlementTask = task
@@ -659,12 +664,13 @@ final class PasteDeliveryCoordinator {
             return
         }
 
+        let restoreStartedAt = ProcessInfo.processInfo.systemUptime
         if lease.shouldKeepTranscript {
             let didWrite = self.pasteboard.writeIntentionalText(lease.text)
-            self.log("intentional_copy_settled generation=\(generation) success=\(didWrite)")
+            self.log("intentional_copy_settled generation=\(generation) success=\(didWrite) elapsedMs=\((ProcessInfo.processInfo.systemUptime - restoreStartedAt) * 1000)")
         } else {
             let didRestore = self.pasteboard.restoreTemporarySnapshot(lease.originalSnapshot, sessionID: sessionID, expectedText: lease.text)
-            self.log("restore_completed generation=\(generation) success=\(didRestore)")
+            self.log("restore_completed generation=\(generation) success=\(didRestore) elapsedMs=\((ProcessInfo.processInfo.systemUptime - restoreStartedAt) * 1000)")
         }
     }
 

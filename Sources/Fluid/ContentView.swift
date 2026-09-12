@@ -2127,12 +2127,22 @@ struct ContentView: View {
     }
 
     private func resolveTypingTargetPID() -> (pid: pid_t?, shouldRestoreOriginalFocus: Bool) {
+        let startedAt = ProcessInfo.processInfo.systemUptime
         guard let context = NotchContentState.shared.recordingTargetContext else {
+            self.appBench("focus_target_check totalMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000) missingContext=true")
             return (NotchContentState.shared.recordingTargetPID, true)
         }
-        let isStillFocused = context.pid == TypingService.currentFocusedPID() &&
-            (context.element == nil || TypingService.isCapturedFocusStillActive(context))
-        return (context.pid, !isStillFocused)
+        let pidStartedAt = ProcessInfo.processInfo.systemUptime
+        let focusedPID = TypingService.currentFocusedPID()
+        let pidFinishedAt = ProcessInfo.processInfo.systemUptime
+        let checksElement = context.pid == focusedPID && context.element != nil
+        let elementIsFocused = !checksElement || TypingService.isCapturedFocusStillActive(context)
+        let finishedAt = ProcessInfo.processInfo.systemUptime
+        self.appBench(
+            "focus_target_check totalMs=\((finishedAt - startedAt) * 1000) pidMs=\((pidFinishedAt - pidStartedAt) * 1000) " +
+                "elementMs=\((finishedAt - pidFinishedAt) * 1000) elementChecked=\(checksElement)"
+        )
+        return (context.pid, !(context.pid == focusedPID && elementIsFocused))
     }
 
     // MARK: - Commented out app-specific prompts - using general processing only
@@ -2567,7 +2577,7 @@ struct ContentView: View {
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
-        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue)")
+        self.appBench("pipeline_begin id=\(pipelineID) route=\(route.rawValue) toggleStopRequestedAt=\(toggleStopRequestedAt.map { String($0) } ?? "nil")")
         defer {
             self.appBench("pipeline_handler_return id=\(pipelineID) elapsedMs=\((ProcessInfo.processInfo.systemUptime - pipelineStartedAt) * 1000) deliveryMayBePending=true")
         }
@@ -3577,16 +3587,11 @@ struct ContentView: View {
                 return
             }
 
-            let typingTarget = self.resolveTypingTargetPID()
-            guard typingTarget.pid != nil else {
+            // Paste Last is a new insertion at the current cursor, independent of
+            // the previous recording's saved target. Never restore that older focus here.
+            guard let targetPID = TypingService.currentFocusedPID(), targetPID != ProcessInfo.processInfo.processIdentifier else {
                 DebugLogger.shared.info("Actions: Paste skipped - no external target field available", source: "ContentView")
                 return
-            }
-            if typingTarget.shouldRestoreOriginalFocus {
-                guard await self.restoreFocusToRecordingTarget() else {
-                    self.showTextDeliveryFailure(.targetRestoreFailed, transcript: text)
-                    return
-                }
             }
             let appInfo = self.getCurrentAppInfo()
             let outputPlan = ASRService.makeDictationLiteralOutputPlan(
@@ -3597,7 +3602,7 @@ struct ContentView: View {
             )
             let result = await self.asr.typeOutputPlanToActiveField(
                 outputPlan,
-                preferredTargetPID: typingTarget.pid
+                preferredTargetPID: targetPID
             )
             if case let .recoverableFailure(failure) = result {
                 self.showTextDeliveryFailure(failure, transcript: text)

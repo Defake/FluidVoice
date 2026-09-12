@@ -14,6 +14,22 @@ private nonisolated enum ActivePrimaryShortcutPress: Equatable {
     case mouse(Int)
 }
 
+/// Input timing only: never changes shortcut routing or retains a keyboard event.
+struct HotkeyInputTiming {
+    let receivedAt: TimeInterval
+    let eventTimestamp: UInt64
+    let eventType: UInt32
+
+    let receivedTimestamp: UInt64
+
+    /// Quartz event timestamps and DispatchTime uptime are nanoseconds since boot.
+    /// Keep this clock separate from the ProcessInfo timestamp used by the pipeline.
+    var deliveryAgeMs: Double? {
+        guard self.eventTimestamp > 0, self.receivedTimestamp >= self.eventTimestamp else { return nil }
+        return Double(self.receivedTimestamp - self.eventTimestamp) / 1_000_000
+    }
+}
+
 /// Snapshot of the modifier-only tracking state fed into `ModifierOnlyShortcutFlagsDecision`.
 struct ModifierOnlyShortcutTrackingState: Equatable {
     /// Currently-pressed modifier key codes (output of `synchronizedPressedModifierKeyCodes`).
@@ -232,6 +248,10 @@ final class GlobalHotkeyManager: NSObject {
     private nonisolated(unsafe) var state = HotkeyState()
     private nonisolated(unsafe) var eventTap: CFMachPort?
     private nonisolated(unsafe) var runLoopSource: CFRunLoopSource?
+    /// Keyboard tap events are serviced here, not on the main run loop, so main-thread
+    /// work after a paste never holds the synthetic Cmd+V (or any keystroke) in our tap.
+    private nonisolated(unsafe) var keyboardTapRunLoop: CFRunLoop?
+    private nonisolated(unsafe) var keyboardTapThread: Thread?
     private nonisolated(unsafe) var mouseObserverTap: CFMachPort?
     private nonisolated(unsafe) var mouseObserverSource: CFRunLoopSource?
     private nonisolated(unsafe) var mouseShortcutTap: CFMachPort?
@@ -262,6 +282,9 @@ final class GlobalHotkeyManager: NSObject {
     private var pasteLastTranscriptionCallback: (() -> Void)?
     private var hotkeyMode: HotkeyActivationMode = SettingsStore.shared.hotkeyMode
     private let automaticTapThresholdSeconds: TimeInterval = 0.4
+    private var currentInputTiming: HotkeyInputTiming?
+    private var modifierPressReceivedAt: TimeInterval?
+    private var currentStopPressReceivedAt: TimeInterval?
 
     private struct ModifierOnlyShortcutBehavior {
         let shortcut: HotkeyShortcut
@@ -983,6 +1006,15 @@ final class GlobalHotkeyManager: NSObject {
     }
 
     private func handleMouseShortcutEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let previousInput = self.currentInputTiming
+        self.currentInputTiming = HotkeyInputTiming(
+            receivedAt: ProcessInfo.processInfo.systemUptime,
+            eventTimestamp: event.timestamp,
+            eventType: type.rawValue,
+            receivedTimestamp: DispatchTime.now().uptimeNanoseconds
+        )
+        defer { self.currentInputTiming = previousInput }
+
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             self.finishInterruptedMouseShortcutPress(reason: "mouse shortcut tap disabled")
             self.reenableMouseTap(self.mouseShortcutTap, label: "Mouse shortcut") {
@@ -1144,6 +1176,15 @@ final class GlobalHotkeyManager: NSObject {
     }
 
     private func handleKeyEvent(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let previousInput = self.currentInputTiming
+        self.currentInputTiming = HotkeyInputTiming(
+            receivedAt: ProcessInfo.processInfo.systemUptime,
+            eventTimestamp: event.timestamp,
+            eventType: type.rawValue,
+            receivedTimestamp: DispatchTime.now().uptimeNanoseconds
+        )
+        defer { self.currentInputTiming = previousInput }
+
         if let tapRecoveryResult = self.handleTapDisableEvent(type: type, event: event) {
             return tapRecoveryResult
         }
@@ -1756,6 +1797,8 @@ final class GlobalHotkeyManager: NSObject {
             return
         }
 
+        let toggleStopRequestedAt = ProcessInfo.processInfo.systemUptime
+        self.logStopInput(requestedAt: toggleStopRequestedAt, route: "deferred_release")
         let token = self.beginPendingReleaseStop(for: type)
         DebugLogger.shared.debug("\(label) release stop deferred until recording starts", source: "GlobalHotkeyManager")
 
@@ -1777,7 +1820,7 @@ final class GlobalHotkeyManager: NSObject {
 
                     DebugLogger.shared.info("\(label) deferred stop after recording start", source: "GlobalHotkeyManager")
                     self.clearPendingReleaseStop(for: type, token: token)
-                    await self.stopRecordingInternal()
+                    await self.stopRecordingInternal(toggleStopRequestedAt: toggleStopRequestedAt)
                     return
                 }
 
@@ -1875,6 +1918,8 @@ final class GlobalHotkeyManager: NSObject {
     }
 
     func resetModifierOnlyShortcutTracking(reason: ModifierTrackingResetReason = .shortcutCapture) {
+        self.modifierPressReceivedAt = nil
+        self.currentStopPressReceivedAt = nil
         let shouldStopActiveHold = self.hotkeyMode != .toggle
             && self.asrService.isRunning
             && (self.isKeyPressed || self.isPromptModeKeyPressed || self.isCommandModeKeyPressed || self.isRewriteKeyPressed || self.isPromptAssignmentKeyPressed)
@@ -2077,12 +2122,17 @@ final class GlobalHotkeyManager: NSObject {
         case .ignore:
             return false
         case .start:
+            self.modifierPressReceivedAt = self.currentInputTiming?.receivedAt
             self.modifierOnlyKeyDown = true
             self.modifierPressStartTime = Date()
 
             self.scheduleModifierOnlyStart(for: behavior)
             return true
         case let .finish(wasCleanPress):
+            let previousPress = self.currentStopPressReceivedAt
+            self.currentStopPressReceivedAt = self.modifierPressReceivedAt
+            self.modifierPressReceivedAt = nil
+            defer { self.currentStopPressReceivedAt = previousPress }
             self.modifierOnlyKeyDown = false
             self.modifierPressStartTime = nil
 
@@ -2268,6 +2318,9 @@ final class GlobalHotkeyManager: NSObject {
 
     private func toggleRecording() {
         let toggleStopRequestedAt = ProcessInfo.processInfo.systemUptime
+        if self.asrService.isRunningOrStarting {
+            self.logStopInput(requestedAt: toggleStopRequestedAt, route: "toggle")
+        }
         Task { @MainActor [weak self] in
             guard let self = self else { return }
 
@@ -2305,11 +2358,27 @@ final class GlobalHotkeyManager: NSObject {
         }
     }
 
+    private func logStopInput(requestedAt: TimeInterval, route: String) {
+        var fields = "stop_request stopRequestedAt=\(requestedAt) route=\(route)"
+        if let input = self.currentInputTiming {
+            fields += " inputReceivedAt=\(input.receivedAt) eventType=\(input.eventType)"
+            if let age = input.deliveryAgeMs {
+                fields += " inputAgeMs=\(age)"
+            }
+            if let press = self.currentStopPressReceivedAt, press <= input.receivedAt {
+                fields += " pressReceivedAt=\(press)"
+            }
+        }
+        DebugLogger.shared.benchmark("HOTKEY_BENCH", message: fields, source: "HotkeyBenchmark")
+    }
+
     private func stopRecordingAfterToggle() {
-        self.stopRecordingIfNeeded(toggleStopRequestedAt: ProcessInfo.processInfo.systemUptime)
+        self.stopRecordingIfNeeded()
     }
 
     private func stopRecordingIfNeeded(toggleStopRequestedAt: TimeInterval? = nil) {
+        let toggleStopRequestedAt = toggleStopRequestedAt ?? ProcessInfo.processInfo.systemUptime
+        self.logStopInput(requestedAt: toggleStopRequestedAt, route: "stop_if_needed")
         Task { @MainActor [weak self] in
             guard let self = self else { return }
 

@@ -5534,6 +5534,20 @@ final class ASRService: ObservableObject {
             message: "asr_type_dispatched chars=\(text.count) preferredPID=\(preferredTargetPID.map { String($0) } ?? "nil") result=\(String(describing: result)) textReadyToDispatchMs=\(textReadyToDispatchMs)",
             source: "TypingBenchmark"
         )
+        if case .commandPosted = result {
+            let scheduledAt = ProcessInfo.processInfo.systemUptime
+            let pipelineID = DebugLogger.pipelineID
+            // One queued timestamp per output. No polling, AX queries or delivery waits.
+            DispatchQueue.main.async {
+                DebugLogger.$pipelineID.withValue(pipelineID) {
+                    DebugLogger.shared.benchmark(
+                        "APP_BENCH",
+                        message: "dispatch_main_queue_probe scheduledAt=\(scheduledAt)",
+                        source: "AppBenchmark"
+                    )
+                }
+            }
+        }
         return result
     }
 
