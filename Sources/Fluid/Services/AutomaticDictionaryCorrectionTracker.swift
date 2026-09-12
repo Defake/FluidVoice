@@ -431,15 +431,20 @@ final class AutomaticDictionaryCorrectionTracker {
 
         self.verificationTask = Task { @MainActor [weak self] in
             for _ in 0..<Self.verificationAttempts {
-                guard !Task.isCancelled, let self else { return }
-                if let seed = self.captureAnchoredInsertion(
+                // Give the paste time to land before probing, and keep the synchronous
+                // Accessibility round trips off the main thread so they never delay
+                // the event tap that delivers the paste itself.
+                try? await Task.sleep(nanoseconds: Self.verificationDelayNanoseconds)
+                guard !Task.isCancelled, self != nil else { return }
+                let seed = await Self.captureAnchoredInsertionOffMain(
                     insertedText: insertedText,
                     targetPID: targetPID
-                ) {
+                )
+                guard !Task.isCancelled, let self else { return }
+                if let seed {
                     self.installObserver(for: seed)
                     return
                 }
-                try? await Task.sleep(nanoseconds: Self.verificationDelayNanoseconds)
             }
         }
     }
@@ -458,7 +463,7 @@ final class AutomaticDictionaryCorrectionTracker {
 
     func handleObservedValueChange() {
         guard var session = self.session,
-              let currentValue = self.stringValue(of: session.element),
+              let currentValue = Self.stringValue(of: session.element),
               currentValue != session.lastValue,
               (currentValue as NSString).length <= Self.maximumFieldLength,
               let change = AutomaticDictionaryCorrectionDetector.textChange(
@@ -547,7 +552,7 @@ final class AutomaticDictionaryCorrectionTracker {
         guard let session = self.session,
               let pending = session.pendingCorrection,
               let correctedRange = pending.correctedRange,
-              let selection = self.selectedRange(of: session.element)
+              let selection = Self.selectedRange(of: session.element)
         else {
             return
         }
@@ -562,7 +567,7 @@ final class AutomaticDictionaryCorrectionTracker {
     func handleObservedFocusChange() {
         guard let session = self.session,
               let pending = session.pendingCorrection,
-              let focus = self.focusedElementAndPID(),
+              let focus = Self.focusedElementAndPID(),
               focus.pid != session.pid || !CFEqual(focus.element, session.element)
         else {
             return
@@ -573,16 +578,34 @@ final class AutomaticDictionaryCorrectionTracker {
         )
     }
 
-    private func captureAnchoredInsertion(
+    private nonisolated static let accessibilityProbeQueue = DispatchQueue(
+        label: "com.fluidvoice.dictionary-correction.ax-probe",
+        qos: .userInitiated
+    )
+
+    private nonisolated static func captureAnchoredInsertionOffMain(
+        insertedText: String,
+        targetPID: pid_t?
+    ) async -> InsertionSeed? {
+        await withCheckedContinuation { continuation in
+            self.accessibilityProbeQueue.async {
+                continuation.resume(
+                    returning: self.captureAnchoredInsertion(insertedText: insertedText, targetPID: targetPID)
+                )
+            }
+        }
+    }
+
+    private nonisolated static func captureAnchoredInsertion(
         insertedText: String,
         targetPID: pid_t?
     ) -> InsertionSeed? {
-        guard let focus = self.focusedElementAndPID(),
+        guard let focus = focusedElementAndPID(),
               targetPID == nil || focus.pid == targetPID,
-              !self.isSecureTextInput(focus.element),
-              let value = self.stringValue(of: focus.element),
+              !Self.isSecureTextInput(focus.element),
+              let value = stringValue(of: focus.element),
               (value as NSString).length <= Self.maximumFieldLength,
-              let selectedRange = self.selectedRange(of: focus.element),
+              let selectedRange = Self.selectedRange(of: focus.element),
               selectedRange.length == 0
         else {
             return nil
@@ -709,21 +732,21 @@ final class AutomaticDictionaryCorrectionTracker {
         }
     }
 
-    private func stringValue(of element: AXUIElement) -> String? {
+    private nonisolated static func stringValue(of element: AXUIElement) -> String? {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
         guard result == .success else { return nil }
         return value as? String
     }
 
-    private func isSecureTextInput(_ element: AXUIElement) -> Bool {
+    private nonisolated static func isSecureTextInput(_ element: AXUIElement) -> Bool {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &value)
         guard result == .success, let subrole = value as? String else { return false }
         return subrole == (kAXSecureTextFieldSubrole as String) || subrole.localizedCaseInsensitiveContains("secure")
     }
 
-    private func selectedRange(of element: AXUIElement) -> NSRange? {
+    private nonisolated static func selectedRange(of element: AXUIElement) -> NSRange? {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &value)
         guard result == .success,
@@ -744,7 +767,7 @@ final class AutomaticDictionaryCorrectionTracker {
         return NSRange(location: range.location, length: range.length)
     }
 
-    private func focusedElementAndPID() -> (element: AXUIElement, pid: pid_t)? {
+    private nonisolated static func focusedElementAndPID() -> (element: AXUIElement, pid: pid_t)? {
         let systemWideElement = AXUIElementCreateSystemWide()
         var focusedElement: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(
