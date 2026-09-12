@@ -100,8 +100,32 @@ actor PrivateAIIntegrationService {
         self.provider.localModelPath(for: model)
     }
 
+    // Installation checks walk the model directory. SwiftUI bodies ask several
+    // times per frame, so serve a briefly cached answer instead of hitting disk.
+    private nonisolated static let installedModelCacheLock = NSLock()
+    private nonisolated(unsafe) static var installedModelCache: [String: (installed: Bool, checkedAt: TimeInterval)] = [:]
+    private nonisolated static let installedModelCacheLifetime: TimeInterval = 2
+
     nonisolated static func isModelInstalled(_ model: PrivateAIRegisteredModel) -> Bool {
-        self.provider.isModelInstalled(model)
+        let now = ProcessInfo.processInfo.systemUptime
+        self.installedModelCacheLock.lock()
+        let cached = self.installedModelCache[model.id]
+        self.installedModelCacheLock.unlock()
+        if let cached, now - cached.checkedAt < self.installedModelCacheLifetime {
+            return cached.installed
+        }
+
+        let installed = self.provider.isModelInstalled(model)
+        self.installedModelCacheLock.lock()
+        self.installedModelCache[model.id] = (installed, now)
+        self.installedModelCacheLock.unlock()
+        return installed
+    }
+
+    nonisolated static func invalidateInstalledModelCache() {
+        self.installedModelCacheLock.lock()
+        self.installedModelCache.removeAll()
+        self.installedModelCacheLock.unlock()
     }
 
     nonisolated static func canRemoveInstalledModel(_ model: PrivateAIRegisteredModel) -> Bool {
@@ -116,6 +140,7 @@ actor PrivateAIIntegrationService {
     }
 
     nonisolated static func removeInstalledModel(_ model: PrivateAIRegisteredModel) throws {
+        defer { self.invalidateInstalledModelCache() }
         let requestedURLs = self.provider.installedModelURLs(for: model)
         guard !requestedURLs.isEmpty else { return }
         let targetURLs = try self.validatedModelURLs(requestedURLs)
@@ -123,6 +148,7 @@ actor PrivateAIIntegrationService {
     }
 
     nonisolated static func removeInactiveInstalledModels(keeping model: PrivateAIRegisteredModel) throws {
+        defer { self.invalidateInstalledModelCache() }
         let requestedURLs = self.provider.inactiveInstalledModelURLs(keeping: model)
         guard !requestedURLs.isEmpty else { return }
         let targetURLs = try self.validatedModelURLs(requestedURLs)
@@ -167,7 +193,8 @@ actor PrivateAIIntegrationService {
         _ model: PrivateAIRegisteredModel,
         progressHandler: PrivateAIModelDownloadProgressHandler? = nil
     ) async throws -> URL {
-        try await self.provider.prepareModel(model, progressHandler: progressHandler)
+        defer { self.invalidateInstalledModelCache() }
+        return try await self.provider.prepareModel(model, progressHandler: progressHandler)
     }
 
     nonisolated static func modelUpdateStatus(
