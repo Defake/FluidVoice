@@ -61,6 +61,11 @@ protocol PasteboardManaging: AnyObject {
     func isOwned(sessionID: String, expectedText: String) -> Bool
     func restore(_ snapshot: PasteboardSnapshot) -> Bool
     func restoreTemporarySnapshot(_ snapshot: PasteboardSnapshot, sessionID: String, expectedText: String) -> Bool
+    func recordAudit(_ event: String, detail: String)
+}
+
+extension PasteboardManaging {
+    func recordAudit(_: String, detail _: String) {}
 }
 
 @MainActor
@@ -90,6 +95,10 @@ final class SystemPasteboardManager: PasteboardManaging {
 
     init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
+    }
+
+    func recordAudit(_ event: String, detail: String) {
+        ClipboardAudit.record(event, pasteboard: self.pasteboard, detail: detail)
     }
 
     func captureSnapshot() -> PasteboardSnapshot? {
@@ -194,9 +203,11 @@ final class SystemPasteboardManager: PasteboardManaging {
             return false
         }
 
+        ClipboardAudit.record("temporary_begin", pasteboard: self.pasteboard, detail: "session=\(sessionID)")
         let clearedChangeCount = self.pasteboard.clearContents()
         self.temporaryWrite = (sessionID, clearedChangeCount)
         let didWrite = self.pasteboard.writeObjects([item])
+        ClipboardAudit.record("temporary_end", pasteboard: self.pasteboard, detail: "session=\(sessionID) success=\(didWrite)")
         if self.hasTemporaryText(sessionID: sessionID, expectedText: text) {
             self.temporaryWrite = (sessionID, self.pasteboard.changeCount)
             return didWrite
@@ -208,11 +219,15 @@ final class SystemPasteboardManager: PasteboardManaging {
         let item = NSPasteboardItem()
         guard item.setString(text, forType: .string) else { return false }
 
+        ClipboardAudit.record("intentional_begin", pasteboard: self.pasteboard)
         self.pasteboard.clearContents()
-        return self.pasteboard.writeObjects([item]) && self.pasteboard.string(forType: .string) == text
+        let success = self.pasteboard.writeObjects([item]) && self.pasteboard.string(forType: .string) == text
+        ClipboardAudit.record("intentional_end", pasteboard: self.pasteboard, detail: "success=\(success)")
+        return success
     }
 
     func isOwned(sessionID: String, expectedText: String) -> Bool {
+        ClipboardAudit.record("ownership_check", pasteboard: self.pasteboard, detail: "session=\(sessionID) expectedChangeCount=\(self.temporaryWrite?.changeCount ?? -1)")
         guard let temporaryWrite,
               temporaryWrite.sessionID == sessionID,
               temporaryWrite.changeCount == self.pasteboard.changeCount
@@ -268,6 +283,8 @@ final class SystemPasteboardManager: PasteboardManaging {
             items.append(item)
         }
 
+        ClipboardAudit.record("restore_begin", pasteboard: self.pasteboard, detail: "expectedChangeCount=\(changeCount ?? -1)")
+        defer { ClipboardAudit.record("restore_end", pasteboard: self.pasteboard) }
         // Recheck after preparing representations; a newer external copy wins.
         if let changeCount, self.pasteboard.changeCount != changeCount { return false }
         self.pasteboard.clearContents()
@@ -557,6 +574,7 @@ final class PasteDeliveryCoordinator {
         preserveTranscriptOnClipboard: Bool,
         onCommandPosted: ((TimeInterval) -> Void)? = nil
     ) async -> TextDeliveryResult {
+        self.log("delivery_policy keepTranscript=\(preserveTranscriptOnClipboard) auditSchema=1")
         let slotRequestedAt = ProcessInfo.processInfo.systemUptime
         await self.acquireDeliverySlot()
         let slotAcquiredAt = ProcessInfo.processInfo.systemUptime
@@ -587,12 +605,15 @@ final class PasteDeliveryCoordinator {
             "clipboard_write generation=\(generation) elapsedMs=\(Self.elapsedMs(since: writeStartedAt))"
         )
 
-        guard await self.commandPoster.postGlobalPasteCommand() else {
+        self.pasteboard.recordAudit("command_before", detail: "session=\(sessionID)")
+        let commandPosted = await self.commandPoster.postGlobalPasteCommand()
+        let commandPostedAt = ProcessInfo.processInfo.systemUptime
+        self.pasteboard.recordAudit("command_after", detail: "session=\(sessionID) success=\(commandPosted)")
+        guard commandPosted else {
             self.restoreAfterFailure(originalSnapshot, sessionID: sessionID, expectedText: text, generation: generation, reason: "paste_command_failed")
             self.log("delivery_failed generation=\(generation) reason=paste_command_failed")
             return .recoverableFailure(.pasteCommandFailed)
         }
-        let commandPostedAt = ProcessInfo.processInfo.systemUptime
         onCommandPosted?(commandPostedAt)
 
         self.log(

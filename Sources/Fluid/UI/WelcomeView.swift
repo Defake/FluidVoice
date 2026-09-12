@@ -278,8 +278,10 @@ struct WelcomeView: View {
                                     if !self.asr.finalText.isEmpty {
                                         HStack(spacing: 8) {
                                             Button {
+                                                ClipboardAudit.record("ui_copy_begin")
                                                 NSPasteboard.general.clearContents()
                                                 NSPasteboard.general.setString(self.asr.finalText, forType: .string)
+                                                ClipboardAudit.record("ui_copy_end")
                                             } label: {
                                                 Label("Copy Text", systemImage: "doc.on.doc")
                                             }

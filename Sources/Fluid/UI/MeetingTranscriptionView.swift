@@ -678,8 +678,10 @@ struct MeetingTranscriptionView: View {
     }
 
     private func copyToClipboard(_ text: String) {
+        ClipboardAudit.record("ui_copy_begin")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        ClipboardAudit.record("ui_copy_end")
 
         withAnimation {
             self.showingCopyConfirmation = true

@@ -82,6 +82,23 @@ final class TypingServiceTransientPasteboardTests: XCTestCase {
         XCTAssertEqual(item.string(forType: .string), "hello world")
     }
 
+    func testClipboardAuditReportsMarkersWithoutReadingOrChangingPayloads() throws {
+        let pasteboard = self.makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let secret = "private-dictation-example-https://private.invalid"
+        XCTAssertTrue(SystemPasteboardManager(pasteboard: pasteboard).writeTemporaryText(secret, sessionID: "audit-test"))
+        let changeCount = pasteboard.changeCount
+        let metadata = ClipboardAudit.metadata(for: pasteboard)
+        XCTAssertTrue(metadata.contains("concealed=true"))
+        XCTAssertTrue(metadata.contains("transient=true"))
+        XCTAssertTrue(metadata.contains("generated=true"))
+        XCTAssertTrue(metadata.contains("stable=true"))
+        XCTAssertFalse(metadata.contains(secret))
+        XCTAssertFalse(metadata.contains("audit-test"))
+        XCTAssertEqual(pasteboard.changeCount, changeCount)
+        XCTAssertEqual(pasteboard.string(forType: .string), secret)
+    }
+
     func testRecoveryActivationDoesNotRaiseAllWindowsOfTargetApp() {
         // Issue #748: recovery must NOT raise every window of the target app.
         let options = TypingService.recoveryActivationOptions
