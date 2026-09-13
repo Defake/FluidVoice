@@ -122,11 +122,6 @@ struct FluidIntelligenceLiveSection<Management: View>: View {
         let realUpdate = files?.installed == true && self.controller.privateAIModelUpdateStatusByID[model.id]?.state == .updateAvailable
         return VStack(alignment: .leading, spacing: 8) {
             Divider().overlay(self.theme.palette.cardBorder)
-            if files?.installed == false, let bytes = model.artifact.byteCount, bytes > 0 {
-                Text("Download · ≈\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
             if self.controller.privateAILoadState.isDownloading(model.id) {
                 Text(PrivateAIModelDownloadProgressText.detailText(for: self.controller.privateAILoadState.downloadProgress(for: model.id)))
                     .font(self.theme.typography.caption).lineLimit(2)
@@ -143,17 +138,25 @@ struct FluidIntelligenceLiveSection<Management: View>: View {
                         .frame(minWidth: 76, minHeight: 24)
                         .accessibilityLabel("Active model")
                 } else {
-                    Button {
-                        guard let files else { return }
-                        self.controller.previewModel(model.id)
-                        self.controller.usePreviewModel(isInstalled: files.installed, onReady: {})
-                    } label: {
-                        Text(files?.installed == false ? "Download" : "Activate")
-                            .font(self.theme.typography.bodyStrong)
-                            .frame(minWidth: 76, minHeight: 24)
+                    VStack(spacing: 4) {
+                        Button {
+                            guard let files else { return }
+                            self.controller.previewModel(model.id)
+                            self.controller.usePreviewModel(isInstalled: files.installed, onReady: {})
+                        } label: {
+                            Text(files?.installed == false ? "Download" : "Activate")
+                                .font(self.theme.typography.bodyStrong)
+                                .frame(minWidth: 76, minHeight: 24)
+                        }
+                        .fluidGlassAction(prominent: true)
+                        .disabled(self.controller.isBusy || files == nil || (files?.installed == false && !model.canDownload))
+                        if files?.installed == false, let bytes = model.artifact.byteCount, bytes > 0 {
+                            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                                .font(self.theme.typography.caption)
+                                .foregroundStyle(self.theme.palette.secondaryText)
+                                .accessibilityLabel("Download size: \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
+                        }
                     }
-                    .fluidGlassAction(prominent: true)
-                    .disabled(self.controller.isBusy || files == nil || (files?.installed == false && !model.canDownload))
                 }
                 Spacer(minLength: 0)
                 FluidModelMetrics(modelID: model.id)
