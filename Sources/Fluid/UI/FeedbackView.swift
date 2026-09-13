@@ -30,13 +30,13 @@ struct FeedbackView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "envelope.fill")
-                            .font(.system(size: 32))
+                            .font(.fluidSystem(size: 32))
                             .foregroundStyle(self.theme.palette.accent)
                         VStack(alignment: .leading) {
                             Text("Send Feedback")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(.fluidSystem(size: 28, weight: .bold))
                             Text("Help us improve FluidVoice")
-                                .font(.system(size: 16))
+                                .font(.fluidSystem(size: 16))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -48,16 +48,16 @@ struct FeedbackView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 12) {
                             Image(systemName: "heart.fill")
-                                .font(.system(size: 28))
+                                .font(.fluidSystem(size: 28))
                                 .foregroundStyle(.pink)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("We'd love to hear from you!")
-                                    .font(.system(size: 18, weight: .semibold))
+                                    .font(.fluidSystem(size: 18, weight: .semibold))
                                     .foregroundStyle(self.theme.palette.primaryText)
 
                                 Text("Your feedback helps us make FluidVoice even better")
-                                    .font(.system(size: 14))
+                                    .font(.fluidSystem(size: 14))
                                     .foregroundStyle(self.theme.palette.secondaryText)
                             }
                         }
@@ -67,16 +67,16 @@ struct FeedbackView: View {
 
                         HStack(spacing: 12) {
                             Image(systemName: "star.fill")
-                                .font(.system(size: 24))
+                                .font(.fluidSystem(size: 24))
                                 .foregroundStyle(.yellow)
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Loving FluidVoice?")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.fluidSystem(size: 16, weight: .semibold))
                                     .foregroundStyle(self.theme.palette.primaryText)
 
                                 Text("Give us a star on GitHub, or support continued free development to help make local dictation even better.")
-                                    .font(.system(size: 13))
+                                    .font(.fluidSystem(size: 13))
                                     .foregroundStyle(self.theme.palette.secondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -91,7 +91,7 @@ struct FeedbackView: View {
                                             Text("Star on GitHub")
                                                 .fontWeight(.semibold)
                                         }
-                                        .font(.system(size: 14))
+                                        .font(.fluidSystem(size: 14))
                                         .padding(.horizontal, 20)
                                         .padding(.vertical, 10)
                                     }
@@ -106,7 +106,7 @@ struct FeedbackView: View {
                                             Text("Support FluidVoice")
                                                 .fontWeight(.semibold)
                                         }
-                                        .font(.system(size: 14))
+                                        .font(.fluidSystem(size: 14))
                                         .padding(.horizontal, 20)
                                         .padding(.vertical, 10)
                                     }
@@ -125,20 +125,20 @@ struct FeedbackView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Email")
-                                .font(.headline)
+                                .font(.fluidSystem(.headline))
                                 .fontWeight(.semibold)
 
                             TextField("your.email@example.com", text: self.$feedbackEmail)
                                 .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 14))
+                                .font(.fluidSystem(size: 14))
 
                             Text("Feedback")
-                                .font(.headline)
+                                .font(.fluidSystem(.headline))
                                 .fontWeight(.semibold)
                                 .padding(.top, 8)
 
                             TextEditor(text: self.$feedbackText)
-                                .font(.system(size: 14))
+                                .font(.fluidSystem(size: 14))
                                 .frame(height: 120)
                                 .padding(12)
                                 .background(RoundedRectangle(cornerRadius: 8)
@@ -150,7 +150,7 @@ struct FeedbackView: View {
                                     Group {
                                         if self.feedbackText.isEmpty {
                                             Text("Share your thoughts, report bugs, or suggest features...")
-                                                .font(.subheadline)
+                                                .font(.fluidSystem(.subheadline))
                                                 .foregroundStyle(.secondary)
                                                 .padding(.leading, 4)
                                         }

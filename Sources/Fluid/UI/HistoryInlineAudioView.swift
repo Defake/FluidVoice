@@ -18,7 +18,7 @@ struct HistoryInlineAudioView: View {
             Text("Recording").font(self.theme.typography.bodyStrong).foregroundStyle(.secondary)
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.fluidSystem(.callout)).foregroundStyle(.secondary)
             } else if let player {
                 HStack(spacing: 12) {
                     Button {

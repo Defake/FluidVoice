@@ -9,9 +9,9 @@ struct AnalyticsPrivacyView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Anonymous Analytics")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.fluidSystem(size: 18, weight: .semibold))
                     Text("Daily activity and optional detailed analytics")
-                        .font(.system(size: 12))
+                        .font(.fluidSystem(size: 12))
                         .foregroundStyle(.secondary)
                 }
 
@@ -67,7 +67,7 @@ struct AnalyticsPrivacyView: View {
 
     private var contactInfoView: some View {
         Text(self.contactInfoText)
-            .font(.system(size: 13))
+            .font(.fluidSystem(size: 13))
             .foregroundStyle(.primary)
             .padding(12)
             .background(
@@ -100,7 +100,7 @@ struct AnalyticsPrivacyView: View {
 
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.fluidSystem(size: 12, weight: .semibold))
             .foregroundStyle(self.theme.palette.accent)
             .padding(.top, 4)
     }
@@ -110,7 +110,7 @@ struct AnalyticsPrivacyView: View {
             Text("•")
                 .foregroundStyle(.secondary)
             Text(text)
-                .font(.system(size: 13))
+                .font(.fluidSystem(size: 13))
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
         }

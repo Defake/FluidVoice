@@ -72,7 +72,7 @@ struct SearchableModelPicker: View {
             Button(action: { self.isShowingPopover.toggle() }) {
                 HStack(spacing: 6) {
                     Text(self.selectedModel.isEmpty ? "Select Model" : self.displayName(self.selectedModel))
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .foregroundStyle(self.selectedModel.isEmpty ? .secondary : self.theme.palette.primaryText)
@@ -106,13 +106,13 @@ struct SearchableModelPicker: View {
                         if self.models.isEmpty {
                             VStack(spacing: 8) {
                                 Image(systemName: "tray")
-                                    .font(.title2)
+                                    .font(.fluidSystem(.title2))
                                     .foregroundStyle(.secondary)
                                 Text("No models")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(.secondary)
                                 Text("Click refresh to fetch from API")
-                                    .font(.caption2)
+                                    .font(.fluidSystem(.caption2))
                                     .foregroundStyle(.tertiary)
                             }
                             .frame(height: 100)
@@ -122,7 +122,7 @@ struct SearchableModelPicker: View {
                                 LazyVStack(alignment: .leading, spacing: 0) {
                                     if self.filteredModels.isEmpty {
                                         Text("No models match '\(self.searchText)'")
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                             .foregroundStyle(.secondary)
                                             .padding()
                                             .frame(maxWidth: .infinity, alignment: .center)
@@ -157,7 +157,7 @@ struct SearchableModelPicker: View {
                             if self.filteredModels.count > 100 {
                                 Divider()
                                 Text("\(self.filteredModels.count - 100) more (use search)")
-                                    .font(.caption2)
+                                    .font(.fluidSystem(.caption2))
                                     .foregroundStyle(.secondary)
                                     .padding(6)
                             }
@@ -197,7 +197,7 @@ struct SearchableModelPicker: View {
                                     .frame(width: 16, height: 16)
                             } else {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.fluidSystem(size: 12, weight: .semibold))
                             }
                         }
                         .frame(width: self.refreshButtonSize, height: self.refreshButtonSize)

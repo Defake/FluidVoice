@@ -24,10 +24,10 @@ extension VoiceEngineSettingsView {
                 // Header
                 HStack(spacing: 10) {
                     Image(systemName: "waveform")
-                        .font(.title2)
+                        .font(.fluidSystem(.title2))
                         .foregroundStyle(self.theme.palette.accent)
                     Text("Voice Engine")
-                        .font(.title3)
+                        .font(.fluidSystem(.title3))
                         .fontWeight(.semibold)
                     Spacer()
                 }
@@ -172,12 +172,12 @@ extension VoiceEngineSettingsView {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(model.humanReadableName)
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.fluidSystem(size: 16, weight: .bold))
                                 .foregroundStyle(self.theme.palette.primaryText)
 
                             if let badge = model.badgeText {
                                 Text(badge)
-                                    .font(.caption2)
+                                    .font(.fluidSystem(.caption2))
                                     .fontWeight(.semibold)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
@@ -333,7 +333,7 @@ extension VoiceEngineSettingsView {
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 11))
+                            .font(.fluidSystem(size: 11))
                             .foregroundStyle(.yellow)
                         Text("Speed \(Int(model.speedPercent * 100))%")
                             .font(self.theme.typography.bodyStrong)
@@ -342,7 +342,7 @@ extension VoiceEngineSettingsView {
 
                     HStack(spacing: 4) {
                         Image(systemName: "target")
-                            .font(.system(size: 11))
+                            .font(.fluidSystem(size: 11))
                             .foregroundStyle(Color.fluidGreen)
                         Text("Acc \(Int(model.accuracyPercent * 100))%")
                             .font(self.theme.typography.bodyStrong)
@@ -465,7 +465,7 @@ extension VoiceEngineSettingsView {
                                 self.viewModel.deleteSpeechModel(model)
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 15))
+                                    .font(.fluidSystem(size: 15))
                                     .foregroundStyle(.red.opacity(0.7))
                             }
                             .buttonStyle(.plain)
@@ -484,7 +484,7 @@ extension VoiceEngineSettingsView {
                                     self.viewModel.openExternalModelSource(for: model)
                                 } label: {
                                     Image(systemName: "arrow.up.right.square")
-                                        .font(.system(size: 14))
+                                        .font(.fluidSystem(size: 14))
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(self.voiceEngineTertiaryText)
@@ -689,7 +689,7 @@ extension VoiceEngineSettingsView {
                 .lineLimit(1)
                 .fontWeight(.semibold)
             Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.fluidSystem(size: 9, weight: .semibold))
                 .foregroundStyle(self.voiceEngineTertiaryText)
         }
         .font(self.theme.typography.bodySmallStrong)
@@ -869,7 +869,7 @@ extension VoiceEngineSettingsView {
 
             if model.usesAppleLogo {
                 Image(systemName: "apple.logo")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.fluidSystem(size: 14, weight: .medium))
                     .foregroundStyle(.primary)
             } else if let imageName {
                 Image(imageName)
@@ -879,7 +879,7 @@ extension VoiceEngineSettingsView {
                     .frame(width: isNvidia ? 24 : 18, height: isNvidia ? 24 : 18)
             } else {
                 Text(String(model.brandName.prefix(2)).uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(self.theme.palette.primaryText)
             }
         }

@@ -883,14 +883,14 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 22)
 
                             Text("What language will\nyou speak most?")
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.fluidSystem(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .padding(.bottom, 18)
 
                             Text("We'll show the best voice engines for it.")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.fluidSystem(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .padding(.bottom, 26)
 
@@ -916,7 +916,7 @@ struct OnboardingFlowView: View {
                             }
 
                             Text("You can change this later in Voice Engine settings.")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.fluidSystem(size: 12, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.44))
                                 .padding(.top, 18)
                         }
@@ -973,12 +973,12 @@ struct OnboardingFlowView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "globe")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.fluidSystem(size: 17, weight: .semibold))
                     .foregroundStyle(isSelected ? FluidOnboardingLandingColors.blue : Color.white.opacity(0.72))
                     .frame(width: 22)
 
                 Text(language.popularDisplayName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.fluidSystem(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.76)
@@ -987,7 +987,7 @@ struct OnboardingFlowView: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.fluidSystem(size: 12, weight: .bold))
                         .foregroundStyle(FluidOnboardingLandingColors.blue)
                 }
             }
@@ -1045,12 +1045,12 @@ struct OnboardingFlowView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.fluidSystem(size: 18, weight: .bold))
                     .foregroundStyle(isSelected ? FluidOnboardingLandingColors.blue : Color.white.opacity(self.isShowingAllLanguages ? 0.78 : 0.72))
                     .frame(width: 22)
 
                 Text(isSelected ? self.selectedOnboardingLanguage.displayName : "Other")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.fluidSystem(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.70)
@@ -1058,7 +1058,7 @@ struct OnboardingFlowView: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: self.isShowingAllLanguages ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.fluidSystem(size: 10, weight: .bold))
                     .foregroundStyle(Color.white.opacity(0.46))
             }
             .padding(.horizontal, 15)
@@ -1089,7 +1089,7 @@ struct OnboardingFlowView: View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.fluidSystem(size: 13, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.48))
 
                 TextField(
@@ -1099,7 +1099,7 @@ struct OnboardingFlowView: View {
                         .foregroundStyle(Color.white.opacity(0.42))
                 )
                 .textFieldStyle(.plain)
-                .font(.system(size: 14, weight: .medium))
+                .font(.fluidSystem(size: 14, weight: .medium))
                 .foregroundStyle(.white)
                 .focused(self.$isLanguageSearchFocused)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1147,14 +1147,14 @@ struct OnboardingFlowView: View {
         } label: {
             HStack(spacing: 10) {
                 Text(language.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.fluidSystem(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
 
                 Spacer()
 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.fluidSystem(size: 13, weight: .bold))
                         .foregroundStyle(FluidOnboardingLandingColors.blue)
                 }
             }
@@ -1343,7 +1343,7 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 22)
 
                             Text("Choose your\nvoice engine")
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.fluidSystem(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
@@ -1351,13 +1351,13 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 16)
 
                             Text(self.recommendedModelReasonText)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.fluidSystem(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .multilineTextAlignment(.center)
                                 .padding(.bottom, 14)
 
                             Text(self.selectedOnboardingLanguage.displayName)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.fluidSystem(size: 13, weight: .semibold))
                                 .foregroundStyle(FluidOnboardingLandingColors.blue)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
@@ -1423,7 +1423,7 @@ struct OnboardingFlowView: View {
                             }
 
                             Text("You can switch models later in Voice Engine settings.")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.fluidSystem(size: 12, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.44))
                                 .padding(.top, self.isModelPreparationInProgress ? 8 : 18)
                         }
@@ -1469,14 +1469,14 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 22)
 
                             Text("Let FluidVoice\nlisten and type")
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.fluidSystem(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(4)
                                 .padding(.bottom, 16)
 
                             Text("Two quick permissions make dictation work anywhere.")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.fluidSystem(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .padding(.bottom, 28)
 
@@ -1519,7 +1519,7 @@ struct OnboardingFlowView: View {
 
                                 if !self.isAccessibilityReady {
                                     Text("Already enabled it? FluidVoice will update when macOS confirms access.")
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.fluidSystem(size: 12, weight: .medium))
                                         .foregroundStyle(Color.white.opacity(0.42))
                                         .padding(.top, 2)
                                 }
@@ -1616,7 +1616,7 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 22)
 
                             Text("FluidVoice is ready.")
-                                .font(.system(size: 28, weight: .semibold))
+                                .font(.fluidSystem(size: 28, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
@@ -1625,7 +1625,7 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 14)
 
                             Text("Now let's try it out.")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.fluidSystem(size: 15, weight: .medium))
                                 .foregroundStyle(Color.white.opacity(0.62))
                                 .padding(.bottom, 28)
 
@@ -1731,9 +1731,9 @@ struct OnboardingFlowView: View {
                 Text(self.isShowingOtherModelRoutes ? "Hide other models" : "Show other models")
 
                 Image(systemName: self.isShowingOtherModelRoutes ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.fluidSystem(size: 8, weight: .bold))
             }
-            .font(.system(size: 11, weight: .semibold))
+            .font(.fluidSystem(size: 11, weight: .semibold))
             .foregroundStyle(Color.white.opacity(0.62))
             .padding(.horizontal, 10)
             .frame(height: 24)
@@ -2228,11 +2228,11 @@ struct OnboardingFlowView: View {
             HStack(spacing: configuration.systemImage == nil ? 0 : 8) {
                 if let systemImage = configuration.systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: configuration.iconSize, weight: .bold))
+                        .font(.fluidSystem(size: configuration.iconSize, weight: .bold))
                 }
 
                 Text(configuration.title)
-                    .font(.system(size: configuration.fontSize, weight: .semibold))
+                    .font(.fluidSystem(size: configuration.fontSize, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
@@ -2313,15 +2313,15 @@ struct OnboardingFlowView: View {
 
                 if isReady {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.fluidSystem(size: 17, weight: .bold))
                         .foregroundStyle(Color.green.opacity(0.92))
                 } else {
                     VStack(spacing: 1) {
                         Image(systemName: systemImage)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.fluidSystem(size: 14, weight: .bold))
 
                         Text("\(stepNumber)")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.fluidSystem(size: 10, weight: .bold))
                     }
                     .foregroundStyle(FluidOnboardingLandingColors.blue)
                 }
@@ -2330,11 +2330,11 @@ struct OnboardingFlowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 8) {
                     Text(title)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.fluidSystem(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
 
                     Text(resolvedStatusTitle)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.fluidSystem(size: 10, weight: .bold))
                         .foregroundStyle(isReady ? Color.green.opacity(0.92) : FluidOnboardingLandingColors.blue)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
@@ -2345,7 +2345,7 @@ struct OnboardingFlowView: View {
                 }
 
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.55))
                     .lineLimit(2)
             }
@@ -2743,14 +2743,14 @@ private struct OnboardingMicrophoneSetupPanel: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 Text("Select your microphone")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.58))
 
                 Spacer(minLength: 12)
 
                 if self.devices.isEmpty {
                     Text("No microphone available")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .foregroundStyle(Color.orange.opacity(0.9))
                 } else {
                     Picker(
@@ -2785,7 +2785,7 @@ private struct OnboardingMicrophoneSetupPanel: View {
                     .frame(width: 6, height: 6)
 
                 Text(self.status.text)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(self.status.color)
 
                 Spacer()

@@ -15,7 +15,7 @@ struct FluidManagementSheet<Content: View>: View {
         VStack(spacing: 0) {
             HStack(spacing: 16) {
                 Image(systemName: self.symbol)
-                    .font(.system(size: 24, weight: .medium))
+                    .font(.fluidSystem(size: 24, weight: .medium))
                     .foregroundStyle(FluidBrandColors.blue)
                     .frame(width: 52, height: 52)
                     .background(FluidBrandColors.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 16))

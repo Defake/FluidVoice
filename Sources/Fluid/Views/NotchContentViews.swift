@@ -83,7 +83,7 @@ struct SpokenSendIndicatorView: View {
 
     private func symbol(_ name: String, color: Color, accessibilityLabel: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: max(6, self.size * 0.46), weight: .semibold))
+            .font(.fluidSystem(size: max(6, self.size * 0.46), weight: .semibold))
             .foregroundStyle(color)
             .accessibilityLabel(accessibilityLabel)
     }
@@ -396,7 +396,7 @@ extension OverlayMode {
 struct ShimmerText: View {
     let text: String
     let color: Color
-    var font: Font = .system(size: 9, weight: .medium)
+    var font: Font = .fluidSystem(size: 9, weight: .medium)
 
     var body: some View {
         Text(self.text)
@@ -786,7 +786,7 @@ struct NotchExpandedView: View {
             action()
         }) {
             Text(title)
-                .font(.system(size: 9, weight: isSelected ? .semibold : .medium))
+                .font(.fluidSystem(size: 9, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(.white.opacity(isSelected ? 0.96 : 0.84))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -808,7 +808,7 @@ struct NotchExpandedView: View {
         let activeDictationSlot = self.activeDictationShortcutSlot
         return VStack(alignment: .leading, spacing: 2) {
             Text("AI Prompt")
-                .font(.system(size: 8, weight: .semibold))
+                .font(.fluidSystem(size: 8, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.42))
                 .padding(.horizontal, 6)
                 .padding(.top, 2)
@@ -900,17 +900,17 @@ struct NotchExpandedView: View {
         if self.presentationPolicy.showsPromptSelector {
             HStack(spacing: 3) {
                 Text(self.compactPromptLabel)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.fluidSystem(size: 9, weight: .medium))
                     .foregroundStyle(self.isHoveringPromptChip ? .white.opacity(0.94) : .white.opacity(0.86))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: true, vertical: false)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.fluidSystem(size: 8, weight: .bold))
                     .foregroundStyle(self.isHoveringPromptChip ? .white.opacity(0.78) : .white.opacity(0.62))
                 if self.isAppPromptOverrideActive {
                     Text("App")
-                        .font(.system(size: 8, weight: .semibold))
+                        .font(.fluidSystem(size: 8, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.82))
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
@@ -1037,7 +1037,7 @@ struct NotchExpandedView: View {
             if self.contentState.isTextDeliveryFailureVisible && !self.contentState.isProcessing {
                 HStack(spacing: 6) {
                     Text(self.contentState.textDeliveryFailureMessage)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                         .foregroundStyle(Color.orange.opacity(0.9))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -1048,7 +1048,7 @@ struct NotchExpandedView: View {
                         _ = ClipboardService.copyToClipboard(self.contentState.textDeliveryFailureTranscript)
                     } label: {
                         Image(systemName: "doc.on.doc")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.fluidSystem(size: 9, weight: .bold))
                             .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain)
@@ -1060,7 +1060,7 @@ struct NotchExpandedView: View {
                         self.contentState.onRetryTextDeliveryRequested?(transcript)
                     } label: {
                         Image(systemName: "arrow.down.doc")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.fluidSystem(size: 9, weight: .bold))
                             .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain)
@@ -1071,7 +1071,7 @@ struct NotchExpandedView: View {
                         NotchOverlayManager.shared.hide()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.fluidSystem(size: 9, weight: .bold))
                             .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain)
@@ -1083,7 +1083,7 @@ struct NotchExpandedView: View {
             } else if self.contentState.isAIProcessingFailureVisible && !self.contentState.isProcessing {
                 HStack(spacing: 6) {
                     Text(self.contentState.aiProcessingFailureMessage)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                         .foregroundStyle(
                             self.contentState.canRetryAIProcessingFailure
                                 ? Color.white.opacity(0.82)
@@ -1100,7 +1100,7 @@ struct NotchExpandedView: View {
                             self.contentState.onReprocessLastRequested?()
                         } label: {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.fluidSystem(size: 9, weight: .bold))
                                 .frame(width: 16, height: 16)
                         }
                         .buttonStyle(.plain)
@@ -1112,7 +1112,7 @@ struct NotchExpandedView: View {
                         NotchOverlayManager.shared.hide()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.fluidSystem(size: 9, weight: .bold))
                             .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain)
@@ -1127,7 +1127,7 @@ struct NotchExpandedView: View {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: false) {
                             Text(previewText)
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.fluidSystem(size: 10, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.75))
                                 .multilineTextAlignment(.leading)
                                 .lineLimit(nil)
@@ -1392,7 +1392,7 @@ struct NotchCompactBottomView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Text(self.compactPreviewText)
-                .font(.system(size: 9, weight: .medium))
+                .font(.fluidSystem(size: 9, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -1509,13 +1509,13 @@ struct NotchCommandOutputExpandedView: View {
                 // Mode label
                 if self.contentState.isRecordingInExpandedMode {
                     Text("Listening...")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.fluidSystem(size: 11, weight: .medium))
                         .foregroundStyle(self.commandRed)
                 } else if self.contentState.isCommandProcessing {
                     ShimmerText(text: "Working...", color: self.commandRed)
                 } else {
                     Text("Command")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.fluidSystem(size: 11, weight: .medium))
                         .foregroundStyle(self.commandRed.opacity(0.7))
                 }
             }
@@ -1531,7 +1531,7 @@ struct NotchCommandOutputExpandedView: View {
                             .fill(self.isHoveringNewChat ? self.commandRed.opacity(0.25) : self.commandRed.opacity(0.12))
                             .frame(width: 22, height: 22)
                         Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.fluidSystem(size: 10, weight: .semibold))
                             .foregroundStyle(self.contentState.isCommandProcessing ? .white.opacity(0.3) : self.commandRed.opacity(0.85))
                     }
                 }
@@ -1558,13 +1558,13 @@ struct NotchCommandOutputExpandedView: View {
                                 HStack {
                                     if chat.id == currentID {
                                         Image(systemName: "checkmark")
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                     }
                                     Text(chat.title)
                                         .lineLimit(1)
                                     Spacer()
                                     Text(chat.relativeTimeString)
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -1577,7 +1577,7 @@ struct NotchCommandOutputExpandedView: View {
                             .fill(self.isHoveringRecent ? self.commandRed.opacity(0.25) : self.commandRed.opacity(0.12))
                             .frame(width: 22, height: 22)
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.fluidSystem(size: 9, weight: .semibold))
                             .foregroundStyle(self.commandRed.opacity(0.85))
                     }
                 }
@@ -1595,7 +1595,7 @@ struct NotchCommandOutputExpandedView: View {
                             .fill(self.isHoveringClear ? self.commandRed.opacity(0.25) : self.commandRed.opacity(0.12))
                             .frame(width: 22, height: 22)
                         Image(systemName: "trash")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.fluidSystem(size: 9, weight: .semibold))
                             .foregroundStyle(self.contentState.isCommandProcessing ? .white.opacity(0.3) : self.commandRed.opacity(0.85))
                     }
                 }
@@ -1618,7 +1618,7 @@ struct NotchCommandOutputExpandedView: View {
                             .fill(self.isHoveringDismiss ? self.commandRed.opacity(0.25) : self.commandRed.opacity(0.12))
                             .frame(width: 22, height: 22)
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.fluidSystem(size: 9, weight: .bold))
                             .foregroundStyle(self.commandRed.opacity(0.85))
                     }
                 }
@@ -1645,7 +1645,7 @@ struct NotchCommandOutputExpandedView: View {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: false) {
                             Text(previewText)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.fluidSystem(size: 11, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.75))
                                 .multilineTextAlignment(.leading)
                                 .lineLimit(nil)
@@ -1744,7 +1744,7 @@ struct NotchCommandOutputExpandedView: View {
             case .user:
                 Spacer()
                 Text(message.content)
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -1755,7 +1755,7 @@ struct NotchCommandOutputExpandedView: View {
 
             case .assistant:
                 Text(message.content)
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -1771,7 +1771,7 @@ struct NotchCommandOutputExpandedView: View {
                         .fill(self.commandRed.opacity(0.6))
                         .frame(width: 4, height: 4)
                     Text(message.content)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.fluidSystem(size: 10, weight: .medium))
                         .foregroundStyle(.white.opacity(0.5))
                 }
                 .padding(.vertical, 2)
@@ -1783,7 +1783,7 @@ struct NotchCommandOutputExpandedView: View {
     private var streamingMessageView: some View {
         HStack(alignment: .top) {
             Text(self.contentState.commandStreamingText)
-                .font(.system(size: 11))
+                .font(.fluidSystem(size: 11))
                 .foregroundStyle(.white.opacity(0.85))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -1822,7 +1822,7 @@ struct NotchCommandOutputExpandedView: View {
         HStack(spacing: 8) {
             TextField("Ask follow-up...", text: self.$inputText)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11))
+                .font(.fluidSystem(size: 11))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -1835,7 +1835,7 @@ struct NotchCommandOutputExpandedView: View {
 
             Button(action: self.submitFollowUp) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.fluidSystem(size: 16))
                     .foregroundStyle(self.inputText.isEmpty ? .white.opacity(0.3) : self.commandRed)
             }
             .buttonStyle(.plain)

@@ -339,7 +339,7 @@ struct OnboardingTryoutStepView: View {
         let isListening = self.isShortcutGlowActive
 
         return Text(text)
-            .font(.system(size: 20, weight: .semibold))
+            .font(.fluidSystem(size: 20, weight: .semibold))
             .foregroundStyle(.white)
             .lineLimit(1)
             .minimumScaleFactor(0.62)

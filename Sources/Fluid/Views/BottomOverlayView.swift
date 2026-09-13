@@ -1445,11 +1445,11 @@ private struct BottomOverlayModeMenuView: View {
         }) {
             HStack(alignment: .center, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.fluidSystem(size: 15, weight: .semibold))
                 Spacer()
                 if !shortcut.isEmpty {
                     Text(shortcut)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.7))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -1458,7 +1458,7 @@ private struct BottomOverlayModeMenuView: View {
                 }
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
             }
             .padding(.horizontal, 8)
@@ -1564,7 +1564,7 @@ private struct BottomOverlayPromptMenuView: View {
     private func shortcutBadge(for selection: SettingsStore.DictationPromptSelection) -> some View {
         if let shortcut = self.shortcutDisplay(for: selection) {
             Text(shortcut)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.fluidSystem(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -1599,11 +1599,11 @@ private struct BottomOverlayPromptMenuView: View {
                 Text("Fast")
                 Spacer(minLength: 12)
                 Text("No cleanup")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.fluidSystem(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.45))
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
                 self.shortcutBadge(for: .off)
             }
@@ -1639,7 +1639,7 @@ private struct BottomOverlayPromptMenuView: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
                 self.shortcutBadge(for: .default)
             }
@@ -1668,11 +1668,11 @@ private struct BottomOverlayPromptMenuView: View {
                 Text("Cleanup")
                 Spacer(minLength: 12)
                 Text("Fluid-1")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.fluidSystem(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.45))
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
                 self.shortcutBadge(for: .privateAI)
             }
@@ -1711,7 +1711,7 @@ private struct BottomOverlayPromptMenuView: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
                 self.shortcutBadge(for: .profile(profile.id))
             }
@@ -1732,7 +1732,7 @@ private struct BottomOverlayPromptMenuView: View {
         VStack(alignment: .leading, spacing: 0) {
             if self.promptMode.normalized == .dictate {
                 Text("ON-DEVICE")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.fluidSystem(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.4))
                     .padding(.horizontal, 8)
                     .padding(.top, 4)
@@ -1751,7 +1751,7 @@ private struct BottomOverlayPromptMenuView: View {
             }
 
             Text("EXTERNAL")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.fluidSystem(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.horizontal, 8)
                 .padding(.top, self.promptMode.normalized == .dictate ? 0 : 4)
@@ -1877,10 +1877,10 @@ private struct BottomOverlayActionsMenuView: View {
         }) {
             HStack(spacing: 8) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                 Spacer()
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -1908,16 +1908,16 @@ private struct BottomOverlayActionsMenuView: View {
         }) {
             HStack(spacing: 8) {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                 Spacer()
                 if !shortcut.isEmpty {
                     Text(shortcut)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                 }
             }
             .padding(.horizontal, 8)
@@ -1933,7 +1933,7 @@ private struct BottomOverlayActionsMenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("MODE")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.fluidSystem(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.horizontal, 8)
                 .padding(.top, 4)
@@ -1947,7 +1947,7 @@ private struct BottomOverlayActionsMenuView: View {
                 .padding(.vertical, 4)
 
             Text("ACTIONS")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.fluidSystem(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.horizontal, 8)
                 .padding(.bottom, 3)
@@ -2797,17 +2797,17 @@ struct BottomOverlayView: View {
         HStack(spacing: 5) {
             if !self.isCompactControls {
                 Text("Mode:")
-                    .font(.system(size: self.promptSelectorFontSize, weight: .medium))
+                    .font(.fluidSystem(size: self.promptSelectorFontSize, weight: .medium))
                     .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             Text(self.modeLabel)
-                .font(.system(size: self.promptSelectorFontSize, weight: .semibold))
+                .font(.fluidSystem(size: self.promptSelectorFontSize, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
             Image(systemName: "chevron.up")
-                .font(.system(size: max(self.promptSelectorFontSize - 1, 8), weight: .semibold))
+                .font(.fluidSystem(size: max(self.promptSelectorFontSize - 1, 8), weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -2848,11 +2848,11 @@ struct BottomOverlayView: View {
         HStack(spacing: 5) {
             if let promptSelectorIconName = self.promptSelectorIconName {
                 Image(systemName: promptSelectorIconName)
-                    .font(.system(size: max(self.promptSelectorFontSize - 1, 9), weight: .semibold))
+                    .font(.fluidSystem(size: max(self.promptSelectorFontSize - 1, 9), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.72))
             }
             Text(self.promptSelectorDisplayLabel)
-                .font(.system(size: self.promptSelectorFontSize, weight: .semibold))
+                .font(.fluidSystem(size: self.promptSelectorFontSize, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -2862,7 +2862,7 @@ struct BottomOverlayView: View {
                 )
             if self.isAppPromptOverrideActive {
                 Text("App")
-                    .font(.system(size: max(self.promptSelectorFontSize - 2, 8), weight: .semibold))
+                    .font(.fluidSystem(size: max(self.promptSelectorFontSize - 2, 8), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -2872,7 +2872,7 @@ struct BottomOverlayView: View {
                     )
             }
             Image(systemName: "chevron.down")
-                .font(.system(size: max(self.promptSelectorFontSize - 1, 8), weight: .semibold))
+                .font(.fluidSystem(size: max(self.promptSelectorFontSize - 1, 8), weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
         }
         .padding(.horizontal, 7)
@@ -2888,7 +2888,7 @@ struct BottomOverlayView: View {
         .overlay(alignment: .top) {
             if self.isHoveringPromptChip, self.isPromptSelectableMode, !self.contentState.isProcessing {
                 Text("Select cleanup mode")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -2947,7 +2947,7 @@ struct BottomOverlayView: View {
         let actionsDisabled = self.contentState.isProcessing
         return HStack(spacing: 0) {
             Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .bold))
+                .font(.fluidSystem(size: 16, weight: .bold))
                 .foregroundStyle(.white.opacity(actionsDisabled ? 0.3 : 0.78))
         }
         .frame(width: 32, height: 32)
@@ -2958,7 +2958,7 @@ struct BottomOverlayView: View {
         .overlay(alignment: .top) {
             if self.isHoveringActionsChip, !actionsDisabled {
                 Text("Actions")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -3010,7 +3010,7 @@ struct BottomOverlayView: View {
         let disabled = false
         return HStack(spacing: 0) {
             Image(systemName: "gearshape")
-                .font(.system(size: max(self.promptSelectorFontSize + 1, 10), weight: .semibold))
+                .font(.fluidSystem(size: max(self.promptSelectorFontSize + 1, 10), weight: .semibold))
                 .foregroundStyle(.white.opacity(0.72))
         }
         .padding(.horizontal, 9)
@@ -3037,7 +3037,7 @@ struct BottomOverlayView: View {
     private func failureIconButton(systemName: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: max(self.layout.transFontSize - 1, 10), weight: .semibold))
+                .font(.fluidSystem(size: max(self.layout.transFontSize - 1, 10), weight: .semibold))
                 .foregroundStyle(.white.opacity(0.86))
                 .frame(width: 20, height: 20)
                 .background(
@@ -3052,7 +3052,7 @@ struct BottomOverlayView: View {
     private var aiProcessingFailureView: some View {
         HStack(spacing: 8) {
             Text(self.contentState.aiProcessingFailureMessage)
-                .font(.system(size: self.layout.transFontSize, weight: .semibold))
+                .font(.fluidSystem(size: self.layout.transFontSize, weight: .semibold))
                 .foregroundStyle(
                     self.contentState.canRetryAIProcessingFailure
                         ? Color.white.opacity(0.9)
@@ -3126,7 +3126,7 @@ struct BottomOverlayView: View {
     private var textDeliveryFailureView: some View {
         HStack(spacing: 8) {
             Text(self.contentState.textDeliveryFailureMessage)
-                .font(.system(size: self.layout.transFontSize, weight: .semibold))
+                .font(.fluidSystem(size: self.layout.transFontSize, weight: .semibold))
                 .foregroundStyle(Color.orange.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -3153,7 +3153,7 @@ struct BottomOverlayView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 self.richPreviewText(previewText)
-                    .font(.system(size: self.layout.transFontSize, weight: .medium))
+                    .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                     .multilineTextAlignment(.leading)
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3174,7 +3174,7 @@ struct BottomOverlayView: View {
     private func dynamicPreviewText(_ previewText: String) -> some View {
         if self.settings.overlaySize == .small {
             self.richPreviewText(previewText)
-                .font(.system(size: self.layout.transFontSize, weight: .medium))
+                .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                 .multilineTextAlignment(.leading)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -3182,7 +3182,7 @@ struct BottomOverlayView: View {
                 .padding(.vertical, max(2, self.transcriptionVerticalPadding - 1))
         } else {
             self.richPreviewText(previewText)
-                .font(.system(size: self.layout.transFontSize, weight: .medium))
+                .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                 .multilineTextAlignment(.leading)
                 .lineLimit(Int(self.previewMaxHeight / max(self.estimatedPreviewLineHeight, 1)))
                 .truncationMode(.head)
@@ -3220,7 +3220,7 @@ struct BottomOverlayView: View {
                                 // ShimmerText(
                                 //     text: self.processingStatusText,
                                 //     color: self.modeColor,
-                                //     font: .system(size: self.layout.transFontSize, weight: .medium)
+                                //     font: .fluidSystem(size: self.layout.transFontSize, weight: .medium)
                                 // )
                                 // .id(self.processingStatusCycleID)
                                 // .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -3233,7 +3233,7 @@ struct BottomOverlayView: View {
                                     ScrollViewReader { proxy in
                                         ScrollView(.vertical, showsIndicators: false) {
                                             Text(previewText)
-                                                .font(.system(size: self.layout.transFontSize, weight: .medium))
+                                                .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                                                 .foregroundStyle(.white.opacity(0.9))
                                                 .multilineTextAlignment(.leading)
                                                 .lineLimit(nil)
@@ -3282,7 +3282,7 @@ struct BottomOverlayView: View {
                                 if !previewText.isEmpty {
                                     if self.settings.overlaySize == .small {
                                         Text(previewText)
-                                            .font(.system(size: self.layout.transFontSize, weight: .medium))
+                                            .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                                             .foregroundStyle(.white.opacity(0.9))
                                             .multilineTextAlignment(.leading)
                                             .lineLimit(1)
@@ -3291,7 +3291,7 @@ struct BottomOverlayView: View {
                                             .padding(.vertical, max(2, self.transcriptionVerticalPadding - 1))
                                     } else {
                                         Text(previewText)
-                                            .font(.system(size: self.layout.transFontSize, weight: .medium))
+                                            .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
                                             .foregroundStyle(.white.opacity(0.9))
                                             .multilineTextAlignment(.leading)
                                             .lineLimit(Int(self.previewMaxHeight / max(self.estimatedPreviewLineHeight, 1)))
@@ -3306,7 +3306,7 @@ struct BottomOverlayView: View {
                                 // ShimmerText(
                                 //     text: self.processingStatusText,
                                 //     color: self.modeColor,
-                                //     font: .system(size: self.layout.transFontSize, weight: .medium)
+                                //     font: .fluidSystem(size: self.layout.transFontSize, weight: .medium)
                                 // )
                                 // .id(self.processingStatusCycleID)
                                 Color.clear
@@ -3353,7 +3353,7 @@ struct BottomOverlayView: View {
                     if self.layout.showsModeLabel, !self.layout.showsTopControls {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(self.modeLabel)
-                                .font(.system(size: self.layout.modeFontSize, weight: .semibold))
+                                .font(.fluidSystem(size: self.layout.modeFontSize, weight: .semibold))
                                 .foregroundStyle(self.modeColor)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -3363,7 +3363,7 @@ struct BottomOverlayView: View {
                                 && self.settings.overlaySize != .small
                             {
                                 Text("Loading model…")
-                                    .font(.system(size: max(self.layout.modeFontSize - 2, 9), weight: .medium))
+                                    .font(.fluidSystem(size: max(self.layout.modeFontSize - 2, 9), weight: .medium))
                                     .foregroundStyle(.orange.opacity(0.85))
                                     .lineLimit(1)
                             }

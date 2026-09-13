@@ -44,15 +44,15 @@ struct MeetingTranscriptionView: View {
             // Header
             VStack(spacing: 8) {
                 Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.fluidSystem(size: 48))
                     .foregroundStyle(Color.fluidGreen.gradient)
 
                 Text("Meeting Transcription")
-                    .font(.title2)
+                    .font(.fluidSystem(.title2))
                     .fontWeight(.semibold)
 
                 Text("Choose an audio or video file to transcribe")
-                    .font(.subheadline)
+                    .font(.fluidSystem(.subheadline))
                     .foregroundColor(.secondary)
             }
             .padding(.top, 40)
@@ -99,7 +99,7 @@ struct MeetingTranscriptionView: View {
         .overlay(alignment: .topTrailing) {
             if self.showingCopyConfirmation {
                 Text("Copied!")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(Color.fluidGreen.opacity(0.9))
@@ -137,15 +137,15 @@ struct MeetingTranscriptionView: View {
                 // Show selected file
                 HStack {
                     Image(systemName: "doc.fill")
-                        .font(.title2)
+                        .font(.fluidSystem(.title2))
                         .foregroundColor(Color.fluidGreen)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(fileURL.lastPathComponent)
-                            .font(.headline)
+                            .font(.fluidSystem(.headline))
 
                         Text(self.formatFileSize(fileURL: fileURL))
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundColor(.secondary)
                     }
 
@@ -176,12 +176,12 @@ struct MeetingTranscriptionView: View {
                         Toggle(isOn: self.$settings.fileTranscriptionSpeakerLabelsEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Label speakers")
-                                    .font(.subheadline)
+                                    .font(.fluidSystem(.subheadline))
 
                                 Text(self.selectedFileIsVideo
                                     ? "Available for audio files only"
                                     : "Identify who said what (downloads speaker models on first use)")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -191,7 +191,7 @@ struct MeetingTranscriptionView: View {
                         if self.settings.fileTranscriptionSpeakerLabelsEnabled, !self.selectedFileIsVideo {
                             HStack {
                                 Text("Number of speakers")
-                                    .font(.subheadline)
+                                    .font(.fluidSystem(.subheadline))
 
                                 Spacer()
 
@@ -241,13 +241,13 @@ struct MeetingTranscriptionView: View {
                 }) {
                     VStack(spacing: 12) {
                         Image(systemName: "arrow.up.doc.fill")
-                            .font(.system(size: 32))
+                            .font(.fluidSystem(size: 32))
 
                         Text("Drag and drop a file here, or click to open")
-                            .font(.headline)
+                            .font(.fluidSystem(.headline))
 
                         Text(MeetingTranscriptionService.supportedFormatsDescription)
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -303,7 +303,7 @@ struct MeetingTranscriptionView: View {
                     .fixedSize()
 
                 Text(self.transcriptionService.currentStatus)
-                    .font(.subheadline)
+                    .font(.fluidSystem(.subheadline))
                     .foregroundColor(.secondary)
             }
         }
@@ -326,7 +326,7 @@ struct MeetingTranscriptionView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Transcription Complete")
-                        .font(.headline)
+                        .font(.fluidSystem(.headline))
 
                     HStack(spacing: 16) {
                         Label("\(String(format: "%.1f", result.duration))s", systemImage: "clock")
@@ -336,7 +336,7 @@ struct MeetingTranscriptionView: View {
                             systemImage: "speedometer"
                         )
                     }
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundColor(.secondary)
                 }
 
@@ -364,7 +364,7 @@ struct MeetingTranscriptionView: View {
 
             if let notice = result.speakerLabelingNotice ?? transcriptionService.fallbackNotice {
                 Label(notice, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundColor(.secondary)
             }
 
@@ -378,17 +378,17 @@ struct MeetingTranscriptionView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(segment.speaker)
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .fontWeight(.semibold)
                                         .foregroundColor(Color.fluidGreen)
 
                                     Text(segment.timestampText)
-                                        .font(.caption2)
+                                        .font(.fluidSystem(.caption2))
                                         .foregroundColor(.secondary)
                                 }
 
                                 Text(segment.text)
-                                    .font(.body)
+                                    .font(.fluidSystem(.body))
                                     .textSelection(.enabled)
                             }
                         }
@@ -397,7 +397,7 @@ struct MeetingTranscriptionView: View {
                     .padding()
                 } else {
                     Text(result.text)
-                        .font(.body)
+                        .font(.fluidSystem(.body))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
@@ -430,7 +430,7 @@ struct MeetingTranscriptionView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Recent transcriptions")
-                    .font(.headline)
+                    .font(.fluidSystem(.headline))
                 Spacer()
                 if !self.fileHistoryStore.entries.isEmpty {
                     Button("Clear all") {
@@ -438,7 +438,7 @@ struct MeetingTranscriptionView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundColor(.secondary)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                 }
             }
 
@@ -461,19 +461,19 @@ struct MeetingTranscriptionView: View {
         }) {
             HStack {
                 Image(systemName: "doc.text.fill")
-                    .font(.body)
+                    .font(.fluidSystem(.body))
                     .foregroundColor(Color.fluidGreen)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.fileName)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.fluidSystem(size: 14, weight: .medium))
                         .lineLimit(1)
                     Text(entry.relativeTimeString)
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundColor(.secondary)
                     Text(entry.previewText)
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
@@ -504,13 +504,13 @@ struct MeetingTranscriptionView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("From history")
-                        .font(.headline)
+                        .font(.fluidSystem(.headline))
                     HStack(spacing: 16) {
                         Label("\(String(format: "%.1f", entry.duration))s", systemImage: "clock")
                         Label("\(String(format: "%.0f%%", entry.confidence * 100))", systemImage: "checkmark.circle")
                         Label(entry.fullDateString, systemImage: "calendar")
                     }
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundColor(.secondary)
                 }
                 Spacer()
@@ -537,13 +537,13 @@ struct MeetingTranscriptionView: View {
             }
             if let notice = entry.speakerLabelingNotice {
                 Label(notice, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundColor(.secondary)
             }
             Divider()
             ScrollView {
                 Text(entry.text)
-                    .font(.body)
+                    .font(.fluidSystem(.body))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
@@ -577,7 +577,7 @@ struct MeetingTranscriptionView: View {
                 .foregroundColor(.red)
 
             Text(error)
-                .font(.subheadline)
+                .font(.fluidSystem(.subheadline))
 
             Spacer()
 
@@ -605,7 +605,7 @@ struct MeetingTranscriptionView: View {
                 .foregroundColor(.red)
 
             Text(message)
-                .font(.subheadline)
+                .font(.fluidSystem(.subheadline))
 
             Spacer()
 

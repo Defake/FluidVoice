@@ -281,7 +281,7 @@ struct OnboardingAIEnhancementStepView: View {
                     .padding(.bottom, 18)
 
                 Text("One more thing...")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.fluidSystem(size: 32, weight: .semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
@@ -290,7 +290,7 @@ struct OnboardingAIEnhancementStepView: View {
                     .padding(.bottom, 10)
 
                 Text(self.setupSubtitleText)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.fluidSystem(size: 15, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.64))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -306,7 +306,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .padding(.bottom, 18)
 
             Text(self.setupQuestionText)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.fluidSystem(size: 17, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .padding(.bottom, 12)
 
@@ -315,7 +315,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .padding(.bottom, 12)
 
             Text(self.setupFootnoteText)
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.46))
         }
         .frame(maxWidth: .infinity)
@@ -347,14 +347,14 @@ struct OnboardingAIEnhancementStepView: View {
 
                 VStack(spacing: 8) {
                     Text("Let's polish your text.")
-                        .font(.system(size: 32, weight: .semibold))
+                        .font(.fluidSystem(size: 32, weight: .semibold))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                         .lineLimit(1)
                         .minimumScaleFactor(0.74)
 
                     Text("Choose an example, press \(self.shortcutDisplay), then dictate it naturally.")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.fluidSystem(size: 15, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.62))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
@@ -370,7 +370,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .padding(.bottom, 12)
 
             Text(self.isTestReady ? "Looks good. Finish setup when you're ready." : "The polished result will appear on the selected row.")
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.46))
                 .multilineTextAlignment(.center)
                 .lineLimit(1)
@@ -386,7 +386,7 @@ struct OnboardingAIEnhancementStepView: View {
     private func exampleGridHeader(leftTitle: String, rightTitle: String) -> some View {
         HStack(spacing: ExampleGridMetrics.columnSpacing) {
             Text(leftTitle)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.48))
                 .frame(maxWidth: .infinity, alignment: .center)
 
@@ -394,7 +394,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .frame(width: ExampleGridMetrics.arrowSize, height: 1)
 
             Text(rightTitle)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(FluidOnboardingLandingColors.blue.opacity(0.84))
                 .frame(maxWidth: .infinity, alignment: .center)
         }
@@ -415,7 +415,7 @@ struct OnboardingAIEnhancementStepView: View {
         HStack(alignment: .center, spacing: ExampleGridMetrics.columnSpacing) {
             HStack(spacing: ExampleGridMetrics.columnSpacing) {
                 Image(systemName: "mic.fill")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                     .foregroundStyle(FluidOnboardingLandingColors.blue)
                     .frame(width: ExampleGridMetrics.iconSize, height: ExampleGridMetrics.iconSize)
                     .background(
@@ -428,7 +428,7 @@ struct OnboardingAIEnhancementStepView: View {
                     )
 
                 Text(example.raw)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.52))
                     .lineLimit(4)
                     .minimumScaleFactor(0.80)
@@ -461,7 +461,7 @@ struct OnboardingAIEnhancementStepView: View {
             )
 
             Image(systemName: "arrow.right")
-                .font(.system(size: 13, weight: .bold))
+                .font(.fluidSystem(size: 13, weight: .bold))
                 .foregroundStyle(.white.opacity(0.80))
                 .frame(width: ExampleGridMetrics.arrowSize, height: ExampleGridMetrics.arrowSize)
                 .background(
@@ -504,7 +504,7 @@ struct OnboardingAIEnhancementStepView: View {
 
         return ZStack(alignment: .topLeading) {
             Text(example.polished)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.fluidSystem(size: 12, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.84))
                 .lineLimit(5)
                 .minimumScaleFactor(0.80)
@@ -541,7 +541,7 @@ struct OnboardingAIEnhancementStepView: View {
             } label: {
                 HStack(spacing: ExampleGridMetrics.columnSpacing) {
                     Image(systemName: isSelected ? "mic.circle.fill" : "mic.fill")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.fluidSystem(size: 17, weight: .semibold))
                         .foregroundStyle(FluidOnboardingLandingColors.blue)
                         .frame(width: ExampleGridMetrics.iconSize, height: ExampleGridMetrics.iconSize)
                         .background(
@@ -554,7 +554,7 @@ struct OnboardingAIEnhancementStepView: View {
                         )
 
                     Text(example.raw)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.fluidSystem(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(isSelected ? 0.76 : 0.52))
                         .lineLimit(4)
                         .minimumScaleFactor(0.80)
@@ -594,7 +594,7 @@ struct OnboardingAIEnhancementStepView: View {
             .disabled(self.isPrivateAIBusy)
 
             Image(systemName: isSelected && self.isRunning ? "waveform" : "arrow.right")
-                .font(.system(size: 13, weight: .bold))
+                .font(.fluidSystem(size: 13, weight: .bold))
                 .foregroundStyle(.white.opacity(0.80))
                 .frame(width: ExampleGridMetrics.arrowSize, height: ExampleGridMetrics.arrowSize)
                 .background(
@@ -616,7 +616,7 @@ struct OnboardingAIEnhancementStepView: View {
             ZStack(alignment: .topLeading) {
                 if hasOutput {
                     Text(outputText)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.86))
                         .lineLimit(5)
                         .minimumScaleFactor(0.80)
@@ -626,11 +626,11 @@ struct OnboardingAIEnhancementStepView: View {
                 } else if isListening {
                     HStack(spacing: 8) {
                         Image(systemName: "waveform")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.fluidSystem(size: 12, weight: .bold))
                             .foregroundStyle(FluidOnboardingLandingColors.blue)
 
                         Text("Listening...")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.fluidSystem(size: 12, weight: .semibold))
                             .foregroundStyle(Color.white.opacity(0.74))
                     }
                     .padding(.horizontal, 16)
@@ -638,13 +638,13 @@ struct OnboardingAIEnhancementStepView: View {
                 } else if isSelected {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Dictate here.")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.fluidSystem(size: 12, weight: .semibold))
                             .foregroundStyle(Color.white.opacity(0.36))
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
 
                         Text("Press \(self.shortcutDisplay) and speak this example.")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.fluidSystem(size: 10, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.28))
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
@@ -658,7 +658,7 @@ struct OnboardingAIEnhancementStepView: View {
                         self.clearExampleOutput(example)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.fluidSystem(size: 14, weight: .semibold))
                             .foregroundStyle(Color.white.opacity(0.42))
                             .frame(width: 28, height: 28)
                     }
@@ -712,13 +712,13 @@ struct OnboardingAIEnhancementStepView: View {
         return HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("AI provider")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.fluidSystem(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
 
                 Label("Connect your own provider to polish dictation.", systemImage: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.74))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
@@ -772,13 +772,13 @@ struct OnboardingAIEnhancementStepView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
                         Text(self.privateAIProviderName)
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.fluidSystem(size: 22, weight: .semibold))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
 
                         Text("Experimental")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.fluidSystem(size: 10, weight: .bold))
                             .foregroundStyle(Color(red: 1.0, green: 0.72, blue: 0.26))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
@@ -789,12 +789,12 @@ struct OnboardingAIEnhancementStepView: View {
                     }
 
                     Text("Powered by \(self.privateAIModelDisplayName)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.42))
                         .lineLimit(1)
 
                     Label("Trained on 100K+ dictation data points to polish your words.", systemImage: "sparkles")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.74))
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
@@ -840,7 +840,7 @@ struct OnboardingAIEnhancementStepView: View {
 
             if let message = self.privateAISetupErrorMessage {
                 Text(message)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(Color.red.opacity(0.82))
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
@@ -863,7 +863,7 @@ struct OnboardingAIEnhancementStepView: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Text(self.privateAISetupStatusText ?? "Downloading. This can take a few minutes.")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(Color.white.opacity(0.66))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
@@ -872,7 +872,7 @@ struct OnboardingAIEnhancementStepView: View {
 
                 if let byteText = self.privateAIDownloadByteText {
                     Text(byteText)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: 10, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.42))
                         .lineLimit(1)
                         .minimumScaleFactor(0.74)
@@ -917,11 +917,11 @@ struct OnboardingAIEnhancementStepView: View {
     private func modelFact(_ systemImage: String, _ text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .bold))
+                .font(.fluidSystem(size: 11, weight: .bold))
                 .foregroundStyle(FluidOnboardingLandingColors.blue.opacity(0.86))
 
             Text(text)
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.58))
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
@@ -1080,11 +1080,11 @@ struct OnboardingAIEnhancementStepView: View {
             HStack(spacing: configuration.systemImage == nil ? 0 : 8) {
                 if let systemImage = configuration.systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.fluidSystem(size: 12, weight: .bold))
                 }
 
                 Text(configuration.title)
-                    .font(.system(size: configuration.fontSize, weight: .semibold))
+                    .font(.fluidSystem(size: configuration.fontSize, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }

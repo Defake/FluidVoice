@@ -212,7 +212,7 @@ struct SettingsView: View {
         ) {
             VStack(spacing: 16) {
                 Text(self.selectedSection.title)
-                    .font(.title2.weight(.semibold))
+                    .font(.fluidSystem(.title2).weight(.semibold))
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .settingsSearchTarget(self.selectedSection.searchTarget)
@@ -222,7 +222,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         // Section header
                         Label("App Settings", systemImage: "power")
-                            .font(.headline)
+                            .font(.fluidSystem(.headline))
                             .foregroundStyle(.primary)
 
                         VStack(spacing: 16) {
@@ -431,7 +431,7 @@ struct SettingsView: View {
 
                                 if SettingsStore.shared.betaReleasesEnabled {
                                     Text("Beta opt-in enabled. Update checks include both stable and beta builds.")
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(self.theme.palette.warning)
                                 }
 
@@ -574,7 +574,7 @@ struct SettingsView: View {
                     ThemedCard(style: .standard) {
                         VStack(alignment: .leading, spacing: 14) {
                             Label("Microphone Permission", systemImage: "mic.fill")
-                                .font(.headline)
+                                .font(.fluidSystem(.headline))
                                 .foregroundStyle(.primary)
 
                             VStack(alignment: .leading, spacing: 12) {
@@ -641,7 +641,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 8) {
                             Label("Global Hotkey", systemImage: "keyboard")
-                                .font(.headline)
+                                .font(.fluidSystem(.headline))
                                 .foregroundStyle(.primary)
 
                             Spacer()
@@ -649,20 +649,20 @@ struct SettingsView: View {
                             if self.accessibilityEnabled {
                                 if self.isRecordingAnyShortcut {
                                     Text("Recording…")
-                                        .font(.caption.weight(.semibold))
+                                        .font(.fluidSystem(.caption).weight(.semibold))
                                         .foregroundStyle(.orange)
                                 } else if self.hotkeyManagerInitialized {
                                     HStack(spacing: 6) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundStyle(Color.fluidGreen)
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                         Text("Active")
-                                            .font(.caption.weight(.semibold))
+                                            .font(.fluidSystem(.caption).weight(.semibold))
                                             .foregroundStyle(self.settingsSecondaryText)
                                     }
                                 } else {
                                     Text("Initializing…")
-                                        .font(.caption.weight(.semibold))
+                                        .font(.fluidSystem(.caption).weight(.semibold))
                                         .foregroundStyle(self.settingsSecondaryText)
                                 }
                             }
@@ -676,7 +676,7 @@ struct SettingsView: View {
                                         Image(systemName: "hand.point.up.left.fill")
                                             .foregroundStyle(.orange)
                                         Text("Press your new hotkey combination now…")
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                             .foregroundStyle(.orange)
                                     }
                                 } else if !self.hotkeyManagerInitialized {
@@ -685,7 +685,7 @@ struct SettingsView: View {
                                             .controlSize(.small)
                                             .fixedSize()
                                         Text("Hotkey initializing…")
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                             .foregroundStyle(self.settingsSecondaryText)
                                     }
                                 }
@@ -698,7 +698,7 @@ struct SettingsView: View {
                                         .foregroundStyle(self.settingsTitleText)
 
                                     Text("Primary dictation can use a keyboard shortcut or allowed mouse button. Changes usually apply immediately.")
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(self.settingsTertiaryText)
 
                                     self.primaryDictationShortcutsList()
@@ -1050,7 +1050,7 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         Label("Text Formatting", systemImage: "textformat")
-                            .font(.headline)
+                            .font(.fluidSystem(.headline))
                             .foregroundStyle(.primary)
 
                         VStack(spacing: 16) {
@@ -1150,7 +1150,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             Label("Audio Devices", systemImage: "speaker.wave.2.fill")
-                                .font(.headline)
+                                .font(.fluidSystem(.headline))
                                 .foregroundStyle(.primary)
 
                             Spacer()
@@ -1278,7 +1278,7 @@ struct SettingsView: View {
 
                             HStack(spacing: 10) {
                                 Text("More")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(self.settingsSecondaryText)
                                     .frame(width: 36, alignment: .trailing)
 
@@ -1286,12 +1286,12 @@ struct SettingsView: View {
                                     .controlSize(.regular)
 
                                 Text("Less")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(self.settingsSecondaryText)
                                     .frame(width: 36, alignment: .leading)
 
                                 Text(String(format: "%.2f", self.visualizerNoiseThreshold))
-                                    .font(.caption.monospaced())
+                                    .font(.fluidSystem(.caption, design: .monospaced))
                                     .foregroundStyle(self.settingsTertiaryText)
                                     .frame(width: 36)
                             }
@@ -1337,13 +1337,13 @@ struct SettingsView: View {
                                     Spacer()
 
                                     Text("\(self.settings.transcriptionPreviewCharLimit) chars")
-                                        .font(.caption.monospaced())
+                                        .font(.fluidSystem(.caption, design: .monospaced))
                                         .foregroundStyle(self.settingsSecondaryText)
                                 }
 
                                 HStack(spacing: 10) {
                                     Text("Less")
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(self.settingsSecondaryText)
                                         .frame(width: 36, alignment: .trailing)
 
@@ -1358,7 +1358,7 @@ struct SettingsView: View {
                                     .controlSize(.regular)
 
                                     Text("More")
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(self.settingsSecondaryText)
                                         .frame(width: 36, alignment: .leading)
                                 }
@@ -1446,7 +1446,7 @@ struct SettingsView: View {
                                             .controlSize(.small)
 
                                         Text("\(Int(self.settings.overlayBottomOffset)) px")
-                                            .font(.caption.monospaced())
+                                            .font(.fluidSystem(.caption, design: .monospaced))
                                             .foregroundStyle(self.settingsSecondaryText)
                                             .frame(width: 54, alignment: .trailing)
                                     }
@@ -1457,7 +1457,7 @@ struct SettingsView: View {
 
                             if self.asr.isRunning {
                                 Text("Settings are disabled during active recording")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(self.settingsSecondaryText)
                                     .italic()
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1481,7 +1481,7 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         Label("Debug Settings", systemImage: "ladybug.fill")
-                            .font(.headline)
+                            .font(.fluidSystem(.headline))
                             .foregroundStyle(.primary)
 
                         VStack(alignment: .leading, spacing: 8) {
@@ -1872,7 +1872,7 @@ struct SettingsView: View {
 
             if let errorMessage = errorMessage {
                 Text(errorMessage)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(self.theme.palette.warning)
             }
         }
@@ -1881,7 +1881,7 @@ struct SettingsView: View {
     private func backupUtilityRow() -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "externaldrive.fill")
-                .font(.headline)
+                .font(.fluidSystem(.headline))
                 .foregroundStyle(.primary)
                 .frame(width: 24, alignment: .center)
 
@@ -1933,7 +1933,7 @@ struct SettingsView: View {
 
                 HStack(spacing: 8) {
                     Text("Budget")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(self.settingsSecondaryText)
 
                     TextField("4", text: self.$audioHistoryBudgetText)
@@ -1941,7 +1941,7 @@ struct SettingsView: View {
                         .frame(width: 58)
 
                     Text("GB")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(self.settingsSecondaryText)
 
                     Button("Apply") {
@@ -2028,7 +2028,7 @@ struct SettingsView: View {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle.fill")
                     .foregroundStyle(warningStyle ? self.theme.palette.warning : self.theme.palette.accent)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                 Text(title)
                     .font(self.theme.typography.bodySmallStrong)
                     .foregroundStyle(self.settingsTitleText)
@@ -2038,12 +2038,12 @@ struct SettingsView: View {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 8) {
                         Text("\(index + 1).")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(warningStyle ? self.theme.palette.warning : self.theme.palette.accent)
                             .fontWeight(.semibold)
                             .frame(width: 16, alignment: .trailing)
                         Text(.init(step))
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.primary)
                     }
                 }
@@ -2150,7 +2150,7 @@ struct SettingsView: View {
                !recordingMessage.isEmpty
             {
                 Text(recordingMessage)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(self.theme.palette.warning)
             }
         }
@@ -2168,7 +2168,7 @@ struct SettingsView: View {
                !recordingMessage.isEmpty
             {
                 Text(recordingMessage)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(self.theme.palette.warning)
             }
         }
@@ -2176,7 +2176,7 @@ struct SettingsView: View {
 
     private func shortcutCapturePill() -> some View {
         Text("Press shortcut...")
-            .font(.caption.weight(.medium))
+            .font(.fluidSystem(.caption).weight(.medium))
             .foregroundStyle(.orange)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -2188,7 +2188,7 @@ struct SettingsView: View {
 
     private func shortcutDisplayPill(_ text: String) -> some View {
         Text(text)
-            .font(.caption.monospaced().weight(.medium))
+            .font(.fluidSystem(.caption, design: .monospaced).weight(.medium))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
@@ -2277,7 +2277,7 @@ struct SettingsView: View {
 
                 if isRecording, let recordingMessage, !recordingMessage.isEmpty {
                     Text(recordingMessage)
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(self.theme.palette.warning)
                 }
             }
@@ -2390,7 +2390,7 @@ private extension SettingsView {
 
         return HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(self.settingsTertiaryText.opacity(self.isMicrophonePriorityEditingDisabled ? 0.35 : 0.72))
                 .frame(width: 18, height: 30)
                 .contentShape(Rectangle())
@@ -2407,7 +2407,7 @@ private extension SettingsView {
                             )
 
                         Image(systemName: "line.3.horizontal")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.fluidSystem(size: 11, weight: .semibold))
                             .foregroundStyle(self.settingsTitleText)
                     }
                     .frame(width: 30, height: 30)
@@ -2434,7 +2434,7 @@ private extension SettingsView {
                     self.removeMicrophonePriorityEntry(entry)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(Color(nsColor: .systemRed).opacity(0.82))
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
@@ -2724,12 +2724,12 @@ struct FillerWordsEditor: View {
                 ForEach(self.fillerWords, id: \.self) { word in
                     HStack(spacing: 4) {
                         Text(word)
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                         Button {
                             self.removeWord(word)
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.caption2)
+                                .font(.fluidSystem(.caption2))
                         }
                         .buttonStyle(.plain)
                     }
@@ -3004,7 +3004,7 @@ struct AnalyticsConfirmationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Stop sharing detailed anonymous analytics?")
-                .font(.headline)
+                .font(.fluidSystem(.headline))
 
             Text("We never collect audio, transcription text, prompts, or other personal information.")
                 .font(self.theme.typography.bodySmall)

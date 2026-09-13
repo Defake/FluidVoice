@@ -34,7 +34,7 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
 
             if !self.eyebrow.isEmpty {
                 Text(self.eyebrow)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.fluidSystem(size: 14, weight: .bold))
                     .tracking(4.2)
                     .foregroundStyle(FluidOnboardingLandingColors.blue.opacity(0.72))
                     .textCase(.uppercase)
@@ -43,13 +43,13 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
 
             VStack(spacing: 4) {
                 Text(self.title)
-                    .font(.system(size: 52, weight: .semibold))
+                    .font(.fluidSystem(size: 52, weight: .semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(0.82)
 
                 Text(self.accentTitle)
-                    .font(.system(size: 50, weight: .semibold))
+                    .font(.fluidSystem(size: 50, weight: .semibold))
                     .italic()
                     .foregroundStyle(FluidOnboardingLandingColors.blue)
                     .multilineTextAlignment(.center)
@@ -63,7 +63,7 @@ struct FluidOnboardingLandingHero<Actions: View>: View {
                 Text(self.firstDetail)
                 Text(self.secondDetail)
             }
-            .font(.system(size: 22, weight: .medium))
+            .font(.fluidSystem(size: 22, weight: .medium))
             .foregroundStyle(Color.white.opacity(0.70))
             .multilineTextAlignment(.center)
             .lineLimit(1)
@@ -346,7 +346,7 @@ private final class LandingPrimaryNSButton: NSButton {
         self.attributedTitle = NSAttributedString(
             string: title,
             attributes: [
-                .font: NSFont.systemFont(ofSize: 18, weight: .semibold),
+                .font: NSFont.fluidSystemFont(ofSize: 18, weight: .semibold),
                 .foregroundColor: NSColor.white,
             ]
         )

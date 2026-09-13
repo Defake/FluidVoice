@@ -61,7 +61,7 @@ struct TranscriptionHistoryView: View {
                 } else if let error = self.historyStore.persistenceError {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(error)
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                         Button("Retry saving history") {
                             self.historyStore.retryPersistence()
                         }
@@ -155,19 +155,19 @@ struct TranscriptionHistoryView: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+                .font(.fluidSystem(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
 
             TextField("Search transcriptions...", text: self.$searchQuery)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.fluidSystem(size: 13))
 
             if !self.searchQuery.isEmpty {
                 Button {
                     self.searchQuery = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                        .font(.fluidSystem(size: 12))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -333,18 +333,18 @@ struct TranscriptionHistoryView: View {
             Spacer()
 
             Image(systemName: self.searchQuery.isEmpty ? "clock.arrow.circlepath" : "magnifyingglass")
-                .font(.system(size: 36, weight: .light))
+                .font(.fluidSystem(size: 36, weight: .light))
                 .foregroundStyle(.tertiary)
 
             VStack(spacing: 4) {
                 Text(self.searchQuery.isEmpty ? "No History Yet" : "No Results")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 Text(self.searchQuery.isEmpty
                     ? "Your transcriptions will appear here"
                     : "Try a different search term")
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
@@ -365,7 +365,7 @@ struct TranscriptionHistoryView: View {
             HStack {
                 // Stats
                 Text("\(self.historyStore.entries.count) entries")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(.tertiary)
 
                 Spacer()
@@ -376,7 +376,7 @@ struct TranscriptionHistoryView: View {
                         self.showClearConfirmation = true
                     } label: {
                         Text("Clear All")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.fluidSystem(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -483,7 +483,7 @@ struct TranscriptionHistoryView: View {
     private func detailHeading(_ entry: TranscriptionHistoryEntry) -> some View {
         HStack(spacing: 14) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 24, weight: .medium))
+                .font(.fluidSystem(size: 24, weight: .medium))
                 .foregroundStyle(self.theme.palette.accent)
                 .frame(width: 52, height: 52)
                 .background(self.theme.palette.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 16))
@@ -546,7 +546,7 @@ struct TranscriptionHistoryView: View {
 
     private func metadataItem(icon: String, label: String, value: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.system(size: 18)).foregroundStyle(self.theme.palette.accent)
+            Image(systemName: icon).font(.fluidSystem(size: 18)).foregroundStyle(self.theme.palette.accent)
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 5) {
                 Text(label).font(self.theme.typography.caption).foregroundStyle(.secondary)
@@ -628,11 +628,11 @@ struct TranscriptionHistoryView: View {
     private var noSelectionView: some View {
         VStack(spacing: 16) {
             Image(systemName: "text.quote")
-                .font(.system(size: 40, weight: .light))
+                .font(.fluidSystem(size: 40, weight: .light))
                 .foregroundStyle(.tertiary)
 
             Text("Select a transcription")
-                .font(.system(size: 14, weight: .medium))
+                .font(.fluidSystem(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -665,9 +665,9 @@ private struct TranscriptionFeedbackReportSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Share anonymous datapoint")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.fluidSystem(size: 18, weight: .semibold))
                 Text("Help improve our model. Only the example shown below will be sent.")
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
                     .foregroundStyle(.secondary)
             }
 
@@ -678,7 +678,7 @@ private struct TranscriptionFeedbackReportSheet: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -745,12 +745,12 @@ private struct TranscriptionFeedbackReportSheet: View {
     private func feedbackField(title: String, text: Binding<String>, height: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
             TextEditor(text: text)
-                .font(.system(size: 13))
+                .font(.fluidSystem(size: 13))
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .frame(height: height)

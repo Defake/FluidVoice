@@ -1354,7 +1354,7 @@ struct ContentView: View {
             } label: {
                 HStack(spacing: self.theme.metrics.spacing.sm) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .frame(width: 18, height: 28)
 
                     Text("Back to app")
@@ -1485,7 +1485,7 @@ struct ContentView: View {
                 Spacer(minLength: self.theme.metrics.spacing.sm)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.fluidSystem(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
             .font(self.theme.typography.sidebarItem)
@@ -1517,7 +1517,7 @@ struct ContentView: View {
                 Spacer(minLength: self.theme.metrics.spacing.sm)
 
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.fluidSystem(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
             .font(self.theme.typography.sidebarItem)
@@ -5384,7 +5384,7 @@ private struct AccessibilitySettingsFloatingGuideView: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 30, weight: .bold))
+                    .font(.fluidSystem(size: 30, weight: .bold))
                     .foregroundStyle(FluidOnboardingLandingColors.blue)
                     .offset(y: self.reduceMotion ? 0 : (self.isArrowRaised ? -8 : 4))
                     .animation(
@@ -5393,7 +5393,7 @@ private struct AccessibilitySettingsFloatingGuideView: View {
                     )
 
                 Text("Drag \(self.appName) into the Accessibility apps list as shown")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.fluidSystem(size: 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.78))
                     .lineLimit(1)
 
@@ -5403,7 +5403,7 @@ private struct AccessibilitySettingsFloatingGuideView: View {
                     self.onClose()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.fluidSystem(size: 11, weight: .bold))
                         .foregroundStyle(.white.opacity(0.58))
                         .frame(width: 26, height: 26)
                         .background(Circle().fill(Color.white.opacity(0.075)))
@@ -5419,7 +5419,7 @@ private struct AccessibilitySettingsFloatingGuideView: View {
                     self.onReturnToApp()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.fluidSystem(size: 15, weight: .bold))
                         .foregroundStyle(.white.opacity(0.72))
                         .frame(width: 34, height: 34)
                         .background(Circle().fill(Color.white.opacity(0.075)))
@@ -5435,13 +5435,13 @@ private struct AccessibilitySettingsFloatingGuideView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 Text(self.appName)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.fluidSystem(size: 16, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.92))
 
                 Spacer()
 
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.fluidSystem(size: 14, weight: .bold))
                     .foregroundStyle(.white.opacity(0.38))
             }
             .padding(.horizontal, 16)
@@ -5568,7 +5568,7 @@ private struct TodayStatsToolbarButton: View {
                     Text("Today")
                 }
             }
-            .font(.system(size: 12, weight: .medium))
+            .font(.fluidSystem(size: 12, weight: .medium))
         }
         .help(hasActivity ? "Today: \(summary.words) words · \(timeSaved) saved - view stats" : "View your stats")
         .accessibilityLabel("Today stats")

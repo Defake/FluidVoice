@@ -222,20 +222,20 @@ extension AIEnhancementSettingsView {
                     )
 
                 Image(systemName: isProviders ? "cpu" : "wand.and.stars")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.fluidSystem(size: 15, weight: .semibold))
                     .foregroundStyle(self.theme.palette.accent)
             }
             .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(isProviders ? "AI Providers" : "Cleanup Styles")
-                    .font(.title3)
+                    .font(.fluidSystem(.title3))
                     .fontWeight(.semibold)
                     .foregroundStyle(self.theme.palette.primaryText)
                 Text(isProviders
                     ? "Configure local models and API providers."
                     : "Choose how FluidVoice cleans up your dictation.")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(self.theme.palette.secondaryText)
             }
 
@@ -250,9 +250,9 @@ extension AIEnhancementSettingsView {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Providers")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.fluidSystem(size: 14, weight: .semibold))
                     Text("Configure local models and API providers.")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(.secondary)
                 }
 
@@ -261,9 +261,9 @@ extension AIEnhancementSettingsView {
                 Button(action: { self.viewModel.showHelp.toggle() }) {
                     HStack(spacing: 5) {
                         Image(systemName: self.viewModel.showHelp ? "questionmark.circle.fill" : "questionmark.circle")
-                            .font(.system(size: 14))
+                            .font(.fluidSystem(size: 14))
                         Text("Help")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .fontWeight(.medium)
                     }
                     .foregroundStyle(self.viewModel.showHelp ? self.theme.palette.accent : .secondary)
@@ -317,12 +317,12 @@ extension AIEnhancementSettingsView {
     private func aiSetupSummaryItem(icon: String, text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(self.theme.palette.accent.opacity(0.95))
                 .frame(width: 14)
 
             Text(text)
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(self.theme.palette.secondaryText)
                 .lineLimit(1)
         }
@@ -332,9 +332,9 @@ extension AIEnhancementSettingsView {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-                .font(.system(size: 16))
+                .font(.fluidSystem(size: 16))
             Text("API key required for AI enhancement to work")
-                .font(.system(size: 13, weight: .medium))
+                .font(.fluidSystem(size: 13, weight: .medium))
                 .foregroundStyle(.orange)
             Spacer()
         }
@@ -349,10 +349,10 @@ extension AIEnhancementSettingsView {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 14))
+                    .font(.fluidSystem(size: 14))
                     .foregroundStyle(.yellow)
                 Text("Quick Start Guide")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.fluidSystem(size: 13, weight: .semibold))
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -383,15 +383,15 @@ extension AIEnhancementSettingsView {
                     .fill(self.theme.palette.accent.opacity(0.15))
                     .frame(width: 22, height: 22)
                 Text(number)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(self.theme.palette.accent)
             }
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.fluidSystem(size: 11))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
             Text(text)
-                .font(.system(size: 12))
+                .font(.fluidSystem(size: 12))
                 .foregroundStyle(.secondary)
         }
     }
@@ -426,23 +426,23 @@ extension AIEnhancementSettingsView {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(self.theme.palette.secondaryText)
                 Text("All providers")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(self.theme.palette.secondaryText)
                 Text("(\(count))")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(self.theme.palette.tertiaryText)
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.secondary)
                 TextField("Search providers", text: self.$providerSearchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
             }
             .padding(8)
             .background(
@@ -463,7 +463,7 @@ extension AIEnhancementSettingsView {
                         }
                         if filteredItems.isEmpty, !query.isEmpty {
                             Text("No providers match \"\(query)\"")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 12)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -499,27 +499,27 @@ extension AIEnhancementSettingsView {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(Color.fluidGreen)
                 Text("Verified providers")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(self.theme.palette.secondaryText)
                 Text("(\(count))")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(self.theme.palette.tertiaryText)
             }
 
             if verified.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 14))
+                        .font(.fluidSystem(size: 14))
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("No verified providers yet")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.fluidSystem(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
                         Text("Set up a provider below and verify its connection")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -581,7 +581,7 @@ extension AIEnhancementSettingsView {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.fluidSystem(size: 12, weight: .semibold))
                 .frame(width: AISettingsLayout.providerRowControlHeight, height: AISettingsLayout.providerRowControlHeight)
         }
         .buttonStyle(SquareIconButtonStyle())
@@ -605,7 +605,7 @@ extension AIEnhancementSettingsView {
                         .frame(width: 16, height: 16)
                 } else {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                 }
             }
             .frame(width: AISettingsLayout.providerRowControlHeight, height: AISettingsLayout.providerRowControlHeight)
@@ -626,11 +626,11 @@ extension AIEnhancementSettingsView {
         let statusView = HStack(spacing: 5) {
             if !status.icon.isEmpty {
                 Image(systemName: status.icon)
-                    .font(.system(size: 10))
+                    .font(.fluidSystem(size: 10))
             }
             Text(status.text)
         }
-        .font(.caption2)
+        .font(.fluidSystem(.caption2))
         .foregroundStyle(status.color)
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -641,7 +641,7 @@ extension AIEnhancementSettingsView {
 
                     HStack(spacing: 8) {
                         Text(item.name)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.fluidSystem(size: 14, weight: .semibold))
                             .foregroundStyle(self.theme.palette.primaryText)
 
                         statusView
@@ -650,7 +650,7 @@ extension AIEnhancementSettingsView {
                     Spacer()
 
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary.opacity(0.7))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -740,7 +740,7 @@ extension AIEnhancementSettingsView {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("Model")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 50, alignment: .leading)
 
@@ -779,9 +779,9 @@ extension AIEnhancementSettingsView {
             {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     Text(self.viewModel.connectionErrorMessage)
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                 }
                 .foregroundStyle(.red)
                 .padding(10)
@@ -806,7 +806,7 @@ extension AIEnhancementSettingsView {
                                     ? Self.downloadButtonText(progress: downloadProgress)
                                     : "Download \(self.privateAIBackendShortName) & Verify"
                             )
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.fluidSystem(size: 11, weight: .semibold))
                         }
                     }
                     .fluidButton(.accent, size: .small)
@@ -814,9 +814,9 @@ extension AIEnhancementSettingsView {
                 } else {
                     HStack(spacing: 6) {
                         Image(systemName: "info.circle")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                         Text("Install the selected model to enable verification")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -833,7 +833,7 @@ extension AIEnhancementSettingsView {
                                 ? Self.downloadButtonText(progress: downloadProgress)
                                 : "Update & Verify"
                         )
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                     }
                 }
                 .fluidButton(.accent, size: .small)
@@ -847,7 +847,7 @@ extension AIEnhancementSettingsView {
                                 .fixedSize()
                         }
                         Text(isTesting ? "Loading..." : "Verify")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.fluidSystem(size: 11, weight: .semibold))
                     }
                 }
                 .fluidButton(.accent, size: .small)
@@ -859,7 +859,7 @@ extension AIEnhancementSettingsView {
     private func privateAIPrefixCacheRow(isBusy: Bool) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text("Faster first result")
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .frame(width: 124, alignment: .leading)
 
             Toggle("", isOn: self.privateAIPrefixCacheBinding)
@@ -877,14 +877,14 @@ extension AIEnhancementSettingsView {
     private func privateAIBackendRow(isBusy: Bool) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text("Backend")
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .frame(width: 124, alignment: .leading)
 
             self.privateAIBackendPicker(isBusy: isBusy)
                 .frame(width: 190)
 
             Text(self.settings.privateAIBackendPreference.detail)
-                .font(.caption2)
+                .font(.fluidSystem(.caption2))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
@@ -922,7 +922,7 @@ extension AIEnhancementSettingsView {
     private func privateAIBoostRow(isBusy: Bool) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text("Faster results")
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .frame(width: 124, alignment: .leading)
 
             Toggle("", isOn: self.privateAIBoostBinding)
@@ -934,7 +934,7 @@ extension AIEnhancementSettingsView {
                 .accessibilityLabel("Faster results")
 
             Text("Finishes dictation up to 15% faster. Uses about 100 MB more memory.")
-                .font(.caption2)
+                .font(.fluidSystem(.caption2))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
@@ -957,7 +957,7 @@ extension AIEnhancementSettingsView {
                 }
 
                 Text(status.detail)
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .lineLimit(2)
             }
 
@@ -965,7 +965,7 @@ extension AIEnhancementSettingsView {
                 self.privateAIDownloadProgressBar(progress: progress, color: status.color)
 
                 Text(Self.downloadProgressText(progress))
-                    .font(.caption2)
+                    .font(.fluidSystem(.caption2))
                     .lineLimit(1)
             }
         }
@@ -1160,40 +1160,40 @@ extension AIEnhancementSettingsView {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             Image(systemName: "textformat")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .foregroundStyle(.secondary)
                             Text("Provider Name")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.fluidSystem(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
                         TextField("Custom Provider", text: nameBinding)
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13))
+                            .font(.fluidSystem(size: 13))
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 6) {
                             Image(systemName: "link")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .foregroundStyle(.secondary)
                             Text("Base URL")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.fluidSystem(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
                         TextField("https://api.yourprovider.com/v1", text: baseURLBinding)
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(.fluidSystem(size: 13, design: .monospaced))
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("API Key")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.fluidSystem(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                     HStack(alignment: .center, spacing: 8) {
                         SecureField("Enter API key", text: apiKeyBinding)
                             .textFieldStyle(.plain)
-                            .font(.system(size: 13))
+                            .font(.fluidSystem(size: 13))
                             .padding(.horizontal, managementLayout ? 12 : 6)
                             .frame(height: AISettingsLayout.providerRowControlHeight)
                             .frame(maxWidth: managementLayout ? .infinity : 200)
@@ -1215,9 +1215,9 @@ extension AIEnhancementSettingsView {
                                 Button(action: { NSWorkspace.shared.open(url) }) {
                                     HStack(spacing: 4) {
                                         Image(systemName: websiteInfo.label.contains("Guide") ? "book.fill" : "key.fill")
-                                            .font(.system(size: 10))
+                                            .font(.fluidSystem(size: 10))
                                         Text(websiteInfo.label)
-                                            .font(.system(size: 11, weight: .medium))
+                                            .font(.fluidSystem(size: 11, weight: .medium))
                                     }
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
@@ -1235,7 +1235,7 @@ extension AIEnhancementSettingsView {
 
                 (managementLayout ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 8))) {
                     Text("Model")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.fluidSystem(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: managementLayout ? nil : 50, alignment: .leading)
 
@@ -1311,9 +1311,9 @@ extension AIEnhancementSettingsView {
                 if let error = self.viewModel.fetchModelsError, !error.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                         Text(error)
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                     }
                     .foregroundStyle(.red)
                     .padding(10)
@@ -1342,7 +1342,7 @@ extension AIEnhancementSettingsView {
                                         .fixedSize()
                                 } else {
                                     Image(systemName: "checkmark.shield")
-                                        .font(.system(size: 12))
+                                        .font(.fluidSystem(size: 12))
                                 }
                                 Text(self.viewModel.isTestingConnection ? "Verifying…" : "Verify model")
                                     .font(self.theme.typography.bodyStrong)
@@ -1356,9 +1356,9 @@ extension AIEnhancementSettingsView {
                 } else {
                     HStack(spacing: 6) {
                         Image(systemName: "info.circle")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                         Text(hasModels ? "Select a model to enable verification" : "Refresh models to enable verification")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -1393,12 +1393,12 @@ extension AIEnhancementSettingsView {
     private func providerErrorPreview(_ message: String, lineLimit: Int) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.fluidSystem(size: 11, weight: .semibold))
                 .foregroundStyle(.red)
                 .padding(.top, 2)
 
             Text(message)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.fluidSystem(size: 11, design: .monospaced))
                 .foregroundStyle(.red.opacity(0.9))
                 .lineLimit(lineLimit)
                 .textSelection(.enabled)
@@ -1427,24 +1427,24 @@ extension AIEnhancementSettingsView {
                         )
 
                     Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.fluidSystem(size: 16, weight: .semibold))
                         .foregroundStyle(self.theme.palette.accent)
                 }
                 .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add Custom Provider")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.fluidSystem(size: 14, weight: .semibold))
                         .foregroundStyle(self.theme.palette.primaryText)
                     Text("OpenAI-compatible endpoint")
-                        .font(.caption2)
+                        .font(.fluidSystem(.caption2))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary.opacity(0.7))
             }
             .padding(14)
@@ -1515,13 +1515,13 @@ extension AIEnhancementSettingsView {
 
                 HStack(spacing: 8) {
                     Text(item.name)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.fluidSystem(size: 14, weight: .semibold))
                         .foregroundStyle(self.theme.palette.primaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
                     Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .foregroundStyle(Color.fluidGreen)
                 }
 
@@ -1537,7 +1537,7 @@ extension AIEnhancementSettingsView {
                             isDefaultProvider ? "Default" : "Use as default",
                             systemImage: isDefaultProvider ? "checkmark.circle.fill" : "circle"
                         )
-                        .font(.caption2.weight(.semibold))
+                        .font(.fluidSystem(.caption2).weight(.semibold))
                         .lineLimit(1)
                         .frame(width: 92, height: AISettingsLayout.providerRowControlHeight)
                     }
@@ -1590,7 +1590,7 @@ extension AIEnhancementSettingsView {
                             }
                         }) {
                             Text("Edit")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.fluidSystem(size: 12, weight: .semibold))
                                 .frame(width: actionColumnWidth, height: AISettingsLayout.providerRowControlHeight)
                         }
                         .buttonStyle(SquareIconButtonStyle())
@@ -1630,7 +1630,7 @@ extension AIEnhancementSettingsView {
                             }
                         }) {
                             Text("Edit")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.fluidSystem(size: 12, weight: .semibold))
                                 .frame(width: actionColumnWidth, height: AISettingsLayout.providerRowControlHeight)
                         }
                         .buttonStyle(SquareIconButtonStyle())
@@ -1724,7 +1724,7 @@ extension AIEnhancementSettingsView {
                     .frame(width: isFluid ? 34 : 26, height: isFluid ? 34 : 26)
             } else {
                 Text(self.providerInitials(for: item))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(self.theme.palette.primaryText)
             }
         }
@@ -1875,7 +1875,7 @@ extension AIEnhancementSettingsView {
             self.viewModel.openReasoningConfig()
         }) {
             Image(systemName: hasEnabledConfig ? "brain.fill" : "brain")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.fluidSystem(size: 12, weight: .semibold))
                 .foregroundStyle(hasEnabledConfig ? self.theme.palette.accent : self.theme.palette.primaryText)
                 .frame(width: AISettingsLayout.providerRowControlHeight, height: AISettingsLayout.providerRowControlHeight)
         }
@@ -1890,10 +1890,10 @@ extension AIEnhancementSettingsView {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "text.bubble.fill")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(self.theme.palette.accent)
                 Text("Styles")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -1901,7 +1901,7 @@ extension AIEnhancementSettingsView {
                     self.isPromptProfilesHelpPresented.toggle()
                 } label: {
                     Image(systemName: "info.circle")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .foregroundStyle(self.theme.palette.secondaryText.opacity(0.78))
                         .frame(width: 22, height: 22)
                         .contentShape(Circle())
@@ -1970,10 +1970,10 @@ extension AIEnhancementSettingsView {
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "pencil.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.fluidSystem(size: 14))
                     .foregroundStyle(self.theme.palette.accent)
                 Text(onDone == nil ? "Edit Provider" : "Advanced settings")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                 Spacer()
             }
 
@@ -2000,7 +2000,7 @@ extension AIEnhancementSettingsView {
                         .frame(width: 210)
 
                     Text(self.settings.privateAIBackendPreference.detail)
-                        .font(.caption2)
+                        .font(.fluidSystem(.caption2))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
 
@@ -2014,10 +2014,10 @@ extension AIEnhancementSettingsView {
 
                     HStack(alignment: .top, spacing: 5) {
                         Image(systemName: "info.circle.fill")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.fluidSystem(size: 10, weight: .semibold))
                             .padding(.top, 1)
                         Text("\(self.privateAIContextCueText). Higher values help long transcripts but use more RAM.")
-                            .font(.caption2)
+                            .font(.fluidSystem(.caption2))
                             .lineLimit(2)
                     }
                     .foregroundStyle(.secondary)
@@ -2041,7 +2041,7 @@ extension AIEnhancementSettingsView {
                             Image(systemName: "arrow.counterclockwise")
                             Text("Reset Verification")
                         }
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     }
                     .fluidCompactButton(foreground: .red, borderColor: .red.opacity(0.6))
                     .disabled(isBusy)
@@ -2056,7 +2056,7 @@ extension AIEnhancementSettingsView {
                             Image(systemName: "trash")
                             Text("Delete Model")
                         }
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     }
                     .fluidCompactButton(foreground: .red, borderColor: .red.opacity(0.6))
                     .disabled(isBusy)
@@ -2082,11 +2082,11 @@ extension AIEnhancementSettingsView {
     private func privateAISettingLabel(_ title: String, systemImage: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.fluidSystem(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
         }
         .frame(width: 110, alignment: .leading)
@@ -2098,7 +2098,7 @@ extension AIEnhancementSettingsView {
                 self.decreasePrivateAIContextTokenLimit()
             } label: {
                 Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .frame(width: 32, height: AISettingsLayout.providerRowControlHeight)
                     .contentShape(Rectangle())
             }
@@ -2106,11 +2106,11 @@ extension AIEnhancementSettingsView {
             .disabled(isBusy || self.settings.privateAIContextTokenLimit <= SettingsStore.privateAIContextTokenLimitRange.lowerBound)
 
             Text("\(self.settings.privateAIContextTokenLimit.formatted())")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(.fluidSystem(size: 13, weight: .semibold, design: .monospaced))
                 .frame(width: 74, height: AISettingsLayout.providerRowControlHeight)
 
             Text("tokens")
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .foregroundStyle(.secondary)
                 .frame(width: 48, height: AISettingsLayout.providerRowControlHeight, alignment: .leading)
 
@@ -2118,7 +2118,7 @@ extension AIEnhancementSettingsView {
                 self.increasePrivateAIContextTokenLimit()
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .frame(width: 32, height: AISettingsLayout.providerRowControlHeight)
                     .contentShape(Rectangle())
             }
@@ -2164,10 +2164,10 @@ extension AIEnhancementSettingsView {
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "pencil.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.fluidSystem(size: 14))
                     .foregroundStyle(self.theme.palette.accent)
                 Text("Edit Provider")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
                 Spacer()
             }
 
@@ -2177,30 +2177,30 @@ extension AIEnhancementSettingsView {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
                                 Image(systemName: "textformat")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(.secondary)
                                 Text("Name")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.fluidSystem(size: 12, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
                             TextField("Provider name", text: self.$viewModel.editProviderName)
                                 .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 13))
+                                .font(.fluidSystem(size: 13))
                         }
                         .frame(maxWidth: 200)
 
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 6) {
                                 Image(systemName: "link")
-                                    .font(.caption)
+                                    .font(.fluidSystem(.caption))
                                     .foregroundStyle(.secondary)
                                 Text("Base URL")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.fluidSystem(size: 12, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
                             TextField("e.g., http://localhost:11434/v1", text: self.$viewModel.editProviderBaseURL)
                                 .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 13, design: .monospaced))
+                                .font(.fluidSystem(size: 13, design: .monospaced))
                         }
                     }
                 }
@@ -2208,16 +2208,16 @@ extension AIEnhancementSettingsView {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "key")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                         Text("API Key")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.fluidSystem(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                     HStack(alignment: .center, spacing: 8) {
                         SecureField("Enter API key", text: apiKeyBinding)
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 13))
+                            .font(.fluidSystem(size: 13))
                             .frame(maxWidth: 200)
                             .onTapGesture {
                                 self.viewModel.ensureKeychainAccessForAPIKeyEdit()
@@ -2228,9 +2228,9 @@ extension AIEnhancementSettingsView {
                             Button(action: { NSWorkspace.shared.open(url) }) {
                                 HStack(spacing: 4) {
                                     Image(systemName: websiteInfo.label.contains("Guide") ? "book.fill" : "key.fill")
-                                        .font(.system(size: 10))
+                                        .font(.fluidSystem(size: 10))
                                     Text(websiteInfo.label)
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.fluidSystem(size: 11, weight: .medium))
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
@@ -2257,7 +2257,7 @@ extension AIEnhancementSettingsView {
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.fluidSystem(size: 12, weight: .semibold))
                         Text("Save")
                     }
                 }
@@ -2291,7 +2291,7 @@ extension AIEnhancementSettingsView {
                             Image(systemName: "trash")
                             Text("Delete Provider")
                         }
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     }
                     .fluidCompactButton(foreground: .red, borderColor: .red.opacity(0.6))
                 }
@@ -2319,13 +2319,13 @@ extension AIEnhancementSettingsView {
 
     var appleIntelligenceBadge: some View {
         HStack(spacing: 8) {
-            Image(systemName: "apple.logo").font(.system(size: 14))
+            Image(systemName: "apple.logo").font(.fluidSystem(size: 14))
             Text("On-Device").fontWeight(.medium)
             Text("•").foregroundStyle(.secondary)
-            Image(systemName: "lock.shield.fill").font(.system(size: 12))
+            Image(systemName: "lock.shield.fill").font(.fluidSystem(size: 12))
             Text("Private").fontWeight(.medium)
         }
-        .font(.caption).foregroundStyle(Color.fluidGreen)
+        .font(.fluidSystem(.caption)).foregroundStyle(Color.fluidGreen)
         .padding(.horizontal, 12).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.fluidGreen.opacity(0.15))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(
@@ -2337,7 +2337,7 @@ extension AIEnhancementSettingsView {
     var appleIntelligenceModelRow: some View {
         HStack(spacing: 12) {
             self.formLabel("Model:")
-            Text("System Language Model").foregroundStyle(.secondary).font(.system(.body))
+            Text("System Language Model").foregroundStyle(.secondary).font(.fluidSystem(.body))
             Spacer()
         }
     }
@@ -2358,7 +2358,7 @@ extension AIEnhancementSettingsView {
 
             if !ModelRepository.shared.isBuiltIn(self.viewModel.selectedProviderID) {
                 Button(action: { self.viewModel.deleteSelectedModel() }) {
-                    HStack(spacing: 4) { Image(systemName: "trash"); Text("Delete") }.font(.caption)
+                    HStack(spacing: 4) { Image(systemName: "trash"); Text("Delete") }.font(.fluidSystem(.caption))
                 }
                 .fluidCompactButton(foreground: .red, borderColor: .red.opacity(0.6))
                 .frame(minWidth: AISettingsLayout.compactActionMinWidth, minHeight: AISettingsLayout.controlHeight)
@@ -2378,7 +2378,7 @@ extension AIEnhancementSettingsView {
                     Image(systemName: self.viewModel.hasReasoningConfigForCurrentModel() ? "brain.fill" : "brain")
                     Text("Reasoning")
                 }
-                .font(.caption)
+                .font(.fluidSystem(.caption))
             }
             .fluidCompactButton(
                 foreground: self.viewModel.hasReasoningConfigForCurrentModel() ? self.theme.palette.accent : nil,
@@ -2419,15 +2419,15 @@ extension AIEnhancementSettingsView {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "brain.head.profile")
-                    .font(.system(size: 14))
+                    .font(.fluidSystem(size: 14))
                     .foregroundStyle(self.theme.palette.accent)
                 Text("Reasoning for \(ModelDisplayName.forID(self.viewModel.selectedModel))")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(self.theme.palette.primaryText)
                 Spacer()
                 Button(action: { self.viewModel.showingReasoningConfig = false }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.fluidSystem(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -2439,7 +2439,7 @@ extension AIEnhancementSettingsView {
                     .toggleStyle(.switch)
                     .controlSize(.small)
                 Text(self.viewModel.editingReasoningEnabled ? "Enabled" : "Disabled")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(self.viewModel.editingReasoningEnabled ? self.theme.palette.accent : .secondary)
             }
 
@@ -2448,7 +2448,7 @@ extension AIEnhancementSettingsView {
                     // Parameter type picker
                     HStack(spacing: 12) {
                         Text("Parameter")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                             .frame(width: 70, alignment: .trailing)
 
@@ -2495,12 +2495,12 @@ extension AIEnhancementSettingsView {
                     {
                         HStack(spacing: 12) {
                             Text("Name")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 70, alignment: .trailing)
                             TextField("e.g., thinking_budget", text: self.$viewModel.editingReasoningParamName)
                                 .textFieldStyle(.roundedBorder)
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .frame(width: 140)
                         }
                     }
@@ -2508,7 +2508,7 @@ extension AIEnhancementSettingsView {
                     // Value picker/field
                     HStack(spacing: 12) {
                         Text("Value")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                             .frame(width: 70, alignment: .trailing)
 
@@ -2534,7 +2534,7 @@ extension AIEnhancementSettingsView {
                         } else {
                             TextField("value", text: self.$viewModel.editingReasoningParamValue)
                                 .textFieldStyle(.roundedBorder)
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .frame(width: 100)
                         }
                     }
@@ -2545,14 +2545,14 @@ extension AIEnhancementSettingsView {
             HStack(spacing: 8) {
                 Button(action: { self.saveReasoningConfig() }) {
                     Text("Save")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                 }
                 .fluidButton(.accent, size: .small)
                 .frame(minWidth: 60, minHeight: 26)
 
                 Button("Cancel") { self.viewModel.showingReasoningConfig = false }
                     .fluidButton(.compact, size: .compact)
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
                     .frame(minWidth: 60, minHeight: 26)
             }
         }
@@ -2580,7 +2580,7 @@ extension AIEnhancementSettingsView {
             HStack(spacing: 12) {
                 Button(action: { Task { await self.viewModel.testAPIConnection() } }) {
                     Text(self.viewModel.isTestingConnection ? "Verifying…" : (self.viewModel.isModelVerified(for: self.viewModel.selectedProviderID) ? "Model verified" : "Verify model"))
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .fontWeight(.semibold)
                 }
                 .fluidCompactButton(isReady: true)
@@ -2593,17 +2593,17 @@ extension AIEnhancementSettingsView {
             // Connection Status Display
             if self.viewModel.isModelVerified(for: self.viewModel.selectedProviderID) {
                 HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.fluidGreen).font(.caption)
-                    Text("Model verified").font(.caption).foregroundStyle(Color.fluidGreen)
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.fluidGreen).font(.fluidSystem(.caption))
+                    Text("Model verified").font(.fluidSystem(.caption)).foregroundStyle(Color.fluidGreen)
                 }
             } else if self.viewModel.connectionStatus == .failed {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red).font(.caption)
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red).font(.fluidSystem(.caption))
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Connection failed").font(.caption).foregroundStyle(.red)
+                        Text("Connection failed").font(.fluidSystem(.caption)).foregroundStyle(.red)
                         if !self.viewModel.connectionErrorMessage.isEmpty {
                             Text(self.viewModel.connectionErrorMessage)
-                                .font(.caption2)
+                                .font(.fluidSystem(.caption2))
                                 .foregroundStyle(.red.opacity(0.8))
                                 .lineLimit(1)
                         }
@@ -2612,7 +2612,7 @@ extension AIEnhancementSettingsView {
             } else if self.viewModel.connectionStatus == .testing {
                 HStack(spacing: 8) {
                     ProgressView().frame(width: 16, height: 16)
-                    Text("Verifying...").font(.caption).foregroundStyle(self.theme.palette.accent)
+                    Text("Verifying...").font(.fluidSystem(.caption)).foregroundStyle(self.theme.palette.accent)
                 }
             }
 
@@ -2628,7 +2628,7 @@ extension AIEnhancementSettingsView {
         HStack(spacing: 8) {
             Button(action: { self.viewModel.handleAPIKeyButtonTapped() }) {
                 Label("Add or Modify API Key", systemImage: "key.fill")
-                    .labelStyle(.titleAndIcon).font(.caption)
+                    .labelStyle(.titleAndIcon).font(.fluidSystem(.caption))
             }
             .fluidCompactButton(isReady: true)
             .frame(minWidth: AISettingsLayout.primaryActionMinWidth, minHeight: AISettingsLayout.controlHeight)
@@ -2638,7 +2638,7 @@ extension AIEnhancementSettingsView {
             {
                 Button(action: { NSWorkspace.shared.open(url) }) {
                     Label(websiteInfo.label, systemImage: websiteInfo.label.contains("Download") ? "arrow.down.circle.fill" : (websiteInfo.label.contains("Guide") ? "book.fill" : "link"))
-                        .labelStyle(.titleAndIcon).font(.caption)
+                        .labelStyle(.titleAndIcon).font(.fluidSystem(.caption))
                 }
                 .fluidButton(.compact, size: .compact)
                 .frame(minWidth: AISettingsLayout.actionMinWidth, minHeight: AISettingsLayout.controlHeight)
@@ -2649,7 +2649,7 @@ extension AIEnhancementSettingsView {
     var apiKeyEditorSheet: some View {
         VStack(spacing: 14) {
             Text("Enter \(self.viewModel.providerDisplayName(for: self.viewModel.selectedProviderID)) API Key")
-                .font(.headline)
+                .font(.fluidSystem(.headline))
             SecureField("API Key (optional for local endpoints)", text: self.$viewModel.newProviderApiKey)
                 .textFieldStyle(.roundedBorder).frame(width: 300)
                 .onTapGesture {
@@ -2683,39 +2683,39 @@ extension AIEnhancementSettingsView {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 14))
+                    .font(.fluidSystem(size: 14))
                     .foregroundStyle(self.theme.palette.accent)
                 Text("Add Custom Provider")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.fluidSystem(size: 14, weight: .semibold))
             }
 
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "link")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                         Text("OpenAI-compatible base URL")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.fluidSystem(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                     TextField("https://api.yourprovider.com/v1", text: self.$viewModel.newProviderBaseURL)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.fluidSystem(size: 13, design: .monospaced))
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "key")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                         Text("API Key (optional for local endpoints)")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.fluidSystem(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                     SecureField("Enter API key", text: self.$viewModel.newProviderApiKey)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13))
+                        .font(.fluidSystem(size: 13))
                         .onTapGesture {
                             self.viewModel.ensureKeychainAccessForAPIKeyEdit()
                         }
@@ -2726,7 +2726,7 @@ extension AIEnhancementSettingsView {
                 Button(action: { self.saveNewProvider() }) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.fluidSystem(size: 12, weight: .semibold))
                         Text("Save Provider")
                     }
                 }

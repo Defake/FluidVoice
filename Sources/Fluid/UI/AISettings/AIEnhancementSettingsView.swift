@@ -106,16 +106,16 @@ struct AIEnhancementSettingsView: View {
     var customPromptOnlyToggleRow: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "text.quote")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.fluidSystem(size: 13, weight: .semibold))
                 .foregroundStyle(self.theme.palette.accent)
                 .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Send Custom Prompt Only")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.fluidSystem(size: 13, weight: .semibold))
                     .foregroundStyle(self.theme.palette.primaryText)
                 Text("For custom Dictate prompts, send your prompt without prepending the built-in dictation prompt.")
-                    .font(.caption2)
+                    .font(.fluidSystem(.caption2))
                     .foregroundStyle(self.theme.palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }

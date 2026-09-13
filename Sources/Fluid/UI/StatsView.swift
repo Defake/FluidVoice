@@ -84,14 +84,14 @@ struct StatsView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Today")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.fluidSystem(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
 
                         Text(self.motivationalMessage(
                             wordsToday: wordsToday,
                             streak: streak
                         ))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.fluidSystem(size: 13, weight: .medium))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     }
@@ -101,9 +101,9 @@ struct StatsView: View {
                     if streak > 0 {
                         HStack(spacing: 4) {
                             Image(systemName: "flame.fill")
-                                .font(.system(size: 11))
+                                .font(.fluidSystem(size: 11))
                             Text("\(streak) day\(streak == 1 ? "" : "s")")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.fluidSystem(size: 12, weight: .semibold, design: .rounded))
                         }
                         .foregroundStyle(self.theme.palette.warning)
                         .padding(.horizontal, 10)
@@ -149,18 +149,18 @@ struct StatsView: View {
     private func todayMetric(icon: String, value: String, label: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.fluidSystem(size: 14))
                 .foregroundStyle(self.theme.palette.accent)
                 .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.fluidSystem(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -193,7 +193,7 @@ struct StatsView: View {
         StatCard(title: "TIME SAVED", icon: "clock.fill") {
             VStack(alignment: .leading, spacing: 8) {
                 Text(self.stats.formattedTimeSaved(typingWPM: self.settings.userTypingWPM))
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 Button {
@@ -202,9 +202,9 @@ struct StatsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text("Based on \(self.settings.userTypingWPM) WPM typing")
-                            .font(.system(size: 11))
+                            .font(.fluidSystem(size: 11))
                         Image(systemName: "pencil")
-                            .font(.system(size: 9))
+                            .font(.fluidSystem(size: 9))
                     }
                     .foregroundStyle(.secondary)
                 }
@@ -219,7 +219,7 @@ struct StatsView: View {
     private var wpmEditorPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Your Typing Speed")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.fluidSystem(size: 13, weight: .semibold))
 
             HStack {
                 TextField("WPM", text: self.$editingWPM)
@@ -228,12 +228,12 @@ struct StatsView: View {
                     .multilineTextAlignment(.center)
 
                 Text("words per minute")
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
                     .foregroundStyle(.secondary)
             }
 
             Text("Average typing: 40 WPM\nProfessional: 65-75 WPM")
-                .font(.system(size: 10))
+                .font(.fluidSystem(size: 10))
                 .foregroundStyle(.tertiary)
 
             HStack {
@@ -261,17 +261,17 @@ struct StatsView: View {
         StatCard(title: "TOTAL WORDS", icon: "text.word.spacing") {
             VStack(alignment: .leading, spacing: 8) {
                 Text(self.formatNumber(self.stats.totalWords))
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 let today = self.historyStore.wordsToday
                 if today > 0 {
                     Text("+\(self.formatNumber(today)) today")
-                        .font(.system(size: 11))
+                        .font(.fluidSystem(size: 11))
                         .foregroundStyle(self.theme.palette.success)
                 } else {
                     Text("Start dictating")
-                        .font(.system(size: 11))
+                        .font(.fluidSystem(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -285,16 +285,16 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(self.stats.currentStreak)")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.fluidSystem(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(self.stats.currentStreak > 0 ? self.theme.palette.warning : .primary)
 
                     Text(self.stats.currentStreak == 1 ? "day" : "days")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.fluidSystem(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
 
                 Text("Best: \(self.stats.bestStreak) days")
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
@@ -306,11 +306,11 @@ struct StatsView: View {
         StatCard(title: "TRANSCRIPTIONS", icon: "doc.text.fill") {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(self.historyStore.entries.count)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.fluidSystem(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 Text("Avg: \(self.stats.averageWordsPerTranscription) words each")
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
@@ -323,7 +323,7 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("ACTIVITY", systemImage: "chart.bar.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     Spacer()
@@ -345,10 +345,10 @@ struct StatsView: View {
                         Spacer()
                         VStack(spacing: 8) {
                             Image(systemName: "chart.bar")
-                                .font(.system(size: 24))
+                                .font(.fluidSystem(size: 24))
                                 .foregroundStyle(.tertiary)
                             Text("No activity yet")
-                                .font(.system(size: 12))
+                                .font(.fluidSystem(size: 12))
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 30)
@@ -380,7 +380,7 @@ struct StatsView: View {
                                 // Label (only for 7-day view)
                                 if self.chartDays == 7 {
                                     Text(self.dayLabel(item.date))
-                                        .font(.system(size: 9, weight: .medium))
+                                        .font(.fluidSystem(size: 9, weight: .medium))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -399,11 +399,11 @@ struct StatsView: View {
                         let activeDays = data.filter { $0.words > 0 }.count
 
                         Text("\(self.formatNumber(totalPeriod)) words")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.fluidSystem(size: 11, weight: .medium))
                             .foregroundStyle(.primary)
 
                         Text("across \(activeDays) active days")
-                            .font(.system(size: 11))
+                            .font(.fluidSystem(size: 11))
                             .foregroundStyle(.secondary)
 
                         Spacer()
@@ -416,12 +416,12 @@ struct StatsView: View {
     private func activityTooltip(for item: (date: Date, words: Int)) -> some View {
         VStack(spacing: 2) {
             Text(Self.activityTooltipDateFormatter.string(from: item.date))
-                .font(.system(size: 10, weight: .medium))
+                .font(.fluidSystem(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Text("\(self.formatNumber(item.words)) \(item.words == 1 ? "word" : "words")")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.fluidSystem(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
         }
@@ -447,13 +447,13 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("MILESTONES", systemImage: "flag.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.fluidSystem(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     Spacer()
 
                     Text("\(self.stats.totalMilestonesAchieved)/\(self.stats.totalMilestonesPossible)")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.fluidSystem(size: 11, weight: .medium))
                         .foregroundStyle(self.theme.palette.accent)
                 }
 
@@ -483,18 +483,18 @@ struct StatsView: View {
     private func milestoneRow(title: String, milestones: [(target: Int, achieved: Bool, label: String)]) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
+                .font(.fluidSystem(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 80, alignment: .leading)
 
             ForEach(Array(milestones.enumerated()), id: \.offset) { _, milestone in
                 HStack(spacing: 3) {
                     Image(systemName: milestone.achieved ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 10))
+                        .font(.fluidSystem(size: 10))
                         .foregroundStyle(milestone.achieved ? self.theme.palette.success : Color.secondary.opacity(0.4))
 
                     Text(milestone.label)
-                        .font(.system(size: 10, weight: milestone.achieved ? .semibold : .regular))
+                        .font(.fluidSystem(size: 10, weight: milestone.achieved ? .semibold : .regular))
                         .foregroundStyle(milestone.achieved ? .primary : .secondary)
                 }
                 .padding(.horizontal, 6)
@@ -515,7 +515,7 @@ struct StatsView: View {
         ThemedCard(style: .standard, padding: 16, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 12) {
                 Label("INSIGHTS", systemImage: "lightbulb.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 LazyVGrid(columns: [
@@ -561,17 +561,17 @@ struct StatsView: View {
     private func insightItem(icon: String, title: String, value: String, fallback: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.fluidSystem(size: 12))
                 .foregroundStyle(.tertiary)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.fluidSystem(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 Text(value.isEmpty ? fallback : value)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
             }
@@ -589,7 +589,7 @@ struct StatsView: View {
         ThemedCard(style: .standard, padding: 16, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 12) {
                 Label("PERSONAL RECORDS", systemImage: "trophy.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 12) {
@@ -615,11 +615,11 @@ struct StatsView: View {
     private func recordItem(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 10, weight: .medium))
+                .font(.fluidSystem(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.fluidSystem(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -644,7 +644,7 @@ struct StatsView: View {
                 self.showResetConfirmation = true
             } label: {
                 Label("Reset All Stats", systemImage: "trash")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.fluidSystem(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -686,7 +686,7 @@ private struct StatCard<Content: View>: View {
         ThemedCard(style: .standard, padding: 16, hoverEffect: false) {
             VStack(alignment: .leading, spacing: 10) {
                 Label(self.title, systemImage: self.icon)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
 
                 self.content

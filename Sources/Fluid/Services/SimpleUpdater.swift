@@ -503,12 +503,12 @@ final class SimpleUpdater {
 
         let title = NSTextField(labelWithString: "Installing FluidVoice \(version)")
         title.frame = NSRect(x: 92, y: 76, width: 304, height: 24)
-        title.font = .systemFont(ofSize: 16, weight: .semibold)
+        title.font = .fluidSystemFont(ofSize: 16, weight: .semibold)
         content.addSubview(title)
 
         let detail = NSTextField(wrappingLabelWithString: "Downloading the update. FluidVoice will restart automatically.")
         detail.frame = NSRect(x: 92, y: 42, width: 304, height: 34)
-        detail.font = .systemFont(ofSize: 13)
+        detail.font = .fluidSystemFont(ofSize: 13)
         detail.textColor = .secondaryLabelColor
         detail.maximumNumberOfLines = 2
         content.addSubview(detail)

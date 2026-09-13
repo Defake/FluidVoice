@@ -48,26 +48,26 @@ struct AppTheme {
         let chromeCaption: Font
 
         static let standard = Typography(
-            displayTitle: .system(size: 42, weight: .semibold),
-            statement: .system(size: 17, weight: .regular),
-            title: .system(size: 22, weight: .bold),
-            titleIcon: .system(size: 22, weight: .regular),
-            sectionTitle: .system(size: 15, weight: .semibold),
-            body: .system(size: 14, weight: .regular),
-            bodyStrong: .system(size: 14, weight: .medium),
-            bodySmall: .system(size: 13, weight: .regular),
-            bodySmallStrong: .system(size: 13, weight: .medium),
-            caption: .system(size: 12, weight: .regular),
-            captionStrong: .system(size: 12, weight: .medium),
-            captionSmall: .system(size: 11, weight: .regular),
-            tiny: .system(size: 11, weight: .regular),
-            tinyStrong: .system(size: 11, weight: .bold),
-            badge: .system(size: 11, weight: .semibold),
-            metricTiny: .system(size: 11, weight: .bold, design: .rounded),
-            codeCaption: .system(size: 12, weight: .medium, design: .monospaced),
-            sidebarItem: .system(size: 14, weight: .regular),
-            sidebarSection: .system(size: 12, weight: .medium),
-            chromeCaption: .system(size: 12, weight: .regular)
+            displayTitle: .fluidSystem(size: 42, weight: .semibold),
+            statement: .fluidSystem(size: 17, weight: .regular),
+            title: .fluidSystem(size: 22, weight: .bold),
+            titleIcon: .fluidSystem(size: 22, weight: .regular),
+            sectionTitle: .fluidSystem(size: 15, weight: .semibold),
+            body: .fluidSystem(size: 14, weight: .regular),
+            bodyStrong: .fluidSystem(size: 14, weight: .medium),
+            bodySmall: .fluidSystem(size: 13, weight: .regular),
+            bodySmallStrong: .fluidSystem(size: 13, weight: .medium),
+            caption: .fluidSystem(size: 12, weight: .regular),
+            captionStrong: .fluidSystem(size: 12, weight: .medium),
+            captionSmall: .fluidSystem(size: 11, weight: .regular),
+            tiny: .fluidSystem(size: 11, weight: .regular),
+            tinyStrong: .fluidSystem(size: 11, weight: .bold),
+            badge: .fluidSystem(size: 11, weight: .semibold),
+            metricTiny: .fluidSystem(size: 11, weight: .bold, design: .rounded),
+            codeCaption: .fluidSystem(size: 12, weight: .medium, design: .monospaced),
+            sidebarItem: .fluidSystem(size: 14, weight: .regular),
+            sidebarSection: .fluidSystem(size: 12, weight: .medium),
+            chromeCaption: .fluidSystem(size: 12, weight: .regular)
         )
     }
 

@@ -24,7 +24,7 @@ struct AddProviderSheet<Logo: View>: View {
                         self.logo(self.draft.providerID, self.draft.name)
                     } else {
                         Image(systemName: "square.stack.3d.up")
-                            .font(.system(size: 26)).foregroundStyle(FluidBrandColors.blue)
+                            .font(.fluidSystem(size: 26)).foregroundStyle(FluidBrandColors.blue)
                             .frame(width: 48, height: 48)
                     }
                     VStack(alignment: .leading, spacing: 6) {
@@ -74,7 +74,7 @@ struct AddProviderSheet<Logo: View>: View {
                                     self.isEditing = true
                                 } label: {
                                     HStack(spacing: 14) {
-                                        Image(systemName: "server.rack").font(.system(size: 24))
+                                        Image(systemName: "server.rack").font(.fluidSystem(size: 24))
                                             .foregroundStyle(FluidBrandColors.blue).frame(width: 38, height: 38)
                                         VStack(alignment: .leading, spacing: 5) {
                                             Text("Custom Provider").font(self.theme.typography.bodyStrong)

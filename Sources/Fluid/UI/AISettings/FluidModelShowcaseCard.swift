@@ -42,7 +42,7 @@ struct FluidModelShowcaseCard: View {
                         .lineLimit(2).minimumScaleFactor(0.85)
                     if self.isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.fluidSystem(size: 18, weight: .semibold))
                             .foregroundStyle(FluidBrandColors.blue)
                             .accessibilityLabel("Selected")
                     }
@@ -108,7 +108,7 @@ struct FluidModelShowcaseCard: View {
             // Sibling to the browse button: opening details never selects or activates a model.
             Button { self.showsInfo.toggle() } label: {
                 Image(systemName: self.showsInfo ? "xmark.circle" : "info.circle")
-                    .font(.system(size: 19, weight: .regular))
+                    .font(.fluidSystem(size: 19, weight: .regular))
                     .foregroundStyle(self.theme.palette.secondaryText)
                     .frame(width: 32, height: 32)
                     .contentShape(Circle())

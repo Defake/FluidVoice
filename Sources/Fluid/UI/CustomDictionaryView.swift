@@ -371,7 +371,7 @@ struct CustomDictionaryView: View {
                 )
 
             Image(systemName: systemName)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.fluidSystem(size: 15, weight: .semibold))
                 .foregroundStyle(self.theme.palette.accent)
         }
         .frame(width: 34, height: 34)
@@ -944,7 +944,7 @@ struct CustomDictionaryView: View {
                     self.closeYourDictionary()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.fluidSystem(size: 11, weight: .bold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -986,7 +986,7 @@ struct CustomDictionaryView: View {
                 .foregroundStyle(self.theme.palette.secondaryText)
         } icon: {
             Image(systemName: "info.circle")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.fluidSystem(size: 12, weight: .semibold))
                 .foregroundStyle(self.theme.palette.accent)
         }
         .padding(self.theme.metrics.spacing.md)
@@ -1081,7 +1081,7 @@ struct CustomDictionaryView: View {
                     self.closeCustomWords()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.fluidSystem(size: 11, weight: .bold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -1232,7 +1232,7 @@ struct CustomDictionaryView: View {
                             }
                         } label: {
                             Image(systemName: "info.circle")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.fluidSystem(size: 12, weight: .semibold))
                                 .frame(width: 28, height: 28)
                         }
                         .buttonStyle(SquareIconButtonStyle())
@@ -1251,7 +1251,7 @@ struct CustomDictionaryView: View {
                     self.closePunctuationDictionary()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.fluidSystem(size: 11, weight: .bold))
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -1441,7 +1441,7 @@ struct CustomDictionaryView: View {
         let rule = self.formattingActionRule(for: action)
         return HStack(spacing: self.theme.metrics.spacing.md) {
             Text(action.displaySymbol)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .font(.fluidSystem(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(self.theme.palette.accent)
                 .frame(width: 32, height: 32)
                 .background(
@@ -1670,7 +1670,7 @@ struct CustomDictionaryView: View {
     ) -> some View {
         HStack(spacing: self.theme.metrics.spacing.sm) {
             Image(systemName: "plus.circle")
-                .font(.title3)
+                .font(.fluidSystem(.title3))
                 .foregroundStyle(self.theme.palette.tertiaryText)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -2777,7 +2777,7 @@ private struct DictionaryComposerModeTab: View {
         Button(action: self.action) {
             HStack(spacing: self.theme.metrics.spacing.sm) {
                 Image(systemName: self.mode.systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                 Text(self.mode.title)
                     .font(self.theme.typography.bodySmallStrong)
             }
@@ -3022,7 +3022,7 @@ private struct ReplacementConfirmationToast: View {
                     .frame(width: 58, height: 58)
 
                 Image(systemName: "checkmark")
-                    .font(.system(size: 25, weight: .bold))
+                    .font(.fluidSystem(size: 25, weight: .bold))
                     .foregroundStyle(self.theme.palette.accent)
             }
 
@@ -3129,7 +3129,7 @@ private struct TrainingVariantChip: View {
 
             Button(action: self.onDelete) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(self.theme.palette.tertiaryText)
             }
             .buttonStyle(.plain)
@@ -3239,7 +3239,7 @@ struct BoostTermRow: View {
                     self.onEdit()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -3249,7 +3249,7 @@ struct BoostTermRow: View {
                     self.onDelete()
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle(foreground: .red, borderColor: .red))
@@ -3305,7 +3305,7 @@ struct DictionaryEntryRow: View {
                     self.onEdit()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -3315,7 +3315,7 @@ struct DictionaryEntryRow: View {
                     self.onDelete()
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle(foreground: .red, borderColor: .red))
@@ -3366,7 +3366,7 @@ private struct PunctuationDictionaryRuleRow: View {
                     self.onEdit()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle())
@@ -3376,7 +3376,7 @@ private struct PunctuationDictionaryRuleRow: View {
                     self.onDelete()
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.fluidSystem(size: 12, weight: .semibold))
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(SquareIconButtonStyle(foreground: .red, borderColor: .red))
@@ -3423,7 +3423,7 @@ struct AddDictionaryEntrySheet: View {
             // Header
             HStack {
                 Text("Add Dictionary Entry")
-                    .font(.headline)
+                    .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
                     .buttonStyle(.bordered)
@@ -3434,12 +3434,12 @@ struct AddDictionaryEntrySheet: View {
             // Triggers input
             VStack(alignment: .leading, spacing: 6) {
                 Text("Misheard Words (triggers)")
-                    .font(.subheadline.weight(.medium))
+                    .font(.fluidSystem(.subheadline).weight(.medium))
                 Text("Add one version per line. Commas can be saved too.")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(.secondary)
                 TextEditor(text: self.$triggersText)
-                    .font(.body)
+                    .font(.fluidSystem(.body))
                     .frame(minHeight: 54, maxHeight: 76)
                     .scrollContentBackground(.hidden)
                     .dictionaryInputChrome(minHeight: 54)
@@ -3452,16 +3452,16 @@ struct AddDictionaryEntrySheet: View {
                         Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
                             .foregroundStyle(.orange)
                     }
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                 }
             }
 
             // Replacement input
             VStack(alignment: .leading, spacing: 6) {
                 Text("Correct Spelling (replacement)")
-                    .font(.subheadline.weight(.medium))
+                    .font(.fluidSystem(.subheadline).weight(.medium))
                 Text("This is what will appear in the final transcription.")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(.secondary)
                 TextField("FluidVoice", text: self.$replacement)
                     .dictionaryInputChrome()
@@ -3474,13 +3474,13 @@ struct AddDictionaryEntrySheet: View {
             if !self.triggersText.isEmpty && !self.replacement.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Preview")
-                        .font(.caption.weight(.medium))
+                        .font(.fluidSystem(.caption).weight(.medium))
                         .foregroundStyle(.secondary)
 
                     FlowLayout(spacing: 6) {
                         ForEach(self.parseTriggers(), id: \.self) { trigger in
                             Text(trigger)
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(
@@ -3493,11 +3493,11 @@ struct AddDictionaryEntrySheet: View {
                         }
 
                         Image(systemName: "arrow.right")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.tertiary)
 
                         Text(self.replacement)
-                            .font(.caption.weight(.medium))
+                            .font(.fluidSystem(.caption).weight(.medium))
                             .foregroundStyle(self.theme.palette.accent)
                     }
                 }
@@ -3575,7 +3575,7 @@ struct EditDictionaryEntrySheet: View {
             // Header
             HStack {
                 Text("Edit Dictionary Entry")
-                    .font(.headline)
+                    .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
                     .buttonStyle(.bordered)
@@ -3586,12 +3586,12 @@ struct EditDictionaryEntrySheet: View {
             // Triggers input
             VStack(alignment: .leading, spacing: 6) {
                 Text("Misheard Words (triggers)")
-                    .font(.subheadline.weight(.medium))
+                    .font(.fluidSystem(.subheadline).weight(.medium))
                 Text("Add one version per line. Commas can be saved too.")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(.secondary)
                 TextEditor(text: self.$triggersText)
-                    .font(.body)
+                    .font(.fluidSystem(.body))
                     .frame(minHeight: 54, maxHeight: 76)
                     .scrollContentBackground(.hidden)
                     .dictionaryInputChrome(minHeight: 54)
@@ -3604,16 +3604,16 @@ struct EditDictionaryEntrySheet: View {
                         Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
                             .foregroundStyle(.orange)
                     }
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                 }
             }
 
             // Replacement input
             VStack(alignment: .leading, spacing: 6) {
                 Text("Correct Spelling (replacement)")
-                    .font(.subheadline.weight(.medium))
+                    .font(.fluidSystem(.subheadline).weight(.medium))
                 Text("This is what will appear in the final transcription.")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .foregroundStyle(.secondary)
                 TextField("FluidVoice", text: self.$replacement)
                     .dictionaryInputChrome()
@@ -3626,13 +3626,13 @@ struct EditDictionaryEntrySheet: View {
             if !self.triggersText.isEmpty && !self.replacement.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Preview")
-                        .font(.caption.weight(.medium))
+                        .font(.fluidSystem(.caption).weight(.medium))
                         .foregroundStyle(.secondary)
 
                     FlowLayout(spacing: 6) {
                         ForEach(self.parseTriggers(), id: \.self) { trigger in
                             Text(trigger)
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
                                 .background(
@@ -3645,13 +3645,13 @@ struct EditDictionaryEntrySheet: View {
                         }
 
                         Image(systemName: "arrow.right")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.tertiary)
 
                         Text(CustomDictionaryManualEntry.replacementDisplayText(
                             CustomDictionaryManualEntry.sanitizedReplacement(self.replacement)
                         ))
-                        .font(.caption.weight(.medium))
+                        .font(.fluidSystem(.caption).weight(.medium))
                         .foregroundStyle(self.theme.palette.accent)
                     }
                 }

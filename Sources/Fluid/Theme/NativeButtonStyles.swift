@@ -466,7 +466,7 @@ struct InlineButtonStyle: ButtonStyle {
 
         var body: some View {
             self.configuration.label
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .fontWeight(.medium)
                 .padding(.horizontal, self.theme.metrics.spacing.md)
                 .padding(.vertical, self.theme.metrics.spacing.xs)
@@ -548,7 +548,7 @@ struct FluidPickerDisclosureIcon: View {
         let picker = self.theme.metrics.pickerControl
 
         Image(systemName: "chevron.down")
-            .font(.caption2)
+            .font(.fluidSystem(.caption2))
             .foregroundStyle(.secondary)
             .frame(width: picker.disclosureSize, height: picker.disclosureSize)
             .background(

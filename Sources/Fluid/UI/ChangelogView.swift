@@ -47,12 +47,12 @@ struct ChangelogView: View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
             HStack(spacing: self.theme.metrics.spacing.md) {
                 Image(systemName: "doc.text.magnifyingglass")
-                    .font(.system(size: 30, weight: .semibold))
+                    .font(.fluidSystem(size: 30, weight: .semibold))
                     .foregroundStyle(self.theme.palette.accent)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Change logs")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.fluidSystem(size: 28, weight: .bold))
                         .foregroundStyle(self.theme.palette.primaryText)
                 }
 

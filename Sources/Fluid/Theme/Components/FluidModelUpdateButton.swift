@@ -10,9 +10,9 @@ struct FluidModelUpdateButton: View {
         Button(action: self.action) {
             ZStack {
                 Image(systemName: "arrow.down")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .opacity(self.hovered ? 0 : 1)
-                Text("Update").font(.system(size: 12, weight: .semibold))
+                Text("Update").font(.fluidSystem(size: 12, weight: .semibold))
                     .opacity(self.hovered ? 1 : 0)
             }
             .foregroundStyle(.black)

@@ -103,11 +103,11 @@ struct CommandModeView: View {
         HStack {
             HStack(spacing: 8) {
                 Text("Command Mode")
-                    .font(.title2)
+                    .font(.fluidSystem(.title2))
                     .fontWeight(.bold)
 
                 Text("Alpha")
-                    .font(.caption2)
+                    .font(.fluidSystem(.caption2))
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
@@ -144,13 +144,13 @@ struct CommandModeView: View {
                                 HStack {
                                     if chat.id == self.service.currentChatID {
                                         Image(systemName: "checkmark")
-                                            .font(.caption)
+                                            .font(.fluidSystem(.caption))
                                     }
                                     Text(chat.title)
                                         .lineLimit(1)
                                     Spacer()
                                     Text(chat.relativeTimeString)
-                                        .font(.caption)
+                                        .font(.fluidSystem(.caption))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -180,7 +180,7 @@ struct CommandModeView: View {
             // Confirm Before Execute Toggle
             Toggle(isOn: self.$settings.commandModeConfirmBeforeExecute) {
                 Label("Confirm", systemImage: "checkmark.shield")
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
             }
             .toggleStyle(.checkbox)
             .help("Ask for confirmation before running commands")
@@ -211,12 +211,12 @@ struct CommandModeView: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { self.showHowTo.toggle() } }) {
                 HStack {
                     Image(systemName: "questionmark.circle")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     Text("How to use")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     Spacer()
                     Image(systemName: self.showHowTo ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
+                        .font(.fluidSystem(.caption2))
                 }
                 .foregroundStyle(self.isHoveringHowTo ? .primary : .secondary)
                 .padding(.horizontal, 16)
@@ -234,22 +234,22 @@ struct CommandModeView: View {
                     // Start section
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Getting Started")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
 
                         HStack(spacing: 4) {
                             Text("Press")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                             Text(self.shortcutDisplay)
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(self.theme.palette.cardBackground.opacity(0.8))
                                 .cornerRadius(4)
                             Text("to open Command Mode, speak your command, then press again to send.")
-                                .font(.caption)
+                                .font(.fluidSystem(.caption))
                         }
                         .foregroundStyle(.primary.opacity(0.8))
                     }
@@ -257,7 +257,7 @@ struct CommandModeView: View {
                     // Examples
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Examples")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .fontWeight(.semibold)
                             .foregroundStyle(.secondary)
 
@@ -277,10 +277,10 @@ struct CommandModeView: View {
                             Text("Caution")
                                 .fontWeight(.semibold)
                         }
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
 
                         Text("AI can make mistakes. Avoid dangerous commands like deleting important files. Destructive actions will ask for confirmation.")
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -297,7 +297,7 @@ struct CommandModeView: View {
             Text("•")
                 .foregroundStyle(.secondary)
             Text(text)
-                .font(.caption)
+                .font(.fluidSystem(.caption))
                 .foregroundStyle(.primary.opacity(0.8))
         }
     }
@@ -361,7 +361,7 @@ struct CommandModeView: View {
             if self.settings.showThinkingTokens && !self.service.streamingThinkingText.isEmpty {
                 ScrollView(.vertical, showsIndicators: true) {
                     Text(self.service.streamingThinkingText)
-                        .font(.system(size: 10))
+                        .font(.fluidSystem(size: 10))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,13 +411,13 @@ struct CommandModeView: View {
             HStack {
                 Image(systemName: "exclamationmark.shield.fill")
                     .foregroundStyle(.orange)
-                    .font(.title3)
+                    .font(.fluidSystem(.title3))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Confirm Execution")
                         .fontWeight(.semibold)
                     if let purpose = pending.purpose {
                         Text(purpose)
-                            .font(.caption)
+                            .font(.fluidSystem(.caption))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -428,9 +428,9 @@ struct CommandModeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Image(systemName: "terminal.fill")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                     Text("Command")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .fontWeight(.medium)
                     Spacer()
                 }
@@ -441,7 +441,7 @@ struct CommandModeView: View {
                 Divider()
 
                 Text(pending.command)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(.fluidSystem(.callout, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(10)
             }
@@ -480,10 +480,10 @@ struct CommandModeView: View {
             if let issue = self.settings.commandModeReadinessIssue {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(.orange)
                     Text(issue)
-                        .font(.caption)
+                        .font(.fluidSystem(.caption))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
 
@@ -492,7 +492,7 @@ struct CommandModeView: View {
                     Button("AI Providers") {
                         AppNavigationRouter.shared.request(.aiEnhancements)
                     }
-                    .font(.caption)
+                    .font(.fluidSystem(.caption))
                     .buttonStyle(.plain)
                     .controlSize(.small)
                 }
@@ -503,7 +503,7 @@ struct CommandModeView: View {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Type a command or ask a question...", text: self.$inputText, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(.fluidSystem(size: 16))
                     .lineLimit(1...4)
                     .onSubmit {
                         self.submitCommand()
@@ -512,7 +512,7 @@ struct CommandModeView: View {
                 HStack(spacing: 10) {
                     Toggle("Sync", isOn: self.$settings.commandModeLinkedToGlobal)
                         .toggleStyle(.checkbox)
-                        .font(.callout)
+                        .font(.fluidSystem(.callout))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: true, vertical: false)
                         .help("Use the same provider and model selected in AI Providers.")
@@ -556,7 +556,7 @@ struct CommandModeView: View {
 
                     Button(action: self.toggleRecording) {
                         Image(systemName: self.asr.isRunning ? "stop.fill" : "mic")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.fluidSystem(size: 15, weight: .semibold))
                             .frame(width: 34, height: 34)
                             .foregroundStyle(self.asr.isRunning ? Color.red : .secondary)
                             .contentShape(Circle())
@@ -567,7 +567,7 @@ struct CommandModeView: View {
 
                     Button(action: self.submitCommand) {
                         Image(systemName: "arrow.up")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.fluidSystem(size: 18, weight: .semibold))
                             .frame(width: 34, height: 34)
                             .foregroundStyle(self.canSubmitCommand ? Color.white : .secondary)
                             .background(
@@ -714,7 +714,7 @@ struct CommandShimmerText: View {
             let trailingEdge = min(1, center + 0.18)
 
             Text(self.text)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.fluidSystem(size: 13, weight: .semibold))
                 .foregroundStyle(
                     LinearGradient(
                         stops: [
@@ -756,7 +756,7 @@ struct MessageBubble: View {
 
     private var userMessageView: some View {
         Text(self.message.content)
-            .font(.system(size: 13))
+            .font(.fluidSystem(size: 13))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(self.theme.palette.accent.opacity(0.15))
@@ -776,7 +776,7 @@ struct MessageBubble: View {
             // Purpose label (minimal, gray)
             if let tc = message.toolCall, let purpose = tc.purpose {
                 Text(purpose)
-                    .font(.system(size: 11))
+                    .font(.fluidSystem(size: 11))
                     .foregroundStyle(.secondary)
             }
 
@@ -799,17 +799,17 @@ struct MessageBubble: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { self.isThinkingExpanded.toggle() } }) {
                 HStack(spacing: 6) {
                     Text("Thinking")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.fluidSystem(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     if self.isThinkingExpanded {
                         Text("\(thinking.count) chars")
-                            .font(.system(size: 9))
+                            .font(.fluidSystem(size: 9))
                             .foregroundStyle(.tertiary)
                     }
 
                     Image(systemName: self.isThinkingExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.fluidSystem(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
 
                     Spacer(minLength: 0)
@@ -823,7 +823,7 @@ struct MessageBubble: View {
             if self.isThinkingExpanded {
                 ScrollView(.vertical, showsIndicators: true) {
                     Text(thinking)
-                        .font(.system(size: 10))
+                        .font(.fluidSystem(size: 10))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -848,13 +848,13 @@ struct MessageBubble: View {
                 !self.message.content.lowercased().starts(with: "i'll")
             {
                 Text(self.message.content)
-                    .font(.system(size: 12))
+                    .font(.fluidSystem(size: 12))
                     .foregroundStyle(.secondary)
             }
 
             // Command block - clean and simple
             Text(tc.command)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.fluidSystem(size: 12, design: .monospaced))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
                 .padding(.horizontal, 10)
@@ -873,14 +873,14 @@ struct MessageBubble: View {
             // Minimal header - just status and time
             HStack(spacing: 6) {
                 Text(parsed.success ? "Success" : "Error")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.fluidSystem(size: 11, weight: .medium))
                     .foregroundStyle(parsed.success ? .primary : .secondary)
 
                 Spacer()
 
                 if parsed.executionTime > 0 {
                     Text("\(parsed.executionTime)ms")
-                        .font(.system(size: 10))
+                        .font(.fluidSystem(size: 10))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -896,14 +896,14 @@ struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 2) {
                         if !parsed.output.isEmpty {
                             Text(self.markdownAttributedString(from: parsed.output))
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.fluidSystem(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
 
                         if let error = parsed.error, !error.isEmpty {
                             Text(error)
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.fluidSystem(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
@@ -923,7 +923,7 @@ struct MessageBubble: View {
 
     private var textContentView: some View {
         Text(self.markdownAttributedString(from: self.message.content))
-            .font(.system(size: 13))
+            .font(.fluidSystem(size: 13))
             .textSelection(.enabled)
     }
 
