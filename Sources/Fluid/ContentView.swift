@@ -2126,23 +2126,26 @@ struct ContentView: View {
         self.captureRecordingFormattingContextIfNeeded()
     }
 
-    private func resolveTypingTargetPID() -> (pid: pid_t?, shouldRestoreOriginalFocus: Bool) {
+    private func resolveTypingTargetPID(returnToStartingField: Bool = true) -> (pid: pid_t?, shouldRestoreOriginalFocus: Bool) {
         let startedAt = ProcessInfo.processInfo.systemUptime
-        guard let context = NotchContentState.shared.recordingTargetContext else {
-            self.appBench("focus_target_check totalMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000) missingContext=true")
-            return (NotchContentState.shared.recordingTargetPID, true)
-        }
-        let pidStartedAt = ProcessInfo.processInfo.systemUptime
+        let context = NotchContentState.shared.recordingTargetContext
         let focusedPID = TypingService.currentFocusedPID()
         let pidFinishedAt = ProcessInfo.processInfo.systemUptime
-        let checksElement = context.pid == focusedPID && context.element != nil
-        let elementIsFocused = !checksElement || TypingService.isCapturedFocusStillActive(context)
+        let checksElement = returnToStartingField && context?.pid == focusedPID && context?.element != nil
+        let elementIsFocused = !checksElement || context.map { TypingService.isCapturedFocusStillActive($0) } == true
+        let target = DictationTargetPolicy.resolve(
+            returnToStartingField: returnToStartingField,
+            focusedPID: focusedPID,
+            ownPID: ProcessInfo.processInfo.processIdentifier,
+            originalPID: context?.pid ?? NotchContentState.shared.recordingTargetPID,
+            originalFieldIsFocused: context != nil && context?.pid == focusedPID && elementIsFocused
+        )
         let finishedAt = ProcessInfo.processInfo.systemUptime
         self.appBench(
-            "focus_target_check totalMs=\((finishedAt - startedAt) * 1000) pidMs=\((pidFinishedAt - pidStartedAt) * 1000) " +
-                "elementMs=\((finishedAt - pidFinishedAt) * 1000) elementChecked=\(checksElement)"
+            "focus_target_check totalMs=\((finishedAt - startedAt) * 1000) pidMs=\((pidFinishedAt - startedAt) * 1000) " +
+                "elementMs=\((finishedAt - pidFinishedAt) * 1000) elementChecked=\(checksElement) returnToStartingField=\(returnToStartingField)"
         )
-        return (context.pid, !(context.pid == focusedPID && elementIsFocused))
+        return target
     }
 
     // MARK: - Commented out app-specific prompts - using general processing only
@@ -2901,7 +2904,7 @@ struct ContentView: View {
         )
 
         if shouldTypeExternally {
-            let typingTarget = self.resolveTypingTargetPID()
+            let typingTarget = self.resolveTypingTargetPID(returnToStartingField: self.settings.returnDictationToStartingField)
             let spokenSendRequested = spokenSendParse.shouldSend
             let targetMatchesRecordingFocus = typingTarget.pid != nil
                 && typingTarget.pid == self.recordingFocusTarget?.pid
@@ -2909,6 +2912,7 @@ struct ContentView: View {
                 && aiFallbackReason == nil
                 && (sendsExistingDraft || !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 && targetMatchesRecordingFocus
+                && (typingTarget.shouldRestoreOriginalFocus || self.recordingFocusTarget.map { TypingService.isExactFocusTargetActive($0) } == true)
                 && !self.isSpokenSendBlockedApp(appInfo)
             // Dispatch insertion as soon as the destination app is ready; the
             // overlay hides asynchronously after output so it cannot delay paste.

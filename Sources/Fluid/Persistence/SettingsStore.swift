@@ -1851,6 +1851,15 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Opt in to restoring the field captured at recording start.
+    var returnDictationToStartingField: Bool {
+        get { self.defaults.bool(forKey: Keys.returnDictationToStartingField) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: Keys.returnDictationToStartingField)
+        }
+    }
+
     /// Shows ASR and AI performance details by default; users can hide them.
     var showHistoryPerformanceMetrics: Bool {
         get { self.defaults.object(forKey: Keys.showHistoryPerformanceMetrics) as? Bool ?? true }
@@ -3304,6 +3313,7 @@ final class SettingsStore: ObservableObject {
             hotkeyMode: self.hotkeyMode,
             enableStreamingPreview: self.enableStreamingPreview,
             experimentalParakeetUnifiedFinalEnabled: self.experimentalParakeetUnifiedFinalEnabled,
+            returnDictationToStartingField: self.returnDictationToStartingField,
             showHistoryPerformanceMetrics: self.showHistoryPerformanceMetrics,
             skipSilentRecordingsEnabled: self.skipSilentRecordingsEnabled,
             enableAIStreaming: self.enableAIStreaming,
@@ -3438,6 +3448,9 @@ final class SettingsStore: ObservableObject {
         self.enableStreamingPreview = payload.enableStreamingPreview
         if let experimentalParakeetUnifiedFinalEnabled = payload.experimentalParakeetUnifiedFinalEnabled {
             self.experimentalParakeetUnifiedFinalEnabled = experimentalParakeetUnifiedFinalEnabled
+        }
+        if let returnDictationToStartingField = payload.returnDictationToStartingField {
+            self.returnDictationToStartingField = returnDictationToStartingField
         }
         if let showHistoryPerformanceMetrics = payload.showHistoryPerformanceMetrics {
             self.showHistoryPerformanceMetrics = showHistoryPerformanceMetrics
@@ -5459,6 +5472,7 @@ private extension SettingsStore {
         static let hotkeyMode = "HotkeyMode"
         static let enableStreamingPreview = "EnableStreamingPreview"
         static let experimentalParakeetUnifiedFinalEnabled = "ExperimentalParakeetUnifiedFinalEnabled"
+        static let returnDictationToStartingField = "ReturnDictationToStartingField"
         static let showHistoryPerformanceMetrics = "ShowHistoryPerformanceMetrics"
         static let skipSilentRecordingsEnabled = "SkipSilentRecordingsEnabled"
         static let enableAIStreaming = "EnableAIStreaming"

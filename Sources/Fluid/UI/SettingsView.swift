@@ -1524,6 +1524,10 @@ struct SettingsView: View {
 
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
+                        self.returnToStartingFieldToggle
+
+                        Divider().padding(.vertical, 4)
+
                         self.settingsToggleRow(
                             title: "Faster Long Dictation",
                             description: "For long recordings, reuse completed live windows and process only the remaining tail when you stop.",
@@ -3040,5 +3044,20 @@ struct AnalyticsConfirmationView: View {
         }
         .padding(20)
         .frame(width: 420)
+    }
+}
+
+private extension SettingsView {
+    var returnToStartingFieldToggle: some View {
+        self.settingsToggleRow(
+            title: "Return to Starting Field",
+            description: "Paste dictation into the field where you started recording, even if you switch apps.",
+            footnote: "Off by default. When off, dictation follows your current cursor. Applies to dictation only.",
+            isOn: Binding(
+                get: { SettingsStore.shared.returnDictationToStartingField },
+                set: { SettingsStore.shared.returnDictationToStartingField = $0 }
+            )
+        )
+        .settingsSearchTarget(.returnToStartingField)
     }
 }

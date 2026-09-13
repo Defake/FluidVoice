@@ -61,6 +61,7 @@ enum SettingsSearchTarget: Hashable {
     case audioStorage
     case debugLogs
     case experimental
+    case returnToStartingField
     case fasterLongDictation
     case historyPerformance
 
@@ -117,7 +118,7 @@ enum SettingsSearchTarget: Hashable {
         case .dataAndDiagnostics, .backupAndRestore, .debugLogs:
             return .dataAndDiagnostics
 
-        case .experimental, .fasterLongDictation, .historyPerformance:
+        case .experimental, .returnToStartingField, .fasterLongDictation, .historyPerformance:
             return .experimental
         }
     }
@@ -353,6 +354,11 @@ enum SettingsSearchIndex {
             target: .debugLogs,
             title: "Debug Settings",
             terms: ["Show Debug Logs in App Reveal Log File crash diagnostics troubleshooting"]
+        ),
+        .init(
+            target: .returnToStartingField,
+            title: "Return to Starting Field",
+            terms: ["experimental dictation paste cursor focus original starting app destination switch apps"]
         ),
         .init(
             target: .fasterLongDictation,
