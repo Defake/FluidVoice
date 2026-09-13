@@ -159,7 +159,10 @@ actor PrivateAIIntegrationService {
         guard !urls.isEmpty else { return [] }
         let modelDirectoryURL = self.modelDirectoryURL.resolvingSymlinksInPath().standardizedFileURL
         let modelDirectoryPath = modelDirectoryURL.path
-        let targetURLs = Array(Set(urls.map { $0.resolvingSymlinksInPath().standardizedFileURL }))
+        // Preserve provider order: model files precede their installation receipt.
+        var seen = Set<URL>()
+        let targetURLs = urls.map { $0.resolvingSymlinksInPath().standardizedFileURL }
+            .filter { seen.insert($0).inserted }
         guard targetURLs.allSatisfy({ $0.path.hasPrefix(modelDirectoryPath + "/") }) else {
             throw PrivateAIModelRemovalError(message: "A model file is not in FluidVoice's model folder.")
         }
