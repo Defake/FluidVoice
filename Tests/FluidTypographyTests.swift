@@ -24,13 +24,17 @@ struct FluidTypographyTests {
             precondition(native.familyName == "Avenir Next" && mono.familyName == "Avenir Next")
         } else {
             if FluidTypography.systemDesign(for: .default) == .serif {
-                let descriptor = NSFont.systemFont(ofSize: 18, weight: .semibold).fontDescriptor.withDesign(.serif)!
+                guard let descriptor = NSFont.systemFont(ofSize: 18, weight: .semibold).fontDescriptor.withDesign(.serif) else {
+                    preconditionFailure("The system serif font must be available")
+                }
                 precondition(native == NSFont(descriptor: descriptor, size: 18))
             } else {
                 precondition(native == NSFont.systemFont(ofSize: 18, weight: .semibold))
             }
             if FluidTypography.systemDesign(for: .monospaced) == .serif {
-                let descriptor = NSFont.systemFont(ofSize: 13, weight: .regular).fontDescriptor.withDesign(.serif)!
+                guard let descriptor = NSFont.systemFont(ofSize: 13, weight: .regular).fontDescriptor.withDesign(.serif) else {
+                    preconditionFailure("The system serif font must be available")
+                }
                 precondition(mono == NSFont(descriptor: descriptor, size: 13))
             } else {
                 precondition(mono == NSFont.monospacedSystemFont(ofSize: 13, weight: .regular))

@@ -2,25 +2,38 @@ import Foundation
 
 @main
 enum DictationTargetPolicyTests {
+    private struct Case {
+        let name: String
+        let enabled: Bool
+        let focused: Int32?
+        let original: Int32?
+        let stillFocused: Bool
+        let expectedPID: Int32?
+        let restores: Bool
+    }
+
     static func main() {
-        let cases: [(String, Bool, Int32?, Int32?, Bool, Int32?, Bool)] = [
-            ("off follows app B", false, 200, 100, false, 200, false),
-            ("on restores app A", true, 200, 100, false, 100, true),
-            ("off follows another field in A", false, 100, 100, false, 100, false),
-            ("on restores original field in A", true, 100, 100, false, 100, true),
-            ("already focused needs no restore", true, 100, 100, true, 100, false),
-            ("off works without recording context", false, 200, nil, false, 200, false),
-            ("overlay recovers saved target", false, 999, 100, false, 100, true),
-            ("unknown focus recovers saved target", false, nil, 100, false, 100, true),
-            ("invalid focus is not a destination", false, 0, 100, false, 100, true),
-            ("missing target does not invent a PID", true, nil, nil, false, nil, true),
+        let cases: [Case] = [
+            .init(name: "off follows app B", enabled: false, focused: 200, original: 100, stillFocused: false, expectedPID: 200, restores: false),
+            .init(name: "on restores app A", enabled: true, focused: 200, original: 100, stillFocused: false, expectedPID: 100, restores: true),
+            .init(name: "off follows another field in A", enabled: false, focused: 100, original: 100, stillFocused: false, expectedPID: 100, restores: false),
+            .init(name: "on restores original field in A", enabled: true, focused: 100, original: 100, stillFocused: false, expectedPID: 100, restores: true),
+            .init(name: "already focused needs no restore", enabled: true, focused: 100, original: 100, stillFocused: true, expectedPID: 100, restores: false),
+            .init(name: "off works without recording context", enabled: false, focused: 200, original: nil, stillFocused: false, expectedPID: 200, restores: false),
+            .init(name: "overlay recovers saved target", enabled: false, focused: 999, original: 100, stillFocused: false, expectedPID: 100, restores: true),
+            .init(name: "unknown focus recovers saved target", enabled: false, focused: nil, original: 100, stillFocused: false, expectedPID: 100, restores: true),
+            .init(name: "invalid focus is not a destination", enabled: false, focused: 0, original: 100, stillFocused: false, expectedPID: 100, restores: true),
+            .init(name: "missing target does not invent a PID", enabled: true, focused: nil, original: nil, stillFocused: false, expectedPID: nil, restores: true),
         ]
-        for (name, enabled, focused, original, stillFocused, expectedPID, restores) in cases {
+        for test in cases {
             let result = DictationTargetPolicy.resolve(
-                returnToStartingField: enabled, focusedPID: focused, ownPID: 999,
-                originalPID: original, originalFieldIsFocused: stillFocused
+                returnToStartingField: test.enabled,
+                focusedPID: test.focused,
+                ownPID: 999,
+                originalPID: test.original,
+                originalFieldIsFocused: test.stillFocused
             )
-            precondition(result.pid == expectedPID && result.shouldRestoreOriginalFocus == restores, name)
+            precondition(result.pid == test.expectedPID && result.shouldRestoreOriginalFocus == test.restores, test.name)
         }
         print("PASS: \(cases.count) dictation destination cases, including app switches, field switches, overlays and missing focus")
     }
