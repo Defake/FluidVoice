@@ -1322,6 +1322,7 @@ struct ContentView: View {
             }
 
             Section {
+                self.sidebarNavigationLink(.welcome, title: "Dashboard", systemImage: "house.fill")
                 self.sidebarNavigationLink(.history, title: "History", systemImage: "clock.arrow.circlepath")
                 self.sidebarNavigationLink(.stats, title: "Stats", systemImage: "chart.bar.fill")
             } header: {
@@ -1329,7 +1330,6 @@ struct ContentView: View {
             }
 
             Section {
-                self.sidebarNavigationLink(.welcome, title: "Dashboard", systemImage: "house.fill")
                 self.sidebarNavigationLink(.changelog, title: "Change logs", systemImage: "doc.text.magnifyingglass")
                 self.sidebarNavigationLink(.feedback, title: "Feedback", systemImage: "envelope.fill")
             } header: {

@@ -269,36 +269,52 @@ private struct DashboardRecentRow: View {
     let entry: TranscriptionHistoryEntry
     @Environment(\.theme) private var theme
     @State private var copied = false
+    @State private var copyRevision = 0
+    @State private var hovered = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            HistoryAppIcon(appName: self.entry.appName)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(self.entry.previewText).font(self.theme.typography.bodySmall).lineLimit(2)
-                HStack(spacing: 6) {
-                    Text(self.entry.appName.isEmpty ? "Unknown app" : self.entry.appName)
-                    Text("·")
-                    Text(self.entry.timestamp, style: .date)
+        Button {
+            guard let text = self.entry.clipboardText else { return }
+            ClipboardAudit.record("ui_copy_begin")
+            NSPasteboard.general.clearContents()
+            self.copied = NSPasteboard.general.setString(text, forType: .string)
+            ClipboardAudit.record("ui_copy_end")
+            self.copyRevision += 1
+        } label: {
+            HStack(spacing: 12) {
+                HistoryAppIcon(appName: self.entry.appName)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(self.entry.previewText).font(self.theme.typography.bodySmall).lineLimit(2)
+                    HStack(spacing: 6) {
+                        Text(self.entry.appName.isEmpty ? "Unknown app" : self.entry.appName)
+                        Text("·")
+                        Text(self.entry.timestamp, style: .date)
+                    }
+                    .font(self.theme.typography.caption).foregroundStyle(.secondary)
                 }
-                .font(self.theme.typography.caption).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button {
-                guard let text = self.entry.clipboardText else { return }
-                ClipboardAudit.record("ui_copy_begin")
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                ClipboardAudit.record("ui_copy_end")
-                self.copied = true
-            } label: {
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if self.copied {
+                    Text("Copied").font(self.theme.typography.caption)
+                        .foregroundStyle(self.theme.palette.accent)
+                }
                 Image(systemName: self.copied ? "checkmark" : "doc.on.doc")
+                    .foregroundStyle(self.copied ? self.theme.palette.accent : self.theme.palette.secondaryText)
             }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
-            .disabled(self.entry.clipboardText == nil)
-            .help(self.copied ? "Copied" : "Copy dictation")
-            .accessibilityLabel(self.copied ? "Copied dictation" : "Copy dictation")
+            .padding(18)
+            .background(self.theme.palette.accent.opacity(self.hovered ? 0.06 : 0))
+            .contentShape(Rectangle())
         }
-        .padding(18)
+        .buttonStyle(.plain)
+        .disabled(self.entry.clipboardText == nil)
+        .onHover { self.hovered = $0 && self.entry.clipboardText != nil }
+        .help(self.copied ? "Copied" : "Click anywhere to copy dictation")
+        .accessibilityLabel(self.copied ? "Copied dictation" : "Copy dictation")
+        .accessibilityValue(self.entry.previewText)
+        .task(id: self.copyRevision) {
+            guard self.copyRevision > 0 else { return }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            self.copied = false
+        }
     }
 }
 
