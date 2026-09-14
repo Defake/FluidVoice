@@ -83,30 +83,7 @@ struct OnboardingAIEnhancementStepView: View {
                 VStack(spacing: 0) {
                     FluidOnboardingCompactProgress(value: self.progressValue)
                         .padding(.top, 28)
-                    OnboardingFittedContent(width: self.isReady ? 844 : 944, heightAnimation: self.reduceMotion ? nil : .easeInOut(duration: 0.32)) {
-                        VStack(spacing: 0) {
-                            if !self.isReady {
-                                self.hero.padding(.bottom, 24)
-                            }
-                            if self.isReady {
-                                self.introductionScene
-                            } else {
-                                self.offer
-                            }
-                            if !self.isReady {
-                                Text("You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
-                                    .font(self.theme.typography.caption)
-                                    .foregroundStyle(.white.opacity(0.46))
-                                    .multilineTextAlignment(.center)
-                                    .padding(.top, 28)
-                            }
-                        }
-                        .frame(maxWidth: self.isReady ? 780 : 880)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 36)
-                        .padding(.bottom, 24)
-                    }
+                    self.mainContent
                     HStack(alignment: .center, spacing: 20) {
                         self.action(id: "back", title: "Back", tone: .secondary, width: 132) {
                             if self.isReady && self.showPractice {
@@ -167,6 +144,39 @@ struct OnboardingAIEnhancementStepView: View {
         .task { self.setup.refresh() }
         .onDisappear {
             self.setup.cancel()
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if self.isReady {
+            OnboardingFittedContent(width: 844, heightAnimation: self.reduceMotion ? nil : .easeInOut(duration: 0.32)) {
+                self.introductionScene
+                    .frame(maxWidth: 780)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 36)
+                    .padding(.bottom, 24)
+            }
+        } else {
+            // Keep example text at its designed size. Only the offer scrolls;
+            // Back, Skip and Enable remain in the fixed footer at every window height.
+            ScrollView {
+                VStack(spacing: 0) {
+                    self.hero.padding(.bottom, 24)
+                    self.offer
+                    Text("You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(.white.opacity(0.46))
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 28)
+                }
+                .frame(maxWidth: 880)
+                .padding(.horizontal, 32)
+                .padding(.top, 36)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 
