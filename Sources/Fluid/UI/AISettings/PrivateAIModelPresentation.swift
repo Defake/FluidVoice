@@ -1,15 +1,5 @@
 import Foundation
 
-/// A RAM-based suggestion only; never selects, loads, downloads, or persists a model.
-enum PrivateAIModelRecommendation {
-    // First accessed from the settings background task; physical RAM cannot change during this process.
-    static let currentModelID = modelID(physicalMemory: ProcessInfo.processInfo.physicalMemory)
-
-    static func modelID(physicalMemory: UInt64) -> String {
-        physicalMemory >= 16 * 1024 * 1024 * 1024 ? "fluid-1-mini-96k-dflash" : "fluid-1-pico-96k-dflash"
-    }
-}
-
 /// UI-only previews. These identifiers are never registered with a runtime or download provider.
 enum PrivateAIUpcomingModel: String, CaseIterable, Identifiable {
     case quad = "preview-upcoming-quad"

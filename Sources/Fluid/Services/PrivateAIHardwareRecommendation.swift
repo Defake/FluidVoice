@@ -48,7 +48,7 @@ enum PrivateAIHardwareRecommendation {
 
     static func recommend(for hardware: Hardware) -> Recommendation {
         let bandwidth = self.bandwidth(chip: hardware.chip, gpuCores: hardware.gpuCoreCount)
-        guard hardware.memoryBytes >= 18 * 1024 * 1024 * 1024 else {
+        guard hardware.memoryBytes >= 16 * 1024 * 1024 * 1024 else {
             return Recommendation(model: .pico, reason: .insufficientMemory, bandwidthGBps: bandwidth)
         }
         guard let bandwidth else {

@@ -18,8 +18,10 @@ struct PrivateAIHardwareRecommendationTests {
             ("Apple M5 Pro", 20, 64, .mini), ("Apple M5 Max", 32, 36, .mini),
             ("Apple M5 Max", 40, 128, .mini), ("Apple M1 Ultra", 48, 64, .mini),
             ("Apple M2 Ultra", 60, 64, .mini), ("Apple M3 Ultra", 60, 96, .mini),
-            ("Apple M5 Max", 40, 8, .pico), ("Apple M5 Max", 40, 16, .pico), ("Apple M5 Max", 40, 24, .mini),
+            ("Apple M5 Max", 40, 8, .pico), ("Apple M5 Max", 40, 16, .mini), ("Apple M5 Max", 40, 24, .mini),
             ("Apple M3 Pro", 18, 18, .mini),
+            ("Apple M1 Pro", 16, 16, .mini), ("Apple M2 Pro", 19, 16, .mini),
+            ("Apple M4 Pro", 20, 18, .mini), ("Apple M4", 10, 16, .pico),
             ("Intel Core i9", nil, 64, .pico), ("Apple M99 Max", 40, 128, .pico),
             ("", nil, 0, .pico), ("  APPLE   M1 MAX  ", nil, 32, .mini),
         ]
@@ -27,7 +29,7 @@ struct PrivateAIHardwareRecommendationTests {
             let hardware = Policy.Hardware(chip: chip, memoryBytes: ram * gib, gpuCoreCount: cores)
             precondition(Policy.recommend(for: hardware).model == expected, "Unexpected recommendation: \(chip), \(ram) GB")
         }
-        let belowBoundary = Policy.Hardware(chip: "Apple M1 Max", memoryBytes: 18 * gib - 1, gpuCoreCount: nil)
+        let belowBoundary = Policy.Hardware(chip: "Apple M1 Max", memoryBytes: 16 * gib - 1, gpuCoreCount: nil)
         precondition(Policy.recommend(for: belowBoundary).reason == .insufficientMemory)
         let unknown = Policy.Hardware(chip: "unknown", memoryBytes: 128 * gib, gpuCoreCount: nil)
         precondition(Policy.recommend(for: unknown).reason == .unknownHardware)
