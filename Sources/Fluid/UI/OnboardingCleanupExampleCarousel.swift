@@ -107,12 +107,12 @@ struct OnboardingCleanupExampleCarousel: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 68)
                     .accessibilityAddTraits(.isHeader)
-                self.mode(title: "Basic mode", text: example.spoken)
+                self.mode(title: "Basic · Without Fluid Intelligence", text: example.spoken, enhanced: false)
                     .frame(minHeight: 88, alignment: .topLeading)
                 Rectangle()
                     .fill(.white.opacity(0.12))
                     .frame(height: 1)
-                self.mode(title: "Smart mode", text: example.cleaned)
+                self.mode(title: "Smart · With Fluid Intelligence", text: example.cleaned, enhanced: true)
             }
         }
         // Keep text at its final reading width while the glass surface slides and narrows.
@@ -135,12 +135,12 @@ struct OnboardingCleanupExampleCarousel: View {
         }
     }
 
-    private func mode(title: String, text: String) -> some View {
+    private func mode(title: String, text: String, enhanced: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.fluidSystem(size: 18, weight: .regular, design: .serif))
                 .tracking(-0.5)
-                .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.91))
+                .foregroundStyle(enhanced ? Color(red: 0.48, green: 0.72, blue: 1) : .white.opacity(0.62))
             Text(text)
                 .font(.fluidSystem(size: 13, weight: .regular))
                 .foregroundStyle(.white.opacity(0.9))

@@ -3,6 +3,7 @@ import SwiftUI
 /// Fits the page above its fixed navigation footer, without a page-level scroll view.
 struct OnboardingFittedContent<Content: View>: View {
     let width: CGFloat
+    var heightAnimation: Animation? = nil
     @ViewBuilder let content: () -> Content
     @State private var measuredHeight: CGFloat = 1
 
@@ -17,7 +18,12 @@ struct OnboardingFittedContent<Content: View>: View {
                         Color.clear.preference(key: OnboardingContentHeightKey.self, value: contentGeometry.size.height)
                     }
                 }
-                .onPreferenceChange(OnboardingContentHeightKey.self) { self.measuredHeight = $0 }
+                .onPreferenceChange(OnboardingContentHeightKey.self) { height in
+                    guard abs(height - self.measuredHeight) > 0.5 else { return }
+                    withAnimation(self.measuredHeight > 1 ? self.heightAnimation : nil) {
+                        self.measuredHeight = height
+                    }
+                }
                 .scaleEffect(max(0, scale))
                 .frame(width: geometry.size.width, height: geometry.size.height)
         }

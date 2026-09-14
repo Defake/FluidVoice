@@ -47,9 +47,9 @@ struct OnboardingAIEnhancementStepView: View {
     }
 
     private var enableTitle: String {
-        guard let model = self.setup.model else { return "Download & Enable" }
-        if model.installed { return "Enable Fluid Intelligence" }
-        return self.sizeText.map { "Download & Enable · \($0)" } ?? "Download & Enable"
+        guard let model = self.setup.model else { return "Download" }
+        if model.installed { return "Enable" }
+        return self.sizeText.map { "Download · \($0)" } ?? "Download"
     }
 
     var body: some View {
@@ -59,7 +59,7 @@ struct OnboardingAIEnhancementStepView: View {
                 VStack(spacing: 0) {
                     FluidOnboardingCompactProgress(value: self.progressValue)
                         .padding(.top, 28)
-                    OnboardingFittedContent(width: self.isReady ? 680 : 944) {
+                    OnboardingFittedContent(width: self.isReady ? 680 : 944, heightAnimation: self.reduceMotion ? nil : .easeInOut(duration: 0.32)) {
                         VStack(spacing: 0) {
                             self.hero
                                 .padding(.bottom, 24)
@@ -70,7 +70,7 @@ struct OnboardingAIEnhancementStepView: View {
                             }
                             Text(self.isReady
                                 ? "These same controls appear whenever you dictate."
-                                : "You can change this or turn it off later in Settings.")
+                                : "You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
                                 .font(self.theme.typography.caption)
                                 .foregroundStyle(.white.opacity(0.46))
                                 .multilineTextAlignment(.center)
@@ -82,7 +82,7 @@ struct OnboardingAIEnhancementStepView: View {
                         .padding(.top, 36)
                         .padding(.bottom, 24)
                     }
-                    HStack {
+                    HStack(alignment: .center, spacing: 20) {
                         self.action(id: "back", title: "Back", tone: .secondary, width: 132) {
                             self.setup.cancel()
                             self.onBack()
@@ -135,16 +135,25 @@ struct OnboardingAIEnhancementStepView: View {
         VStack(spacing: 14) {
             FluidOnboardingCompactAppIconMark(size: 52)
                 .padding(.bottom, 8)
-            (self.isReady ? Text("Try it right here.") : Text("Now, let's get a lil ")
-                + Text("fancy").italic().foregroundColor(FluidOnboardingLandingColors.blue) + Text("."))
+            Text(self.isReady ? "Try it right here." : "Meet Fluid Intelligence")
                 .font(.fluidSystem(size: 32, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            Text(self.isReady ? "Try three short examples with Smart mode." : "Fluid Intelligence can…")
+            Text(self.isReady
+                ? "Try three short examples with Smart mode."
+                : "Built for FluidVoice. Optimized for your Mac. It turns your spoken words into clear, formatted text. Entirely on your device.")
                 .font(.fluidSystem(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.64))
                 .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .frame(maxWidth: 540)
+            if !self.isReady {
+                Text("Fluid Intelligence can…")
+                    .font(.fluidSystem(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.top, 4)
+            }
         }
     }
 
@@ -157,11 +166,7 @@ struct OnboardingAIEnhancementStepView: View {
                     .controlSize(.small)
             } else if self.setup.isBusy {
                 self.preparationProgress
-                if self.setup.phase != .cancelling {
-                    Button("Cancel") { self.setup.cancel() }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.white.opacity(0.8))
-                }
+                    .transition(.opacity)
             }
             if let error = self.setup.errorMessage {
                 Text(error)
@@ -181,6 +186,7 @@ struct OnboardingAIEnhancementStepView: View {
             }
         }
         .frame(minHeight: 180)
+        .animation(self.reduceMotion ? nil : .easeInOut(duration: 0.32), value: self.setup.isBusy)
     }
 
     private var offerNavigation: some View {
@@ -195,7 +201,7 @@ struct OnboardingAIEnhancementStepView: View {
             .disabled(!self.canNavigate)
 
             if self.setup.phase == .offered {
-                self.action(id: "enable", title: self.enableTitle, tone: .primary, width: 260) {
+                self.action(id: "enable", title: self.enableTitle, tone: .primary, width: 210) {
                     self.setup.enable { model in
                         guard self.canNavigate else {
                             throw SetupError(message: "Stop dictation, then enable cleanup again.")
@@ -208,29 +214,73 @@ struct OnboardingAIEnhancementStepView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
+                .transition(.opacity)
+            } else {
+                Color.clear.frame(width: 210, height: 48)
+                    .accessibilityHidden(true)
             }
         }
+        .animation(self.reduceMotion ? nil : .easeInOut(duration: 0.2), value: self.setup.phase == .offered)
     }
 
     private var preparationProgress: some View {
-        VStack(spacing: 10) {
-            if self.setup.phase == .downloading, let fraction = self.setup.progress?.fraction {
-                ProgressView(value: fraction)
-            } else {
-                ProgressView().controlSize(.small)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                if self.setup.phase == .downloading {
+                    HStack(spacing: 12) {
+                        if let fraction = self.setup.progress?.fraction {
+                            ProgressView(value: fraction)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
+                        if let bytes = self.setup.progress?.bytes {
+                            Text(bytes)
+                                .font(self.theme.typography.caption)
+                                .foregroundStyle(.white.opacity(0.62))
+                                .monospacedDigit()
+                                .fixedSize()
+                        }
+                    }
+                    Text(self.downloadProgressTitle)
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(.white.opacity(0.58))
+                        .monospacedDigit()
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(self.preparationStatus)
+                            .font(self.theme.typography.captionStrong)
+                            .foregroundStyle(.white.opacity(0.62))
+                    }
+                }
             }
-            Text(self.preparationStatus)
-                .font(self.theme.typography.captionStrong)
-                .foregroundStyle(self.theme.palette.warning)
-                .multilineTextAlignment(.center)
-            if let bytes = self.setup.progress?.bytes {
-                Text(bytes)
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(.white.opacity(0.5))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if self.setup.phase != .cancelling {
+                Button { self.setup.cancel() } label: {
+                    Label("Cancel", systemImage: "xmark")
+                        .font(self.theme.typography.bodySmallStrong)
+                        .frame(minWidth: 80, minHeight: 32)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color(red: 1, green: 0.48, blue: 0.48))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.red.opacity(0.18), lineWidth: 1))
             }
         }
         .tint(FluidOnboardingLandingColors.blue)
-        .frame(maxWidth: 340)
+        .frame(height: 44)
+        .padding(16)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.09), lineWidth: 1))
+        .frame(maxWidth: 600)
+    }
+
+    private var downloadProgressTitle: String {
+        guard let fraction = self.setup.progress?.fraction, fraction.isFinite else { return "Downloading…" }
+        let percent = min(max(fraction, 0), 1).formatted(.percent.precision(.fractionLength(0)))
+        return "Downloading \(percent)"
     }
 
     private var preparationStatus: String {
