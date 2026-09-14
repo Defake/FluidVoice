@@ -3,26 +3,21 @@ import AVFoundation
 import SwiftUI
 
 /// Home reuses the history and stats snapshots; no polling or duplicate aggregation.
-struct DashboardView<Practice: View>: View {
+struct DashboardView: View {
     @ObservedObject var asr: ASRService
     @Binding var selectedSidebarItem: SidebarItem?
-    let playgroundUsed: Bool
     let accessibilityEnabled: Bool
     let openAccessibilitySettings: () -> Void
     let openShortcutSettings: () -> Void
-    let focusPractice: () -> Void
     let replayOnboarding: () -> Void
-    @ViewBuilder let practice: () -> Practice
 
     @ObservedObject private var history = TranscriptionHistoryStore.shared
     @ObservedObject private var stats = StatsSnapshotStore.shared
     @ObservedObject private var settings = SettingsStore.shared
     @ObservedObject private var contentState = NotchContentState.shared
     @Environment(\.theme) private var theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var statsOwner = UUID()
-    @State private var showPractice = false
     @State private var greeting = "Welcome back."
 
     private var busy: Bool { self.asr.isRunning || self.asr.isStarting || self.contentState.isProcessing }
@@ -30,29 +25,20 @@ struct DashboardView<Practice: View>: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollViewReader { proxy in
+            Group {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
                         self.header
                         if geometry.size.width >= 900 {
                             HStack(alignment: .top, spacing: 28) {
-                                self.mainColumn(proxy: proxy)
+                                self.mainColumn
                                     .frame(maxWidth: .infinity)
-                                self.quickActions(proxy: proxy)
+                                self.quickActions
                                     .frame(width: min(300, (geometry.size.width - 76) * 0.25))
                             }
                         } else {
-                            self.mainColumn(proxy: proxy)
-                            self.quickActions(proxy: proxy)
-                        }
-                        if self.showPractice {
-                            self.practice()
-                                .id("dashboard-practice")
-                                .task {
-                                    guard NSApp.isActive else { return }
-                                    proxy.scrollTo("dashboard-practice", anchor: .top)
-                                    self.focusPractice()
-                                }
+                            self.mainColumn
+                            self.quickActions
                         }
                     }
                     .padding(28)
@@ -68,12 +54,6 @@ struct DashboardView<Practice: View>: View {
             let salutation = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
             let name = NSFullUserName().split(separator: " ").first.map(String.init) ?? ""
             self.greeting = name.isEmpty ? "\(salutation)." : "\(salutation), \(name)."
-        }
-        .onChange(of: self.asr.isRunning) { _, running in
-            guard running else { return }
-            let target = self.contentState.recordingTargetPID
-            guard target == ProcessInfo.processInfo.processIdentifier || (target == nil && NSApp.isActive) else { return }
-            self.showPractice = true
         }
         .onDisappear { self.stats.deactivate(self.statsOwner) }
     }
@@ -92,11 +72,11 @@ struct DashboardView<Practice: View>: View {
         }
     }
 
-    private func mainColumn(proxy: ScrollViewProxy) -> some View {
+    private var mainColumn: some View {
         VStack(alignment: .leading, spacing: 28) {
             self.statistics
             self.recents
-            self.learningCenter(proxy: proxy)
+            self.learningCenter
         }
     }
 
@@ -159,7 +139,7 @@ struct DashboardView<Practice: View>: View {
         }
     }
 
-    private func learningCenter(proxy: ScrollViewProxy) -> some View {
+    private var learningCenter: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Learning center").font(self.theme.typography.sectionTitle)
@@ -176,7 +156,6 @@ struct DashboardView<Practice: View>: View {
                     }
                     self.lesson("Typing access", icon: "keyboard", complete: self.accessibilityEnabled, detail: "Dictate in any app", action: self.openAccessibilitySettings)
                     self.lesson("AI cleanup", icon: "sparkles", complete: DictationAIPostProcessingGate.isProviderConfigured(), detail: "Optional · polish text") { self.selectedSidebarItem = .aiEnhancements }
-                    self.lesson("Try dictation", icon: "play", complete: self.playgroundUsed, detail: "Try your setup") { self.openPractice(proxy) }
                 }
                 .padding(.vertical, 4)
             }
@@ -206,7 +185,7 @@ struct DashboardView<Practice: View>: View {
         .accessibilityLabel("\(title), \(complete ? "configured" : detail)")
     }
 
-    private func quickActions(proxy: ScrollViewProxy) -> some View {
+    private var quickActions: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text("Quick actions").font(self.theme.typography.sectionTitle)
             if !self.shortcut.isEmpty {
@@ -218,8 +197,6 @@ struct DashboardView<Practice: View>: View {
                 self.quickAction("Add a word", detail: "Your personal dictionary", icon: "plus") { self.selectedSidebarItem = .customDictionary }
                 Divider().opacity(0.4)
                 self.quickAction("Change shortcut", detail: "Make it yours", icon: "keyboard", action: self.openShortcutSettings)
-                Divider().opacity(0.4)
-                self.quickAction("Try dictation", detail: "Speak a few words", icon: "mic") { self.openPractice(proxy) }
             }
             HStack(spacing: 12) {
                 Image(systemName: "note.text")
@@ -271,17 +248,6 @@ struct DashboardView<Practice: View>: View {
             .padding(.vertical, 16).contentShape(Rectangle())
         }
         .buttonStyle(.plain).disabled(self.busy)
-    }
-
-    private func openPractice(_ proxy: ScrollViewProxy) {
-        if self.showPractice {
-            withAnimation(self.reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                proxy.scrollTo("dashboard-practice", anchor: .top)
-            }
-            self.focusPractice()
-        } else {
-            self.showPractice = true
-        }
     }
 }
 

@@ -1,222 +1,34 @@
-//
-//  WelcomeView.swift
-//  fluid
-//
-//  Welcome and setup guide view
-//
-
 import AppKit
 import AVFoundation
 import SwiftUI
 
 struct WelcomeView: View {
     @EnvironmentObject var appServices: AppServices
-    private var asr: ASRService {
-        self.appServices.asr
-    }
-
     @ObservedObject private var settings = SettingsStore.shared
-    @ObservedObject private var contentState = NotchContentState.shared
-    @State private var isStoppingPractice = false
     @Binding var selectedSidebarItem: SidebarItem?
     @Binding var playgroundUsed: Bool
-    var isTranscriptionFocused: FocusState<Bool>.Binding
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.theme) private var theme
-
     let accessibilityEnabled: Bool
-    let stopAndProcessTranscription: () async -> Void
-    let startRecording: () -> Void
     let openAccessibilitySettings: () -> Void
-    let restartApp: () -> Void
     let openShortcutSettings: () -> Void
 
     var body: some View {
         DashboardView(
-            asr: self.asr,
+            asr: self.appServices.asr,
             selectedSidebarItem: self.$selectedSidebarItem,
-            playgroundUsed: self.playgroundUsed,
             accessibilityEnabled: self.accessibilityEnabled,
             openAccessibilitySettings: self.openAccessibilitySettings,
             openShortcutSettings: self.openShortcutSettings,
-            focusPractice: { self.isTranscriptionFocused.wrappedValue = true },
             replayOnboarding: {
                 self.settings.resetOnboardingProgress()
                 self.playgroundUsed = false
             }
-        ) { self.playground }
-            .task {
-                await AudioStartupGate.shared.scheduleOpenAfterInitialUISettled()
-                await AudioStartupGate.shared.waitUntilOpen()
-                guard !Task.isCancelled else { return }
-                self.asr.micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-                await self.asr.checkIfModelsExistAsync()
-            }
-    }
-
-    private var practiceRecordingDisabled: Bool {
-        self.isStoppingPractice || self.asr.isStarting || self.contentState.isProcessing ||
-            (self.asr.micStatus == .authorized && !self.asr.isAsrReady && !self.asr.isRunning)
-    }
-
-    private var practiceRecordingTitle: String {
-        if self.isStoppingPractice || self.contentState.isProcessing { return "Processing…" }
-        if self.asr.isStarting { return "Starting…" }
-        if self.asr.isRunning { return "Stop Recording" }
-        switch self.asr.micStatus {
-        case .authorized: return "Start Recording"
-        case .notDetermined: return "Allow Microphone"
-        default: return "Open Microphone Settings"
-        }
-    }
-
-    private func handlePracticeRecording() {
-        guard !self.practiceRecordingDisabled else { return }
-        if self.asr.isRunning {
-            // Latch before creating the task: ASR can remain running during shutdown.
-            self.isStoppingPractice = true
-            Task { @MainActor in
-                defer { self.isStoppingPractice = false }
-                await self.stopAndProcessTranscription()
-            }
-        } else {
-            switch self.asr.micStatus {
-            case .authorized: self.startRecording()
-            case .notDetermined: self.asr.requestMicAccess()
-            default: self.asr.openSystemSettingsForMic()
-            }
-        }
-    }
-
-    private var playground: some View {
-        ThemedCard(hoverEffect: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Test Playground")
-                                .font(self.theme.typography.sectionTitle)
-                            Text("Click record, speak, and see your transcription")
-                                .font(self.theme.typography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "text.bubble")
-                            .font(self.theme.typography.titleIcon)
-                    }
-
-                    Spacer()
-
-                    if self.asr.isRunning {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(.red)
-                                .frame(width: 6, height: 6)
-                            Text("Recording...")
-                                .font(self.theme.typography.captionStrong)
-                                .foregroundStyle(.red)
-                        }
-                    } else if !self.asr.finalText.isEmpty {
-                        Text("\(self.asr.finalText.count) characters")
-                            .font(self.theme.typography.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    // Recording Control — centered button
-                    HStack {
-                        Spacer()
-                        Button(action: self.handlePracticeRecording) {
-                            HStack(spacing: 8) {
-                                Image(systemName: self.asr.isRunning && !self.isStoppingPractice ? "stop.fill" : "mic.fill")
-                                Text(self.practiceRecordingTitle)
-                            }
-                            .frame(maxWidth: 220)
-                        }
-                        .fluidButton(.primary, size: .large, isRecording: self.asr.isRunning)
-                        .buttonHoverEffect()
-                        .scaleEffect(!self.reduceMotion && self.asr.isRunning ? 1.02 : 1.0)
-                        .animation(self.reduceMotion ? nil : .spring(response: 0.3), value: self.asr.isRunning)
-                        .disabled(self.practiceRecordingDisabled)
-                        Spacer()
-                    }
-
-                    // Text Area
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextEditor(text: Binding(
-                            get: { self.asr.finalText },
-                            set: { self.asr.finalText = $0 }
-                        ))
-                        .font(self.theme.typography.body)
-                        .focused(self.isTranscriptionFocused)
-                        .frame(height: 120)
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(
-                                    self.asr.isRunning ? self.theme.palette.accent.opacity(0.06) : self.theme.palette.cardBackground
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(
-                                            self.asr.isRunning ? self.theme.palette.accent.opacity(0.4) : self.theme.palette.cardBorder.opacity(0.6),
-                                            lineWidth: self.asr.isRunning ? 2 : 1
-                                        )
-                                )
-                        )
-                        .scrollContentBackground(.hidden)
-                        .overlay(
-                            VStack(spacing: 8) {
-                                if self.asr.isRunning {
-                                    Image(systemName: "waveform")
-                                        .font(self.theme.typography.titleIcon)
-                                        .foregroundStyle(self.theme.palette.accent)
-                                    Text("Listening... Speak now!")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                        .foregroundStyle(self.theme.palette.accent)
-                                    Text("Transcription will appear when you stop recording")
-                                        .font(self.theme.typography.caption)
-                                        .foregroundStyle(self.theme.palette.accent.opacity(0.7))
-                                } else if self.asr.finalText.isEmpty {
-                                    Image(systemName: "text.bubble")
-                                        .font(self.theme.typography.titleIcon)
-                                        .foregroundStyle(.secondary.opacity(0.5))
-                                    Text("Press record or your hotkey to begin")
-                                        .font(self.theme.typography.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .allowsHitTesting(false)
-                        )
-
-                        if !self.asr.finalText.isEmpty {
-                            HStack(spacing: 8) {
-                                Button {
-                                    ClipboardAudit.record("ui_copy_begin")
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(self.asr.finalText, forType: .string)
-                                    ClipboardAudit.record("ui_copy_end")
-                                } label: {
-                                    Label("Copy Text", systemImage: "doc.on.doc")
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(self.theme.palette.accent)
-                                .controlSize(.small)
-
-                                Button("Clear & Test Again") {
-                                    self.asr.finalText = ""
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(16)
+        )
+        .task {
+            await AudioStartupGate.shared.scheduleOpenAfterInitialUISettled()
+            await AudioStartupGate.shared.waitUntilOpen()
+            guard !Task.isCancelled else { return }
+            self.appServices.asr.micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+            await self.appServices.asr.checkIfModelsExistAsync()
         }
     }
 }
