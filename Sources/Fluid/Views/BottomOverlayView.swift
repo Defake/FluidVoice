@@ -2134,9 +2134,6 @@ private struct DynamicPreviewHeightPreferenceKey: PreferenceKey {
 // MARK: - Bottom Overlay SwiftUI View
 
 struct BottomOverlayView: View {
-    private var showsOnboardingHint: Bool { self.contentState.showsOnboardingModeHint }
-    @State private var onboardingHighlight = false
-
     @ObservedObject private var contentState = NotchContentState.shared
     @ObservedObject private var appServices = AppServices.shared
     @ObservedObject private var activeAppMonitor = ActiveAppMonitor.shared
@@ -2889,7 +2886,7 @@ struct BottomOverlayView: View {
                 )
         )
         .overlay(alignment: .top) {
-            if self.isHoveringPromptChip, !self.showsOnboardingHint, self.isPromptSelectableMode, !self.contentState.isProcessing {
+            if self.isHoveringPromptChip, self.isPromptSelectableMode, !self.contentState.isProcessing {
                 Text("Select dictation mode")
                     .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
@@ -2908,24 +2905,6 @@ struct BottomOverlayView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Select dictation mode")
-        .overlay {
-            if self.showsOnboardingHint {
-                RoundedRectangle(cornerRadius: self.promptSelectorCornerRadius)
-                    .stroke(FluidOnboardingLandingColors.blue, lineWidth: 1.5)
-                    .padding(-3)
-                    .opacity(self.reduceMotion || self.onboardingHighlight ? 1 : 0.2)
-                    .allowsHitTesting(false)
-            }
-        }
-        .task(id: self.showsOnboardingHint) {
-            guard self.showsOnboardingHint else {
-                self.onboardingHighlight = false
-                return
-            }
-            withAnimation(self.reduceMotion ? nil : .easeOut(duration: 0.45)) {
-                self.onboardingHighlight = true
-            }
-        }
     }
 
     private var promptSelectorView: some View {
@@ -2944,7 +2923,6 @@ struct BottomOverlayView: View {
                     }
                     .onTapGesture {
                         guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else { return }
-                        self.contentState.showsOnboardingModeHint = false
                         self.closeModeMenu()
                         self.closeActionsMenu()
                         BottomOverlayPromptMenuController.shared.updateAnchor(
@@ -3504,39 +3482,6 @@ struct BottomOverlayView: View {
         )
         // Reserve space around the pill so its drop shadow isn't clipped by the (content-sized) window.
         .padding(self.isPillSize ? 26 : 0)
-        .overlay(alignment: .top) {
-            if self.showsOnboardingHint {
-                VStack(spacing: 5) {
-                    Text("Meet your overlay")
-                        .font(.fluidSystem(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.94))
-                    Text("Your dictation controls, in any app.")
-                        .font(.fluidSystem(size: 11))
-                        .foregroundStyle(.white.opacity(0.62))
-                    Image(systemName: "arrow.down")
-                        .font(.fluidSystem(size: 11, weight: .medium))
-                        .foregroundStyle(FluidOnboardingLandingColors.blue)
-                }
-                .fixedSize()
-                .opacity(self.reduceMotion || self.onboardingHighlight ? 1 : 0)
-                .offset(y: -64 + (self.reduceMotion || self.onboardingHighlight ? 0 : -8))
-                .allowsHitTesting(false)
-            }
-        }
-        .padding(.top, self.showsOnboardingHint ? 82 : 0)
-        .onChange(of: self.showsOnboardingHint) { _, _ in
-            BottomOverlayWindowController.shared.refreshSizeForContent()
-        }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .scaleEffect(self.overlayAnimatedScale, anchor: .center)
-        .offset(y: self.overlayAnimatedOffsetY)
-        .opacity(self.overlayAnimatedOpacity)
-        .animation(.timingCurve(0.22, 0.0, 0.2, 1.0, duration: 0.02), value: self.contentState.isBottomOverlayDismissing)
-        .onChange(of: self.settings.overlaySize) { _, _ in
-            self.dynamicPreviewResizeBucket = self.previewResizeBucket(for: self.currentPreviewSizingText)
-            self.frozenDynamicPreviewHeight = nil
-            BottomOverlayWindowController.shared.refreshSizeForContent()
-        }
         .onChange(of: self.contentState.isBottomOverlayPresented) { _, presented in
             self.borderAnimationStartedAt = presented ? Date() : nil
         }

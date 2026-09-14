@@ -97,7 +97,6 @@ class NotchContentState: ObservableObject {
     /// Keep overlay state bounded even during very long recordings.
     private static let maxStoredTranscriptionCharacters = SettingsStore.transcriptionPreviewCharLimitRange.upperBound
 
-    @Published var showsOnboardingModeHint = false
     @Published var transcriptionText: String = ""
     @Published var mode: OverlayMode = .dictation
     @Published var promptPickerMode: SettingsStore.PromptMode = .dictate

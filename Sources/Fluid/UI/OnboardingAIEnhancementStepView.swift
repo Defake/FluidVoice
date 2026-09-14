@@ -24,7 +24,6 @@ struct OnboardingAIEnhancementStepView: View {
     @StateObject private var setup = OnboardingAISetupController.live
     @StateObject private var carouselAutoplay = OnboardingCarouselAutoplay()
     @State private var hoveredButtonID: String?
-    @State private var overlayOwner = UUID()
     @State private var introductionFinished = false
     @State private var showPractice = false
     @State private var introductionPlaybackID = UUID()
@@ -171,7 +170,6 @@ struct OnboardingAIEnhancementStepView: View {
         .task { self.setup.refresh() }
         .onDisappear {
             self.setup.cancel()
-            NotchOverlayManager.shared.endOnboardingOverlay(owner: self.overlayOwner)
         }
     }
 
@@ -426,7 +424,6 @@ struct OnboardingAIEnhancementStepView: View {
             isActive: !self.isShowingIntroduction,
             shortcutDisplay: self.shortcutDisplay
         )
-        .onDisappear { NotchOverlayManager.shared.endOnboardingOverlay(owner: self.overlayOwner) }
         .onChange(of: self.isRunning) { _, running in
             if running { self.practice.beginAttempt() }
         }
