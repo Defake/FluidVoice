@@ -187,6 +187,10 @@ struct DashboardView: View {
                         .font(.fluidSystem(size: 10, weight: .semibold))
                         .tracking(1.4).foregroundStyle(.secondary)
                     self.shortcutKey
+                    if self.settings.primaryDictationShortcuts.count > 1 {
+                        Text("+\(self.settings.primaryDictationShortcuts.count - 1) more")
+                            .font(self.theme.typography.caption).foregroundStyle(.secondary)
+                    }
                     Button(action: self.openShortcutSettings) {
                         HStack(spacing: 6) {
                             Text("Change shortcut")
@@ -240,15 +244,17 @@ struct DashboardView: View {
     @ViewBuilder
     private var shortcutKey: some View {
         let button = Button(action: self.openShortcutSettings) {
-            Text(self.shortcut)
+            Text(self.settings.primaryDictationShortcuts.first?.displayString ?? self.shortcut)
                 .font(.fluidSystem(size: 25, weight: .medium))
-                .lineLimit(1).minimumScaleFactor(0.5)
+                .lineLimit(2).minimumScaleFactor(0.5)
+                .multilineTextAlignment(.center)
                 .padding(.horizontal, 12)
                 .frame(width: 126, height: 92)
                 .contentShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
-        .help("Change your dictation shortcut")
+        .help("\(self.shortcut) — Change your dictation shortcuts")
+        .accessibilityLabel("Dictation shortcuts: \(self.shortcut)")
         if #available(macOS 26, *), !self.reduceTransparency {
             button.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         } else {
