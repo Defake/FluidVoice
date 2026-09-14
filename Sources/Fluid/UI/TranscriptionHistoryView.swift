@@ -242,6 +242,11 @@ struct TranscriptionHistoryView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                self.selectedEntryID = entry.id
+                self.copyFinalText(entry)
+            })
+            .help("Double-click to copy final text")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             VStack(spacing: 10) {
                 Button {
