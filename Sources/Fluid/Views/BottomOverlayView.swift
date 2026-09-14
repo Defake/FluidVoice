@@ -2433,7 +2433,7 @@ struct BottomOverlayView: View {
             case .off:
                 return "Basic"
             case .privateAI:
-                return "Smart"
+                return self.isAppPromptOverrideActive ? nil : "Smart"
             case .default:
                 let hasAppOverride = self.settings.resolvedDictationPromptProfile(
                     for: self.activeDictationShortcutSlot,

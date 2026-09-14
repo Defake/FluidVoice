@@ -755,19 +755,19 @@ final class SettingsStore: ObservableObject {
                 let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 return name.isEmpty ? "Untitled" : name
             }
-            return "Smart"
+            return "Default"
         case .privateAI:
             if self.isAppDictationPromptBindingActive(for: slot, appBundleID: appBundleID) {
                 if let profile = self.resolvedDictationPromptProfile(for: slot, appBundleID: appBundleID) {
                     let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
                     return name.isEmpty ? "Untitled" : name
                 }
-                return "Smart"
+                return "Default"
             }
             return "Smart"
         case let .profile(promptID):
             guard let profile = self.dictationPromptProfiles.first(where: { $0.id == promptID && $0.mode.normalized == .dictate }) else {
-                return "Smart"
+                return "Default"
             }
             let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Untitled" : name

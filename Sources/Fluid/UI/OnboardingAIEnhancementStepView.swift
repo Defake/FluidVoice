@@ -144,6 +144,7 @@ struct OnboardingAIEnhancementStepView: View {
                                 }
                             }
                             self.action(id: "intro-continue", title: "Continue", tone: .primary, width: 160) {
+                                self.introductionFinished = true
                                 self.showPractice = true
                             }
                         } else if !self.isReady {
@@ -338,7 +339,7 @@ struct OnboardingAIEnhancementStepView: View {
 
     private var introductionScene: some View {
         ZStack(alignment: .top) {
-            if self.reduceMotion {
+            if self.reduceMotion || self.introductionFinished {
                 Color.clear.aspectRatio(1560.0 / 1096.0, contentMode: .fit)
             } else {
                 OnboardingOverlayIntroductionView { self.introductionFinished = true }

@@ -55,8 +55,11 @@ private struct OnboardingIntroductionPlayer: NSViewRepresentable {
         private var player: AVPlayer?
         private var observers: [NSObjectProtocol] = []
         private var statusObservation: NSKeyValueObservation?
+        private var playbackObservation: NSKeyValueObservation?
         private var completed = false
         private var startupTimeout: DispatchWorkItem?
+        private var recoveryTimeout: DispatchWorkItem?
+        private var isRecovering = false
         private weak var view: IntroductionPlayerView?
 
         init(onComplete: @escaping () -> Void) {
@@ -77,10 +80,22 @@ private struct OnboardingIntroductionPlayer: NSViewRepresentable {
             self.player = player
             view.player = player
             let center = NotificationCenter.default
-            for name in [Notification.Name.AVPlayerItemDidPlayToEndTime, .AVPlayerItemFailedToPlayToEndTime, .AVPlayerItemPlaybackStalled] {
+            for name in [Notification.Name.AVPlayerItemDidPlayToEndTime, .AVPlayerItemFailedToPlayToEndTime] {
                 self.observers.append(center.addObserver(forName: name, object: item, queue: .main) { [weak self] _ in
                     self?.finish()
                 })
+            }
+            self.observers.append(center.addObserver(forName: .AVPlayerItemPlaybackStalled, object: item, queue: .main) { [weak self] _ in
+                guard let self, !self.completed else { return }
+                self.isRecovering = true
+                self.updatePlayback()
+            })
+            self.playbackObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, !self.completed, self.player?.timeControlStatus == .playing else { return }
+                    self.isRecovering = false
+                    self.cancelRecoveryTimeout()
+                }
             }
             // A bundled movie should load quickly, but decoding failure must not trap onboarding.
             let timeout = DispatchWorkItem { [weak self] in self?.finish() }
@@ -100,7 +115,7 @@ private struct OnboardingIntroductionPlayer: NSViewRepresentable {
                 }
             }
             self.observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                self?.player?.pause()
+                self?.updatePlayback()
             })
             self.observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.updatePlayback()
@@ -112,14 +127,30 @@ private struct OnboardingIntroductionPlayer: NSViewRepresentable {
             guard !self.completed else { return }
             if NSApp.isActive, self.view?.window?.occlusionState.contains(.visible) == true {
                 self.player?.play()
+                if self.isRecovering, self.recoveryTimeout == nil {
+                    // A stall may recover on its own. Bound visible recovery without
+                    // counting time spent in another app or a hidden window.
+                    let timeout = DispatchWorkItem { [weak self] in self?.finish() }
+                    self.recoveryTimeout = timeout
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15, execute: timeout)
+                }
             } else {
                 self.player?.pause()
+                self.cancelRecoveryTimeout()
             }
+        }
+
+        private func cancelRecoveryTimeout() {
+            self.recoveryTimeout?.cancel()
+            self.recoveryTimeout = nil
         }
 
         private func finish() {
             guard !self.completed else { return }
             self.completed = true
+            self.isRecovering = false
+            self.cancelRecoveryTimeout()
+            self.playbackObservation = nil
             self.startupTimeout?.cancel()
             self.startupTimeout = nil
             // Retain the final background frame while native practice appears over it.
@@ -134,6 +165,9 @@ private struct OnboardingIntroductionPlayer: NSViewRepresentable {
 
         func stop() {
             self.completed = true
+            self.isRecovering = false
+            self.cancelRecoveryTimeout()
+            self.playbackObservation = nil
             self.startupTimeout?.cancel()
             self.startupTimeout = nil
             self.player?.pause()
