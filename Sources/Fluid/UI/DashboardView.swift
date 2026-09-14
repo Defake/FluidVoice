@@ -186,32 +186,60 @@ struct DashboardView: View {
     }
 
     private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 18) {
             Text("Quick actions").font(self.theme.typography.sectionTitle)
             if !self.shortcut.isEmpty {
-                self.shortcutKey
-                    .disabled(self.busy)
-                    .help("Change your dictation shortcut")
+                VStack(spacing: 18) {
+                    Text("YOUR SHORTCUT")
+                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .tracking(1.4).foregroundStyle(.secondary)
+                    self.shortcutKey
+                    Button(action: self.openShortcutSettings) {
+                        HStack(spacing: 6) {
+                            Text("Change shortcut")
+                            Image(systemName: "arrow.up.right").font(.fluidSystem(size: 10, weight: .medium))
+                        }
+                        .font(self.theme.typography.captionStrong)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(self.theme.palette.accent)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24).padding(.horizontal, 14)
+                .background {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(LinearGradient(colors: [self.theme.palette.accent.opacity(0.12), self.theme.palette.cardBackground], startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(self.theme.palette.accent.opacity(0.13), lineWidth: 1))
+                .disabled(self.busy)
             }
-            VStack(spacing: 0) {
-                self.quickAction("Add a word", detail: "Your personal dictionary", icon: "plus") { self.selectedSidebarItem = .customDictionary }
-                Divider().opacity(0.4)
-                self.quickAction("Change shortcut", detail: "Make it yours", icon: "keyboard", action: self.openShortcutSettings)
+            DashboardQuickAction(title: "Add a word", detail: "Names, terms, your vocabulary", icon: "text.book.closed", tint: self.theme.palette.accent) {
+                self.selectedSidebarItem = .customDictionary
             }
+            .disabled(self.busy)
+            DashboardQuickAction(title: "Cleanup styles", detail: "Shape how your words read", icon: "slider.horizontal.3", tint: .purple) {
+                self.selectedSidebarItem = .cleanupStyles
+            }
+            .disabled(self.busy)
             HStack(spacing: 12) {
-                Image(systemName: "note.text")
-                Text("Notepad")
-                Spacer(minLength: 2)
-                Text("Coming soon").font(.fluidSystem(size: 10))
+                Image(systemName: "note.text").font(.fluidSystem(size: 20))
+                    .frame(width: 36, height: 40)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Notepad").font(self.theme.typography.bodySmallStrong)
+                    Text("Coming soon").font(self.theme.typography.caption)
+                }
+                Spacer(minLength: 0)
             }
-            .foregroundStyle(.tertiary).padding(.top, 4)
+            .foregroundStyle(.secondary)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(self.theme.palette.cardBorder.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 4])))
             .accessibilityElement(children: .combine)
         }
-        .padding(22)
-        .background(self.reduceTransparency ? self.theme.palette.cardBackground : self.theme.palette.accent.opacity(0.035), in: RoundedRectangle(cornerRadius: 22))
+        .padding(20)
+        .background(self.reduceTransparency ? self.theme.palette.cardBackground : self.theme.palette.accent.opacity(0.025), in: RoundedRectangle(cornerRadius: 24))
         .background {
             if !self.reduceTransparency {
-                RoundedRectangle(cornerRadius: 22).fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 24).fill(.ultraThinMaterial)
             }
         }
     }
@@ -220,34 +248,20 @@ struct DashboardView: View {
     private var shortcutKey: some View {
         let button = Button(action: self.openShortcutSettings) {
             Text(self.shortcut)
-                .font(.fluidSystem(size: 23, weight: .medium))
-                .lineLimit(1).minimumScaleFactor(0.6)
-                .frame(maxWidth: .infinity).padding(.vertical, 24)
-                .contentShape(RoundedRectangle(cornerRadius: 16))
+                .font(.fluidSystem(size: 25, weight: .medium))
+                .lineLimit(1).minimumScaleFactor(0.5)
+                .padding(.horizontal, 12)
+                .frame(width: 126, height: 92)
+                .contentShape(RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
+        .help("Change your dictation shortcut")
         if #available(macOS 26, *), !self.reduceTransparency {
-            button.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+            button.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
         } else {
-            button.background(self.theme.palette.cardBackground, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(self.theme.palette.cardBorder, lineWidth: 1))
+            button.background(self.theme.palette.cardBackground, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(self.theme.palette.cardBorder, lineWidth: 1))
         }
-    }
-
-    private func quickAction(_ title: String, detail: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon).font(.fluidSystem(size: 17)).frame(width: 20).foregroundStyle(self.theme.palette.accent)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(self.theme.typography.bodySmallStrong)
-                    Text(detail).font(self.theme.typography.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").font(.fluidSystem(size: 10)).foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, 16).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).disabled(self.busy)
     }
 }
 
@@ -285,5 +299,43 @@ private struct DashboardRecentRow: View {
             .accessibilityLabel(self.copied ? "Copied dictation" : "Copy dictation")
         }
         .padding(18)
+    }
+}
+
+private struct DashboardQuickAction: View {
+    let title: String
+    let detail: String
+    let icon: String
+    let tint: Color
+    let action: () -> Void
+    @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: self.action) {
+            HStack(spacing: 12) {
+                Image(systemName: self.icon)
+                    .font(.fluidSystem(size: 19, weight: .medium))
+                    .foregroundStyle(self.tint)
+                    .frame(width: 40, height: 44)
+                    .background(self.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(self.title).font(self.theme.typography.bodySmallStrong)
+                    Text(self.detail).font(self.theme.typography.caption).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(self.theme.palette.cardBackground, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(self.tint.opacity(self.hovered ? 0.4 : 0.08), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .onHover { self.hovered = $0 && self.isEnabled }
+        .animation(self.reduceMotion ? nil : .easeOut(duration: 0.15), value: self.hovered)
     }
 }
