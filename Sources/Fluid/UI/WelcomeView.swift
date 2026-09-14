@@ -41,6 +41,7 @@ struct OnboardingFlowView: View {
     }
 
     @ObservedObject private var settings = SettingsStore.shared
+    @StateObject private var aiSetup = OnboardingAISetupController.live
 
     @Binding var currentStep: Int
     let accessibilityEnabled: Bool
@@ -1276,45 +1277,6 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private var aiEnhancementStep: some View {
-        OnboardingAIEnhancementStepView(
-            finalText: Binding(
-                get: { self.asr.finalText },
-                set: { self.asr.finalText = $0 }
-            ),
-            progressValue: self.compactProgressValue,
-            glowCenter: self.landingGlowCenter,
-            shortcutDisplay: self.onboardingShortcutDisplay,
-            isRunning: self.asr.isRunning || self.asr.isStarting,
-            isListening: self.asr.isRunning,
-            isRecordingShortcut: self.isRecordingPrimaryShortcut,
-            shortcutRecordingMessage: self.shortcutRecordingMessage,
-            onToggleShortcut: self.togglePrimaryShortcutRecording,
-            onGlowMove: self.updateLandingGlow(location:in:),
-            onGlowExit: self.resetLandingGlow,
-            onBack: self.goBack,
-            onSkip: {
-                let origin = self.settings.analyticsOnboardingOrigin
-                self.markAISkipped()
-                self.finishOnboardingAtGettingStarted()
-                self.completeCurrentStep(
-                    outcome: .skipped,
-                    origin: origin,
-                    completesFlow: self.settings.onboardingCompleted
-                )
-            },
-            onFinishSetup: {
-                let origin = self.settings.analyticsOnboardingOrigin
-                self.finishOnboardingAtGettingStarted()
-                self.completeCurrentStep(
-                    outcome: .completed,
-                    origin: origin,
-                    completesFlow: self.settings.onboardingCompleted
-                )
-            }
-        )
-    }
-
     private var playgroundStep: some View {
         GeometryReader { proxy in
             ZStack {
@@ -2265,6 +2227,46 @@ struct OnboardingFlowView: View {
 }
 
 private extension OnboardingFlowView {
+    var aiEnhancementStep: some View {
+        OnboardingAIEnhancementStepView(
+            setup: self.aiSetup,
+            finalText: Binding(
+                get: { self.asr.finalText },
+                set: { self.asr.finalText = $0 }
+            ),
+            progressValue: self.compactProgressValue,
+            glowCenter: self.landingGlowCenter,
+            shortcutDisplay: self.onboardingShortcutDisplay,
+            isRunning: self.asr.isRunning || self.asr.isStarting,
+            isListening: self.asr.isRunning,
+            isRecordingShortcut: self.isRecordingPrimaryShortcut,
+            shortcutRecordingMessage: self.shortcutRecordingMessage,
+            onToggleShortcut: self.togglePrimaryShortcutRecording,
+            onGlowMove: self.updateLandingGlow(location:in:),
+            onGlowExit: self.resetLandingGlow,
+            onBack: self.goBack,
+            onSkip: {
+                let origin = self.settings.analyticsOnboardingOrigin
+                self.markAISkipped()
+                self.finishOnboardingAtGettingStarted()
+                self.completeCurrentStep(
+                    outcome: .skipped,
+                    origin: origin,
+                    completesFlow: self.settings.onboardingCompleted
+                )
+            },
+            onFinishSetup: {
+                let origin = self.settings.analyticsOnboardingOrigin
+                self.finishOnboardingAtGettingStarted()
+                self.completeCurrentStep(
+                    outcome: .completed,
+                    origin: origin,
+                    completesFlow: self.settings.onboardingCompleted
+                )
+            }
+        )
+    }
+
     var orderedOnboardingInputDevices: [AudioDevice.Device] {
         let devicesByUID = Dictionary(
             self.onboardingInputDevices.map { ($0.uid, $0) },

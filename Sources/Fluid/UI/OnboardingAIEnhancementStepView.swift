@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 
 struct OnboardingAIEnhancementStepView: View {
+    @ObservedObject var setup: OnboardingAISetupController
     @Binding var finalText: String
     let progressValue: Double
     let glowCenter: UnitPoint
@@ -21,10 +22,8 @@ struct OnboardingAIEnhancementStepView: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ObservedObject private var settings = SettingsStore.shared
-    @StateObject private var setup = OnboardingAISetupController.live
     @StateObject private var carouselAutoplay = OnboardingCarouselAutoplay()
     @State private var hoveredButtonID: String?
-    @State private var introductionFinished = false
     @State private var showPractice = false
     @State private var introductionPlaybackID = UUID()
     @State private var practice = OnboardingPolishPractice()
@@ -66,7 +65,7 @@ struct OnboardingAIEnhancementStepView: View {
     }
 
     private var canNavigate: Bool { !self.isRunning && !self.isRecordingShortcut && !self.contentState.isProcessing && !self.isShowingIntroduction }
-    private var isShowingIntroduction: Bool { self.isReady && !self.introductionFinished && !self.reduceMotion }
+    private var isShowingIntroduction: Bool { self.isReady && !self.setup.introductionFinished && !self.reduceMotion }
     private var isReady: Bool { self.setup.phase == .ready }
     private var sizeText: String? {
         guard let count = self.setup.model?.byteCount, count > 0 else { return nil }
@@ -138,12 +137,12 @@ struct OnboardingAIEnhancementStepView: View {
                         } else if self.isReady && !self.isShowingIntroduction {
                             if !self.reduceMotion {
                                 self.action(id: "intro-replay", title: "Replay", tone: .secondary, width: 132) {
-                                    self.introductionFinished = false
+                                    self.setup.introductionFinished = false
                                     self.introductionPlaybackID = UUID()
                                 }
                             }
                             self.action(id: "intro-continue", title: "Continue", tone: .primary, width: 160) {
-                                self.introductionFinished = true
+                                self.setup.introductionFinished = true
                                 self.showPractice = true
                             }
                         } else if !self.isReady {
@@ -337,10 +336,10 @@ struct OnboardingAIEnhancementStepView: View {
 
     private var introductionScene: some View {
         ZStack(alignment: .top) {
-            if self.reduceMotion || self.introductionFinished {
+            if self.reduceMotion || self.setup.introductionFinished {
                 Color.clear.aspectRatio(1560.0 / 1096.0, contentMode: .fit)
             } else {
-                OnboardingOverlayIntroductionView { self.introductionFinished = true }
+                OnboardingOverlayIntroductionView { self.setup.introductionFinished = true }
                     .id(self.introductionPlaybackID)
                     .offset(y: Self.overlaySceneOffset)
                     .allowsHitTesting(false)
@@ -370,7 +369,7 @@ struct OnboardingAIEnhancementStepView: View {
             .frame(maxWidth: self.showPractice ? 680 : 600)
             .padding(.top, 28)
         }
-        .animation(self.reduceMotion ? nil : .easeOut(duration: 0.45), value: self.introductionFinished)
+        .animation(self.reduceMotion ? nil : .easeOut(duration: 0.45), value: self.setup.introductionFinished)
     }
 
     private var introductionSummary: some View {

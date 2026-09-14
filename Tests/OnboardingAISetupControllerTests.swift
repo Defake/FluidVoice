@@ -73,8 +73,13 @@ struct OnboardingAISetupControllerTests {
         precondition(fresh.downloads == 1 && fresh.loads == 1 && fresh.commits == 1 && fresh.lastID == "pico")
         await fresh.progressCallback?(.init(fraction: 0.1, status: "stale", bytes: nil))
         precondition(controller.phase == .ready && controller.progress == nil)
-        controller.refresh()
-        precondition(fresh.readCount == 1)
+        controller.introductionFinished = true
+        controller.cancel() // Leaving the AI page after setup has finished.
+        controller.refresh() // Returning to that page reuses the flow-owned controller.
+        precondition(controller.phase == .ready && controller.introductionFinished)
+        precondition(fresh.readCount == 1 && fresh.loads == 1 && fresh.commits == 1)
+        controller.introductionFinished = false // Explicit Replay changes only video progress.
+        precondition(controller.phase == .ready && fresh.loads == 1 && fresh.commits == 1)
 
         let cached = Harness()
         cached.installed = true

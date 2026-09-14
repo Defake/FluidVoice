@@ -27,6 +27,8 @@ final class OnboardingAISetupController: ObservableObject {
         var load: (Model) async throws -> Void
     }
 
+    /// Retained by the onboarding flow across Back/Continue; Replay is the only reset.
+    @Published var introductionFinished = false
     @Published private(set) var model: Model?
     @Published private(set) var phase: Phase = .checking
     @Published private(set) var progress: Progress?
