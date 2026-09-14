@@ -49,7 +49,6 @@ struct OnboardingFlowView: View {
     let markAISkipped: () -> Void
     let finishOnboarding: () -> Void
     let finishOnboardingAtGettingStarted: () -> Void
-    let openAIEnhancementSettingsFromOnboarding: () -> Void
     let openAccessibilitySettings: () -> Void
     let restartApp: () -> Void
     let menuBarManager: MenuBarManager
@@ -2240,8 +2239,6 @@ private extension OnboardingFlowView {
             isRunning: self.asr.isRunning || self.asr.isStarting,
             isListening: self.asr.isRunning,
             isRecordingShortcut: self.isRecordingPrimaryShortcut,
-            shortcutRecordingMessage: self.shortcutRecordingMessage,
-            onToggleShortcut: self.togglePrimaryShortcutRecording,
             onGlowMove: self.updateLandingGlow(location:in:),
             onGlowExit: self.resetLandingGlow,
             onBack: self.goBack,

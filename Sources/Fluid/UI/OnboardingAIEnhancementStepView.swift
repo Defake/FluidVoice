@@ -10,8 +10,6 @@ struct OnboardingAIEnhancementStepView: View {
     let isRunning: Bool
     let isListening: Bool
     let isRecordingShortcut: Bool
-    let shortcutRecordingMessage: String?
-    let onToggleShortcut: () -> Void
     let onGlowMove: (CGPoint, CGSize) -> Void
     let onGlowExit: () -> Void
     let onBack: () -> Void
@@ -176,14 +174,12 @@ struct OnboardingAIEnhancementStepView: View {
         VStack(spacing: 14) {
             FluidOnboardingCompactAppIconMark(size: 52)
                 .padding(.bottom, 8)
-            Text(self.isReady ? "Try it right here." : "Meet Fluid Intelligence")
+            Text("Meet Fluid Intelligence")
                 .font(.fluidSystem(size: 32, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-            Text(self.isReady
-                ? "Try three short examples with Smart mode."
-                : "Exclusive to FluidVoice. Optimized for your Mac. It turns your spoken words into clear, formatted text. Entirely on your device.")
+            Text("Exclusive to FluidVoice. Optimized for your Mac. It turns your spoken words into clear, formatted text. Entirely on your device.")
                 .font(.fluidSystem(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.64))
                 .multilineTextAlignment(.center)
@@ -247,7 +243,7 @@ struct OnboardingAIEnhancementStepView: View {
                 self.action(id: "enable", title: self.enableTitle, tone: .primary, width: 210) {
                     self.setup.enable { model in
                         guard self.canNavigate else {
-                            throw SetupError(message: "Stop dictation, then enable cleanup again.")
+                            throw SetupError(message: "Stop dictation, then enable Smart mode again.")
                         }
                         guard let registered = PrivateAIModelRegistry.model(id: model.id) else {
                             throw PrivateAIUnavailableError()

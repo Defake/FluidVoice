@@ -124,7 +124,6 @@ enum AnalyticsOnboardingOutcome: String {
     case continued
     case skipped
     case completed
-    case openedSettings = "opened_settings"
 }
 
 enum AnalyticsOnboardingTryoutOutcome: String {
