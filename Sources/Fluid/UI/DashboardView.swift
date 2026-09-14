@@ -59,17 +59,10 @@ struct DashboardView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(self.greeting)
-                .font(.fluidSystem(size: 34, weight: .regular, design: .serif))
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-            if !self.shortcut.isEmpty {
-                Text("\(self.settings.pressAndHoldMode ? "Hold" : "Press") \(self.shortcut) to dictate")
-                    .font(self.theme.typography.body)
-                    .foregroundStyle(.secondary)
-            }
-        }
+        Text(self.greeting)
+            .font(.fluidSystem(size: 34, weight: .regular, design: .serif))
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var mainColumn: some View {
