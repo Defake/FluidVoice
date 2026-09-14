@@ -67,7 +67,7 @@ extension AIEnhancementSettingsView {
         }
     }
 
-    private var addedExternalProvidersSection: some View {
+    var addedExternalProvidersSection: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
             HStack {
                 if !self.viewModel.cachedAddedProviderItems.isEmpty {

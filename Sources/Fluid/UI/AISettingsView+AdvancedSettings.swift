@@ -673,6 +673,9 @@ extension AIEnhancementSettingsView {
             self.promptEditorShortcutRow(mode: mode)
             Group {
                 self.promptEditorProviderRow
+                if !mode.isPrivateAI {
+                    self.promptEditorProviderGuidance
+                }
                 self.promptEditorModelRow
             }
             .disabled(mode.isPrivateAI)
@@ -821,6 +824,38 @@ extension AIEnhancementSettingsView {
                 )
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private var promptEditorProviderGuidance: some View {
+        GridRow {
+            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Custom cleanup styles require an external AI provider. Fluid Intelligence isn’t supported here.")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if self.viewModel.verifiedPromptProviders().isEmpty {
+                    Button("Set up AI provider") { self.showingPromptProviderSetup = true }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(self.theme.palette.accent)
+                }
+            }
+            .frame(width: AISettingsLayout.promptEditorControlColumnWidth, alignment: .leading)
+        }
+        .sheet(isPresented: self.$showingPromptProviderSetup) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("AI Providers").font(self.theme.typography.title)
+                    Spacer()
+                    Button("Done") { self.showingPromptProviderSetup = false }
+                        .fluidGlassAction()
+                }
+                ScrollView { self.addedExternalProvidersSection }
+            }
+            .padding(24)
+            .frame(width: 640, height: 520)
+            .appTheme(self.theme)
         }
     }
 

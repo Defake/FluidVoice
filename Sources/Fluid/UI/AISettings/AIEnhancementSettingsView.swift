@@ -38,6 +38,7 @@ struct AIEnhancementSettingsView: View {
     @Binding var shortcutRecordingMessage: String?
     @State var expandedProviderID: String? = nil
     @State var showingAddProviderSheet = false
+    @State var showingPromptProviderSetup = false
     @State var managedExternalProviderID: String?
     @State var showingRemoveProviderConfirmation = false
     @State var providerSearchText: String = ""
