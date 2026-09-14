@@ -1329,7 +1329,7 @@ struct ContentView: View {
             }
 
             Section {
-                self.sidebarNavigationLink(.welcome, title: "Getting Started", systemImage: "house.fill")
+                self.sidebarNavigationLink(.welcome, title: "Dashboard", systemImage: "house.fill")
                 self.sidebarNavigationLink(.changelog, title: "Change logs", systemImage: "doc.text.magnifyingglass")
                 self.sidebarNavigationLink(.feedback, title: "Feedback", systemImage: "envelope.fill")
             } header: {
@@ -1720,7 +1720,8 @@ struct ContentView: View {
             stopAndProcessTranscription: { await self.stopAndProcessTranscription() },
             startRecording: self.startRecording,
             openAccessibilitySettings: self.openAccessibilitySettings,
-            restartApp: self.restartApp
+            restartApp: self.restartApp,
+            openShortcutSettings: { self.openSettings(.dictation) }
         )
     }
 
@@ -2577,6 +2578,24 @@ struct ContentView: View {
         }
     }
 
+    private func isDashboardPracticeTarget(normalDictation: Bool) -> Bool {
+        DashboardPracticePolicy.isPractice(
+            dashboardVisible: self.selectedSidebarItem == .welcome && !self.settingsNavigation.isPresented && self.settings.onboardingCompleted,
+            normalDictation: normalDictation,
+            targetPID: NotchContentState.shared.recordingTargetPID,
+            appPID: ProcessInfo.processInfo.processIdentifier
+        )
+    }
+
+    private func publishFinalDictationText(_ text: String, dashboardPractice: Bool, lifecycleID: UInt64) {
+        self.recordingPrecedingText = ""
+        self.asr.finalText = text
+        guard dashboardPractice, lifecycleID == self.overlayLifecycleID,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        self.settings.playgroundUsed = true
+        self.playgroundUsed = true
+    }
+
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
@@ -2595,6 +2614,7 @@ struct ContentView: View {
         let activeDictationSlot = self.currentDictationShortcutSlot(for: modeAtStop)
         let promptOverride = self.promptModeOverrideText
         let promptTest = DictationPromptTestCoordinator.shared
+        let isDashboardPractice = self.isDashboardPracticeTarget(normalDictation: route == .normal && !wasRewriteMode && !wasCommandMode && !promptTest.isActive)
         let shouldUseAIOnStop = activeDictationSlot.map {
             DictationAIPostProcessingGate.isConfigured(for: $0, appBundleID: self.recordingAppInfo?.bundleId)
         } ?? DictationAIPostProcessingGate.isConfigured(for: .primary, appBundleID: self.recordingAppInfo?.bundleId)
@@ -2807,8 +2827,7 @@ struct ContentView: View {
             bundleID: appInfo.bundleId,
             windowTitle: appInfo.windowTitle
         )
-        self.recordingPrecedingText = ""
-        self.asr.finalText = finalText
+        self.publishFinalDictationText(finalText, dashboardPractice: isDashboardPractice, lifecycleID: expectedOverlayLifecycleID)
         if route == .onboardingSandbox,
            self.isOnboardingVoicePlaygroundStepActive,
            !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
