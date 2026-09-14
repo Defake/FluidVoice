@@ -1,88 +1,137 @@
 import SwiftUI
 
-/// Mirrors the iOS practice composition using the Mac onboarding palette.
+/// The shortcut stays above the example; recording reveals and focuses the editor.
 struct OnboardingPolishPracticeView: View {
+    @Binding var finalText: String
     let practice: OnboardingPolishPractice
     let isRunning: Bool
     let isProcessing: Bool
-    let isRecordingShortcut: Bool
+    let isActive: Bool
     let shortcutDisplay: String
-    let shortcutRecordingMessage: String?
-    let onToggleShortcut: () -> Void
+
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var isEditorFocused: Bool
+    @State private var hasActivated = false
+    @State private var isKeyPressed = false
 
     private var blue: Color { FluidOnboardingLandingColors.blue }
+    private var status: String {
+        if !self.hasActivated { return "Press \(self.shortcutDisplay) to begin." }
+        if self.isRunning { return "Listening" }
+        if self.isProcessing { return "Polishing…" }
+        return ""
+    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            HStack(spacing: 12) {
-                ForEach(0..<OnboardingPolishPractice.examples.count, id: \.self) { index in
-                    let done = self.practice.results[index] != nil
-                    ZStack {
-                        Circle().fill(done || index == self.practice.index ? self.blue : .white.opacity(0.1))
-                        if done {
-                            Image(systemName: "checkmark").font(.fluidSystem(size: 11, weight: .bold))
-                        } else {
-                            Text("\(index + 1)").font(.fluidSystem(size: 12, weight: .bold))
-                        }
+        VStack(alignment: .leading, spacing: 22) {
+            Text("Let’s try a few examples.")
+                .font(.fluidSystem(size: 28, weight: .regular, design: .serif))
+                .foregroundStyle(.white.opacity(0.94))
+            HStack(spacing: 18) {
+                OnboardingShortcutKeycap(text: self.shortcutDisplay, isPressed: self.isKeyPressed, isListening: self.isRunning)
+                self.recordingStatus
+            }
+            VStack(alignment: .leading, spacing: 16) {
+                if self.hasActivated {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Say this", systemImage: "quote.opening")
+                            .font(.fluidSystem(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.48, green: 0.72, blue: 1))
+                        Text(self.practice.example.spoken)
+                            .font(.fluidSystem(size: 17))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineSpacing(5)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 14)
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(self.blue.opacity(0.38)).frame(width: 2)
+                            }
                     }
-                    .foregroundStyle(.white.opacity(done || index == self.practice.index ? 1 : 0.45))
-                    .frame(width: 28, height: 28)
-                    .accessibilityLabel("Step \(index + 1), \(done ? "complete" : (index == self.practice.index ? "current" : "upcoming"))")
+                    self.editor
                 }
             }
-            self.exampleText("Try saying this", text: self.practice.example.spoken, accent: false)
-            self.exampleText("It should come out as", text: self.practice.example.expected, accent: true)
-            Text(self.practice.result ?? "Your polished words appear here")
-                .font(.fluidSystem(size: 18, weight: .medium))
-                .foregroundStyle(.white.opacity(self.practice.result == nil ? 0.35 : 0.92))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: 105)
-                .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.15)))
-                .accessibilityLabel("Your dictation result")
-            VStack(spacing: 8) {
-                HStack(spacing: 16) {
-                    Text(self.isRecordingShortcut ? "Press your new shortcut…" : self.shortcutDisplay)
-                        .font(.fluidSystem(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Button(self.isRecordingShortcut ? "Cancel" : "Change shortcut", action: self.onToggleShortcut)
-                        .buttonStyle(.plain)
-                        .font(.fluidSystem(size: 12, weight: .semibold))
-                        .foregroundStyle(self.blue)
-                        .disabled(self.isRunning || self.isProcessing)
-                }
-                Text(self.status)
-                    .font(.fluidSystem(size: 12))
-                    .foregroundStyle(.white.opacity(0.58))
-                if let message = self.shortcutRecordingMessage, self.isRecordingShortcut {
-                    Text(message).font(.fluidSystem(size: 12)).foregroundStyle(.orange)
-                }
-            }
-            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: 250, alignment: .topLeading)
         }
-        .frame(maxWidth: 500)
+        .padding(28)
+        .frame(maxWidth: 680, alignment: .leading)
+        .animation(self.reduceMotion ? nil : .easeOut(duration: 0.25), value: self.hasActivated)
+        .onAppear {
+            if self.practice.result != nil { self.hasActivated = true }
+        }
+        .onChange(of: self.practice.index) { _, _ in
+            self.finalText = ""
+            self.isEditorFocused = self.hasActivated && self.isActive
+        }
+        .onChange(of: self.isActive) { _, active in
+            if active && self.isRunning { self.revealExample() }
+            self.isEditorFocused = active && self.hasActivated
+        }
+        .task(id: self.isRunning) {
+            self.isKeyPressed = false
+            guard self.isActive, self.isRunning else { return }
+            self.revealExample()
+            guard !self.reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.055)) { self.isKeyPressed = true }
+            do { try await Task.sleep(for: .milliseconds(110)) } catch { return }
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.72)) { self.isKeyPressed = false }
+        }
     }
 
-    private var status: String {
-        if self.isRunning { return "Press your shortcut again when you’re done." }
-        if self.isProcessing { return "Polishing your words…" }
-        return self.practice.result == nil ? "Choose Smart mode below, then press your shortcut to try this one." : "Press your shortcut to try it again."
+    @ViewBuilder
+    private var recordingStatus: some View {
+        if self.hasActivated && (self.isRunning || self.isProcessing) {
+            HStack(spacing: 8) {
+                Image(systemName: self.isRunning ? "waveform" : "sparkles")
+                    .font(.fluidSystem(size: 15, weight: .medium))
+                    .foregroundStyle(self.blue)
+                    .symbolEffect(.variableColor, options: .repeating, isActive: self.isRunning && self.isActive && self.scenePhase == .active && !self.reduceMotion)
+                    .accessibilityHidden(true)
+                Text(self.status)
+                    .font(.fluidSystem(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.86))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(self.blue.opacity(0.09), in: Capsule())
+            .accessibilityElement(children: .combine)
+        } else if !self.hasActivated {
+            Text(self.status)
+                .font(.fluidSystem(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.64))
+        }
     }
 
-    private func exampleText(_ label: String, text: String, accent: Bool) -> some View {
-        VStack(spacing: 8) {
-            Text(label.uppercased())
-                .font(.fluidSystem(size: 10, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(accent ? self.blue : .white.opacity(0.4))
-            Text(text)
-                .font(.fluidSystem(size: accent ? 17 : 18, weight: accent ? .regular : .semibold))
-                .foregroundStyle(.white.opacity(accent ? 0.6 : 0.9))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+    private func revealExample() {
+        self.hasActivated = true
+        self.isEditorFocused = true
+    }
+
+    private var editor: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: self.$finalText)
+                .font(.fluidSystem(size: 16))
+                .scrollContentBackground(.hidden)
+                .focused(self.$isEditorFocused)
+                .padding(12)
+                .accessibilityLabel("Dictation practice text")
+                .accessibilityHint("Your dictation appears here automatically. You can also edit it.")
+            if self.finalText.isEmpty {
+                Text("Your words appear here…")
+                    .font(.fluidSystem(size: 16))
+                    .foregroundStyle(.white.opacity(0.38))
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(height: 180)
+        .background(.white.opacity(self.isEditorFocused ? 0.055 : 0.025), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(self.isEditorFocused ? self.blue.opacity(0.8) : .white.opacity(0.18))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
         }
     }
 }

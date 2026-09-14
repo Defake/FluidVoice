@@ -8,14 +8,17 @@ struct OnboardingPolishPractice {
     }
 
     static let examples = [
-        Example(spoken: "Hey John, Newline, how are you doing today?", expected: "Hey John,\nHow are you doing today?"),
         Example(
-            spoken: "Hey, can we meet at five thirty tomorrow morning? Sorry, can you make it three thirty p.m. today?",
-            expected: "Hey, can we meet at 3:30 PM today?"
+            spoken: "I'm free at 7:30 tomorrow morning. Would you be available for a quick call? Sorry, I meant 9:30 am.",
+            expected: "I'm free at 9:30 am tomorrow morning. Would you be available for a quick call?"
         ),
         Example(
-            spoken: "Make a grocery list. First one is banana, second one is apple, third one is orange.",
-            expected: "Grocery list:\n- banana\n- apple\n- orange"
+            spoken: "Grocery list. First one is apples, second one is milk, third one is egg.",
+            expected: "Grocery list\n\n1. Apples\n2. Milk\n3. Egg"
+        ),
+        Example(
+            spoken: "I think I'm gonna meet you tomorrow at 3 p.m. Let me know if the time works. If not, we can figure out some other time. Also, I think you need to fix the bug. Please let me know if you need some help there.",
+            expected: "I think I'm gonna meet you tomorrow at 3 p.m. Let me know if the time works. If not, we can figure out some other time.\n\nAlso, I think you need to fix the bug. Please let me know if you need some help there."
         ),
     ]
 

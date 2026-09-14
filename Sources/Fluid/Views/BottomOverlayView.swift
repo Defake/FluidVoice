@@ -2917,30 +2917,13 @@ struct BottomOverlayView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay(alignment: .top) {
-            if self.showsOnboardingHint {
-                VStack(spacing: 5) {
-                    Text("Switch modes here")
-                        .font(.fluidSystem(size: 12, weight: .semibold))
-                    Text("Click to switch between Basic and Smart")
-                        .font(.fluidSystem(size: 11))
-                        .foregroundStyle(.white.opacity(0.65))
-                    Image(systemName: "arrow.down")
-                        .font(.fluidSystem(size: 11, weight: .medium))
-                        .foregroundStyle(FluidOnboardingLandingColors.blue)
-                }
-                .fixedSize()
-                .offset(y: -78)
-                .allowsHitTesting(false)
-            }
-        }
         .task(id: self.showsOnboardingHint) {
-            guard self.showsOnboardingHint, !self.reduceMotion else { return }
-            for _ in 0..<2 {
-                withAnimation(.easeInOut(duration: 0.45)) { self.onboardingHighlight = true }
-                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
-                withAnimation(.easeInOut(duration: 0.45)) { self.onboardingHighlight = false }
-                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            guard self.showsOnboardingHint else {
+                self.onboardingHighlight = false
+                return
+            }
+            withAnimation(self.reduceMotion ? nil : .easeOut(duration: 0.45)) {
+                self.onboardingHighlight = true
             }
         }
     }
@@ -3521,6 +3504,25 @@ struct BottomOverlayView: View {
         )
         // Reserve space around the pill so its drop shadow isn't clipped by the (content-sized) window.
         .padding(self.isPillSize ? 26 : 0)
+        .overlay(alignment: .top) {
+            if self.showsOnboardingHint {
+                VStack(spacing: 5) {
+                    Text("Meet your overlay")
+                        .font(.fluidSystem(size: 14, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.94))
+                    Text("Your dictation controls, in any app.")
+                        .font(.fluidSystem(size: 11))
+                        .foregroundStyle(.white.opacity(0.62))
+                    Image(systemName: "arrow.down")
+                        .font(.fluidSystem(size: 11, weight: .medium))
+                        .foregroundStyle(FluidOnboardingLandingColors.blue)
+                }
+                .fixedSize()
+                .opacity(self.reduceMotion || self.onboardingHighlight ? 1 : 0)
+                .offset(y: -64 + (self.reduceMotion || self.onboardingHighlight ? 0 : -8))
+                .allowsHitTesting(false)
+            }
+        }
         .padding(.top, self.showsOnboardingHint ? 82 : 0)
         .onChange(of: self.showsOnboardingHint) { _, _ in
             BottomOverlayWindowController.shared.refreshSizeForContent()

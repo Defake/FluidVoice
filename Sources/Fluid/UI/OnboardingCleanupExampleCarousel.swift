@@ -33,12 +33,6 @@ struct OnboardingCleanupExampleCarousel: View {
             spoken: "I think I'm gonna meet you tomorrow at 3 p.m. Let me know if the time works. If not, we can figure out some other time. Also, I think you need to fix the bug. Please let me know if you need some help there.",
             cleaned: "I think I'm gonna meet you tomorrow at 3 p.m. Let me know if the time works. If not, we can figure out some other time.\n\nAlso, I think you need to fix the bug. Please let me know if you need some help there."
         ),
-        Example(
-            id: "email",
-            title: "Format your words into an email",
-            spoken: "Hey Marcus, hope you're doing well. Please let me know if you have any updates on the work that we've been doing last week. Thanks.",
-            cleaned: "Hey Marcus,\n\nHope you're doing well. Please let me know if you have any updates on the work that we've been doing last week.\n\nThanks."
-        ),
     ]
     private var ids: [String] { Self.examples.map(\.id) }
 

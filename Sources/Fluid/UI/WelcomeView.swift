@@ -1572,6 +1572,7 @@ struct OnboardingFlowView: View {
             glowCenter: self.landingGlowCenter,
             shortcutDisplay: self.onboardingShortcutDisplay,
             isRunning: self.asr.isRunning || self.asr.isStarting,
+            isListening: self.asr.isRunning,
             isRecordingShortcut: self.isRecordingPrimaryShortcut,
             shortcutRecordingMessage: self.shortcutRecordingMessage,
             onToggleShortcut: self.togglePrimaryShortcutRecording,

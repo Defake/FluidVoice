@@ -7,6 +7,7 @@ struct OnboardingAIEnhancementStepView: View {
     let glowCenter: UnitPoint
     let shortcutDisplay: String
     let isRunning: Bool
+    let isListening: Bool
     let isRecordingShortcut: Bool
     let shortcutRecordingMessage: String?
     let onToggleShortcut: () -> Void
@@ -24,8 +25,34 @@ struct OnboardingAIEnhancementStepView: View {
     @StateObject private var carouselAutoplay = OnboardingCarouselAutoplay()
     @State private var hoveredButtonID: String?
     @State private var overlayOwner = UUID()
+    @State private var introductionFinished = false
+    @State private var showPractice = false
+    @State private var introductionPlaybackID = UUID()
     @State private var practice = OnboardingPolishPractice()
     @ObservedObject private var contentState = NotchContentState.shared
+
+    private static let overlaySceneOffset: CGFloat = 24
+
+    private static let selectedOverlayImage: NSImage = {
+        guard let url = Bundle.main.url(forResource: "OnboardingSmartModeSelected", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return NSImage() }
+        return image
+    }()
+
+    // Hide only the old title area; the menu begins below 36% of the frame.
+    private static let heldFrameMask: [Gradient.Stop] = [
+        .init(color: .clear, location: 0),
+        .init(color: .clear, location: 0.27),
+        .init(color: .white, location: 0.35),
+        .init(color: .white, location: 0.88),
+        .init(color: .clear, location: 1),
+    ]
+    private static let horizontalFrameMask: [Gradient.Stop] = [
+        .init(color: .clear, location: 0),
+        .init(color: .white, location: 0.12),
+        .init(color: .white, location: 0.88),
+        .init(color: .clear, location: 1),
+    ]
 
     private enum ButtonTone { case primary, secondary, destructive }
     private struct PillButtonConfiguration {
@@ -39,7 +66,8 @@ struct OnboardingAIEnhancementStepView: View {
         let isEnabled: Bool
     }
 
-    private var canNavigate: Bool { !self.isRunning && !self.isRecordingShortcut && !self.contentState.isProcessing }
+    private var canNavigate: Bool { !self.isRunning && !self.isRecordingShortcut && !self.contentState.isProcessing && !self.isShowingIntroduction }
+    private var isShowingIntroduction: Bool { self.isReady && !self.introductionFinished && !self.reduceMotion }
     private var isReady: Bool { self.setup.phase == .ready }
     private var sizeText: String? {
         guard let count = self.setup.model?.byteCount, count > 0 else { return nil }
@@ -59,24 +87,25 @@ struct OnboardingAIEnhancementStepView: View {
                 VStack(spacing: 0) {
                     FluidOnboardingCompactProgress(value: self.progressValue)
                         .padding(.top, 28)
-                    OnboardingFittedContent(width: self.isReady ? 680 : 944, heightAnimation: self.reduceMotion ? nil : .easeInOut(duration: 0.32)) {
+                    OnboardingFittedContent(width: self.isReady ? 844 : 944, heightAnimation: self.reduceMotion ? nil : .easeInOut(duration: 0.32)) {
                         VStack(spacing: 0) {
-                            self.hero
-                                .padding(.bottom, 24)
+                            if !self.isReady {
+                                self.hero.padding(.bottom, 24)
+                            }
                             if self.isReady {
-                                self.tryout
+                                self.introductionScene
                             } else {
                                 self.offer
                             }
-                            Text(self.isReady
-                                ? "These same controls appear whenever you dictate."
-                                : "You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
-                                .font(self.theme.typography.caption)
-                                .foregroundStyle(.white.opacity(0.46))
-                                .multilineTextAlignment(.center)
-                                .padding(.top, 28)
+                            if !self.isReady {
+                                Text("You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
+                                    .font(self.theme.typography.caption)
+                                    .foregroundStyle(.white.opacity(0.46))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.top, 28)
+                            }
                         }
-                        .frame(maxWidth: self.isReady ? 600 : 880)
+                        .frame(maxWidth: self.isReady ? 780 : 880)
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 32)
                         .padding(.top, 36)
@@ -84,12 +113,16 @@ struct OnboardingAIEnhancementStepView: View {
                     }
                     HStack(alignment: .center, spacing: 20) {
                         self.action(id: "back", title: "Back", tone: .secondary, width: 132) {
-                            self.setup.cancel()
-                            self.onBack()
+                            if self.isReady && self.showPractice {
+                                self.showPractice = false
+                            } else {
+                                self.setup.cancel()
+                                self.onBack()
+                            }
                         }
                         .keyboardShortcut(.cancelAction)
                         Spacer()
-                        if self.isReady {
+                        if self.isReady && self.showPractice {
                             Button("Skip practice", action: self.onFinishSetup)
                                 .buttonStyle(.plain)
                                 .foregroundStyle(.white.opacity(0.58))
@@ -103,7 +136,17 @@ struct OnboardingAIEnhancementStepView: View {
                                 }
                             }
                             .disabled(self.practice.result == nil)
-                        } else {
+                        } else if self.isReady && !self.isShowingIntroduction {
+                            if !self.reduceMotion {
+                                self.action(id: "intro-replay", title: "Replay", tone: .secondary, width: 132) {
+                                    self.introductionFinished = false
+                                    self.introductionPlaybackID = UUID()
+                                }
+                            }
+                            self.action(id: "intro-continue", title: "Continue", tone: .primary, width: 160) {
+                                self.showPractice = true
+                            }
+                        } else if !self.isReady {
                             self.offerNavigation
                         }
                     }
@@ -142,7 +185,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .lineLimit(2)
             Text(self.isReady
                 ? "Try three short examples with Smart mode."
-                : "Built for FluidVoice. Optimized for your Mac. It turns your spoken words into clear, formatted text. Entirely on your device.")
+                : "Exclusive to FluidVoice. Optimized for your Mac. It turns your spoken words into clear, formatted text. Entirely on your device.")
                 .font(.fluidSystem(size: 15, weight: .medium))
                 .foregroundStyle(.white.opacity(0.64))
                 .multilineTextAlignment(.center)
@@ -150,7 +193,7 @@ struct OnboardingAIEnhancementStepView: View {
                 .frame(maxWidth: 540)
             if !self.isReady {
                 Text("Fluid Intelligence can…")
-                    .font(.fluidSystem(size: 15, weight: .medium))
+                    .font(.fluidSystem(size: 20, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.8))
                     .padding(.top, 4)
             }
@@ -191,14 +234,16 @@ struct OnboardingAIEnhancementStepView: View {
 
     private var offerNavigation: some View {
         HStack(spacing: 20) {
-            Button("I’ll set it up later") {
-                self.setup.cancel()
-                self.onSkip()
+            if !self.setup.isBusy {
+                Button("I’ll set it up later") {
+                    self.setup.cancel()
+                    self.onSkip()
+                }
+                .buttonStyle(.plain)
+                .font(.fluidSystem(size: 15, weight: .medium))
+                .foregroundStyle(.white.opacity(self.canNavigate ? 0.86 : 0.4))
+                .disabled(!self.canNavigate)
             }
-            .buttonStyle(.plain)
-            .font(.fluidSystem(size: 15, weight: .medium))
-            .foregroundStyle(.white.opacity(self.canNavigate ? 0.86 : 0.4))
-            .disabled(!self.canNavigate)
 
             if self.setup.phase == .offered {
                 self.action(id: "enable", title: self.enableTitle, tone: .primary, width: 210) {
@@ -291,17 +336,95 @@ struct OnboardingAIEnhancementStepView: View {
         }
     }
 
+    private var introductionScene: some View {
+        ZStack(alignment: .top) {
+            if self.reduceMotion {
+                Color.clear.aspectRatio(1560.0 / 1096.0, contentMode: .fit)
+            } else {
+                OnboardingOverlayIntroductionView { self.introductionFinished = true }
+                    .id(self.introductionPlaybackID)
+                    .offset(y: Self.overlaySceneOffset)
+                    .allowsHitTesting(false)
+            }
+            if !self.isShowingIntroduction && !self.showPractice {
+                // The still is a 1560 × 1096 video frame. Use exactly the player's
+                // aspect-fit canvas and shared offset; never crop or independently size it.
+                Image(nsImage: Self.selectedOverlayImage)
+                    .resizable()
+                    .aspectRatio(1560.0 / 1096.0, contentMode: .fit)
+                    .mask {
+                        LinearGradient(stops: Self.heldFrameMask, startPoint: .top, endPoint: .bottom)
+                            .mask {
+                                LinearGradient(stops: Self.horizontalFrameMask, startPoint: .leading, endPoint: .trailing)
+                            }
+                    }
+                    .offset(y: Self.overlaySceneOffset)
+                    .accessibilityLabel("The same tilted overlay frame from the video, with Smart selected.")
+            }
+            Group {
+                if self.showPractice {
+                    self.tryout
+                } else if !self.isShowingIntroduction {
+                    self.introductionSummary
+                }
+            }
+            .frame(maxWidth: self.showPractice ? 680 : 600)
+            .padding(.top, 28)
+        }
+        .animation(self.reduceMotion ? nil : .easeOut(duration: 0.45), value: self.introductionFinished)
+    }
+
+    private var introductionSummary: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Change modes with one click")
+                .font(.fluidSystem(size: 28, weight: .regular, design: .serif))
+                .foregroundStyle(.white.opacity(0.94))
+            HStack(alignment: .top, spacing: 24) {
+                self.modeSummary(
+                    name: "Basic",
+                    subtitle: "Without Fluid Intelligence",
+                    detail: "Keeps your words as spoken, including mistakes.",
+                    smart: false
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                self.modeSummary(
+                    name: "Smart",
+                    subtitle: "With Fluid Intelligence",
+                    detail: "Removes rambling, fixes mistakes, and formats your text.",
+                    smart: true
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(28)
+    }
+
+    private func modeSummary(name: String, subtitle: String, detail: String, smart: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label(name, systemImage: smart ? "sparkles" : "bolt.fill")
+                    .font(.fluidSystem(size: 18, weight: .semibold))
+                    .foregroundStyle(smart ? Color(red: 0.48, green: 0.72, blue: 1) : .white)
+                Text(subtitle)
+                    .font(.fluidSystem(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            Text(detail)
+                .font(.fluidSystem(size: 15))
+                .foregroundStyle(.white.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var tryout: some View {
         OnboardingPolishPracticeView(
+            finalText: self.$finalText,
             practice: self.practice,
-            isRunning: self.isRunning,
+            isRunning: self.isListening,
             isProcessing: self.contentState.isProcessing,
-            isRecordingShortcut: self.isRecordingShortcut,
-            shortcutDisplay: self.shortcutDisplay,
-            shortcutRecordingMessage: self.shortcutRecordingMessage,
-            onToggleShortcut: self.onToggleShortcut
+            isActive: !self.isShowingIntroduction,
+            shortcutDisplay: self.shortcutDisplay
         )
-        .onAppear { NotchOverlayManager.shared.beginOnboardingOverlay(owner: self.overlayOwner) }
         .onDisappear { NotchOverlayManager.shared.endOnboardingOverlay(owner: self.overlayOwner) }
         .onChange(of: self.isRunning) { _, running in
             if running { self.practice.beginAttempt() }
