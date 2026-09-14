@@ -1306,6 +1306,14 @@ struct ContentView: View {
     private var appSidebarView: some View {
         List(selection: self.$selectedSidebarItem) {
             Section {
+                self.sidebarNavigationLink(.welcome, title: "Dashboard", systemImage: "house.fill")
+                self.sidebarNavigationLink(.history, title: "History", systemImage: "clock.arrow.circlepath")
+                self.sidebarNavigationLink(.stats, title: "Stats", systemImage: "chart.bar.fill")
+            } header: {
+                self.sidebarSectionHeader("Activity")
+            }
+
+            Section {
                 self.sidebarNavigationLink(.voiceEngine, title: "Voice Engine", systemImage: "waveform")
                 self.sidebarNavigationLink(.aiEnhancements, title: "AI Providers", systemImage: "cpu")
                 self.sidebarNavigationLink(.cleanupStyles, title: "Cleanup Styles", systemImage: "wand.and.stars")
@@ -1319,14 +1327,6 @@ struct ContentView: View {
                 self.sidebarNavigationLink(.meetingTools, title: "File Transcription", systemImage: "doc.text.fill")
             } header: {
                 self.sidebarSectionHeader("Use")
-            }
-
-            Section {
-                self.sidebarNavigationLink(.welcome, title: "Dashboard", systemImage: "house.fill")
-                self.sidebarNavigationLink(.history, title: "History", systemImage: "clock.arrow.circlepath")
-                self.sidebarNavigationLink(.stats, title: "Stats", systemImage: "chart.bar.fill")
-            } header: {
-                self.sidebarSectionHeader("Activity")
             }
 
             Section {
