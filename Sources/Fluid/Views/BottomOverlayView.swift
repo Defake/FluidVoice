@@ -1635,7 +1635,7 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack {
-                Text("Smart")
+                Text("Default")
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
@@ -2439,7 +2439,7 @@ struct BottomOverlayView: View {
                     for: self.activeDictationShortcutSlot,
                     appBundleID: self.promptResolutionBundleID
                 ) != nil
-                return hasAppOverride ? nil : "Smart"
+                return hasAppOverride ? nil : "Default"
             case .profile:
                 return nil
             }
@@ -2448,7 +2448,7 @@ struct BottomOverlayView: View {
         return self.settings.resolvedPromptProfile(
             for: activePromptMode,
             appBundleID: self.promptResolutionBundleID
-        ) == nil ? "Smart" : nil
+        ) == nil ? "Default" : nil
     }
 
     private var promptSelectorDisplayLabel: String {
