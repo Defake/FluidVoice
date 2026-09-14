@@ -565,7 +565,7 @@ struct OnboardingAIEnhancementStepView: View {
         self.settings.verifiedProviderFingerprints = fingerprints
         self.settings.verifiedPrivateAIModelFingerprints[model.id] = fingerprint
 
-        self.settings.selectedProviderID = providerID
+        // Smart dictation selects FI independently of the global Edit/Command provider.
         self.settings.setDictationPromptSelection(.privateAI)
         self.settings.onboardingAISkipped = false
         UserDefaults.standard.set(model.id, forKey: PrivateAIIntegrationService.selectedModelDefaultsKey)
