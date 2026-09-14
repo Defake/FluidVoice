@@ -2885,8 +2885,7 @@ struct ContentView: View {
         // When FluidVoice itself is frontmost, the bound editor already receives `finalText`.
         let shouldCopyToClipboard = shouldPersistOutputs &&
             !sendsExistingDraft &&
-            SettingsStore.shared.copyTranscriptionToClipboard &&
-            !isFluidFrontmost
+            SettingsStore.shared.copyTranscriptionToClipboard
         let shouldTypeExternally = shouldPersistOutputs && !isFluidFrontmost
 
         var didTypeExternally = false
@@ -2910,12 +2909,9 @@ struct ContentView: View {
                 && !self.isSpokenSendBlockedApp(appInfo)
             // Dispatch insertion as soon as the destination app is ready; the
             // overlay hides asynchronously after output so it cannot delay paste.
-            let focusReady: Bool
-            if typingTarget.shouldRestoreOriginalFocus {
-                focusReady = await self.restoreFocusToRecordingTarget()
-            } else {
-                focusReady = true
-            }
+            let focusReady = await self.prepareRecordingTargetForDelivery(
+                finalText, keepBackup: shouldCopyToClipboard, needsRestoration: typingTarget.shouldRestoreOriginalFocus
+            )
 
             if spokenSendAllowed {
                 NotchContentState.shared.setSpokenSendIndicatorState(.sending)
@@ -3001,6 +2997,10 @@ struct ContentView: View {
                 )
                 self.appBench("dictionary_tracking_scheduled afterDeliveryUI=true")
             }
+        }
+
+        if !shouldTypeExternally {
+            await PasteDeliveryCoordinator.shared.copyBackup(finalText, enabled: shouldCopyToClipboard)
         }
 
         // Submit raw fallback delivery before failure UI or notification work can
@@ -3623,7 +3623,7 @@ struct ContentView: View {
         NotchOverlayManager.shared.updateTranscriptionText("Inserting")
         let typingTarget = self.resolveTypingTargetPID()
         if typingTarget.shouldRestoreOriginalFocus,
-           !(await self.restoreFocusToRecordingTarget())
+           !(await self.prepareRecordingTargetForDelivery(transcript, keepBackup: SettingsStore.shared.copyTranscriptionToClipboard))
         {
             self.showTextDeliveryFailure(.targetRestoreFailed, transcript: transcript)
             return
@@ -3740,7 +3740,7 @@ struct ContentView: View {
         if shouldTypeExternally {
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                guard await self.restoreFocusToRecordingTarget() else {
+                guard await self.prepareRecordingTargetForDelivery(finalText, keepBackup: SettingsStore.shared.copyTranscriptionToClipboard) else {
                     self.showTextDeliveryFailure(.targetRestoreFailed, transcript: finalText)
                     return
                 }
@@ -3753,8 +3753,8 @@ struct ContentView: View {
             if case let .recoverableFailure(failure) = result {
                 self.showTextDeliveryFailure(failure, transcript: finalText)
             }
-        } else if SettingsStore.shared.copyTranscriptionToClipboard {
-            ClipboardService.copyToClipboard(finalText)
+        } else {
+            await PasteDeliveryCoordinator.shared.copyBackup(finalText, enabled: SettingsStore.shared.copyTranscriptionToClipboard)
         }
     }
 
@@ -3869,7 +3869,7 @@ struct ContentView: View {
         if shouldTypeExternally {
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                guard await self.restoreFocusToRecordingTarget() else {
+                guard await self.prepareRecordingTargetForDelivery(finalText, keepBackup: SettingsStore.shared.copyTranscriptionToClipboard) else {
                     self.showTextDeliveryFailure(.targetRestoreFailed, transcript: finalText)
                     return
                 }
@@ -3883,8 +3883,8 @@ struct ContentView: View {
                 self.showTextDeliveryFailure(failure, transcript: finalText)
                 return
             }
-        } else if SettingsStore.shared.copyTranscriptionToClipboard {
-            ClipboardService.copyToClipboard(finalText)
+        } else {
+            await PasteDeliveryCoordinator.shared.copyBackup(finalText, enabled: SettingsStore.shared.copyTranscriptionToClipboard)
         }
 
         NotchOverlayManager.shared.updateTranscriptionText("")
@@ -3927,7 +3927,7 @@ struct ContentView: View {
             // Type the rewritten text
             let typingTarget = self.resolveTypingTargetPID()
             if typingTarget.shouldRestoreOriginalFocus {
-                guard await self.restoreFocusToRecordingTarget() else {
+                guard await self.prepareRecordingTargetForDelivery(self.rewriteModeService.rewrittenText, keepBackup: SettingsStore.shared.copyTranscriptionToClipboard) else {
                     self.showTextDeliveryFailure(
                         .targetRestoreFailed,
                         transcript: self.rewriteModeService.rewrittenText
@@ -4148,6 +4148,13 @@ struct ContentView: View {
     }
 
     /// Restores only the window and element captured when recording started.
+    private func prepareRecordingTargetForDelivery(_ transcript: String, keepBackup: Bool, needsRestoration: Bool = true) async -> Bool {
+        guard needsRestoration else { return true }
+        return await PasteDeliveryCoordinator.shared.prepareForDelivery(transcript, preserveTranscriptOnClipboard: keepBackup) {
+            await self.restoreFocusToRecordingTarget()
+        }
+    }
+
     private func restoreFocusToRecordingTarget() async -> Bool {
         guard let context = NotchContentState.shared.recordingTargetContext else { return false }
         let pid = context.pid

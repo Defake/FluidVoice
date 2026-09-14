@@ -55,6 +55,7 @@ struct PasteboardSnapshot: Equatable {
 
 @MainActor
 protocol PasteboardManaging: AnyObject {
+    var changeCount: Int { get }
     func captureSnapshot() -> PasteboardSnapshot?
     func writeTemporaryText(_ text: String, sessionID: String) -> Bool
     func writeIntentionalText(_ text: String) -> Bool
@@ -96,6 +97,8 @@ final class SystemPasteboardManager: PasteboardManaging {
     init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
     }
+
+    var changeCount: Int { self.pasteboard.changeCount }
 
     func recordAudit(_ event: String, detail: String) {
         ClipboardAudit.record(event, pasteboard: self.pasteboard, detail: detail)
@@ -558,6 +561,7 @@ final class PasteDeliveryCoordinator {
     private var lease: ClipboardLease?
     private var isDelivering = false
     private var deliveryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var lastWrittenChangeCount: Int?
 
     init(
         pasteboard: PasteboardManaging? = nil,
@@ -587,9 +591,13 @@ final class PasteDeliveryCoordinator {
         self.generation &+= 1
         let generation = self.generation
         self.log("clipboard_slot_acquired generation=\(generation) waitMs=\((slotAcquiredAt - slotRequestedAt) * 1000)")
+        let originalChangeCount = self.pasteboard.changeCount
         let originalSnapshot = self.pasteboard.captureSnapshot()
 
         guard let originalSnapshot else {
+            if preserveTranscriptOnClipboard, self.pasteboard.changeCount == originalChangeCount {
+                self.writeBackup(text)
+            }
             self.log("delivery_failed generation=\(generation) reason=clipboard_snapshot_failed")
             return .recoverableFailure(.clipboardSnapshotFailed)
         }
@@ -597,10 +605,11 @@ final class PasteDeliveryCoordinator {
         let sessionID = UUID().uuidString
         let writeStartedAt = ProcessInfo.processInfo.systemUptime
         guard self.pasteboard.writeTemporaryText(text, sessionID: sessionID) else {
-            self.restoreAfterFailure(originalSnapshot, sessionID: sessionID, expectedText: text, generation: generation, reason: "clipboard_write_failed")
+            self.finishFailedDelivery(originalSnapshot, sessionID: sessionID, text: text, originalChangeCount: originalChangeCount, keepBackup: preserveTranscriptOnClipboard)
             self.log("delivery_failed generation=\(generation) reason=clipboard_write_failed")
             return .recoverableFailure(.clipboardWriteFailed)
         }
+        self.lastWrittenChangeCount = self.pasteboard.changeCount
         self.log(
             "clipboard_write generation=\(generation) elapsedMs=\(Self.elapsedMs(since: writeStartedAt))"
         )
@@ -610,7 +619,7 @@ final class PasteDeliveryCoordinator {
         let commandPostedAt = ProcessInfo.processInfo.systemUptime
         self.pasteboard.recordAudit("command_after", detail: "session=\(sessionID) success=\(commandPosted)")
         guard commandPosted else {
-            self.restoreAfterFailure(originalSnapshot, sessionID: sessionID, expectedText: text, generation: generation, reason: "paste_command_failed")
+            self.finishFailedDelivery(originalSnapshot, sessionID: sessionID, text: text, originalChangeCount: originalChangeCount, keepBackup: preserveTranscriptOnClipboard)
             self.log("delivery_failed generation=\(generation) reason=paste_command_failed")
             return .recoverableFailure(.pasteCommandFailed)
         }
@@ -633,6 +642,47 @@ final class PasteDeliveryCoordinator {
         settlementOwnsSlot = true
         self.scheduleSettlement(sessionID: sessionID, generation: generation)
         return .commandPosted
+    }
+
+    /// Keep backup independent of destination readiness, including callers that never enter typing.
+    func prepareForDelivery(
+        _ text: String,
+        preserveTranscriptOnClipboard: Bool,
+        prepare: () async -> Bool
+    ) async -> Bool {
+        let changeCount = self.pasteboard.changeCount
+        let generation = self.generation
+        let ready = await prepare()
+        if !ready, self.generation == generation {
+            await self.copyBackup(text, enabled: preserveTranscriptOnClipboard, expectedChangeCount: changeCount)
+        }
+        return ready
+    }
+
+    /// Serialize standalone copies with active paste leases so cleanup cannot undo the backup.
+    @discardableResult
+    func copyBackup(_ text: String, enabled: Bool, expectedChangeCount: Int? = nil) async -> Bool {
+        guard enabled, !text.isEmpty else { return false }
+        let requestedChangeCount = expectedChangeCount ?? self.pasteboard.changeCount
+        await self.acquireDeliverySlot()
+        defer { self.releaseDeliverySlot() }
+        guard self.pasteboard.changeCount == requestedChangeCount ||
+            self.pasteboard.changeCount == self.lastWrittenChangeCount
+        else {
+            self.log("backup_skipped reason=newer_clipboard_copy")
+            return false
+        }
+        self.generation &+= 1
+        return self.writeBackup(text)
+    }
+
+    @discardableResult
+    private func writeBackup(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        let copied = self.pasteboard.writeIntentionalText(text)
+        if copied { self.lastWrittenChangeCount = self.pasteboard.changeCount }
+        self.log("backup_copy success=\(copied)")
+        return copied
     }
 
     private func acquireDeliverySlot() async {
@@ -692,23 +742,36 @@ final class PasteDeliveryCoordinator {
 
         let restoreStartedAt = ProcessInfo.processInfo.systemUptime
         if lease.shouldKeepTranscript {
-            let didWrite = self.pasteboard.writeIntentionalText(lease.text)
+            let didWrite = self.writeBackup(lease.text)
             self.log("intentional_copy_settled generation=\(generation) success=\(didWrite) elapsedMs=\((ProcessInfo.processInfo.systemUptime - restoreStartedAt) * 1000)")
         } else {
             let didRestore = self.pasteboard.restoreTemporarySnapshot(lease.originalSnapshot, sessionID: sessionID, expectedText: lease.text)
+            if didRestore { self.lastWrittenChangeCount = self.pasteboard.changeCount }
             self.log("restore_completed generation=\(generation) success=\(didRestore) elapsedMs=\((ProcessInfo.processInfo.systemUptime - restoreStartedAt) * 1000)")
         }
     }
 
-    private func restoreAfterFailure(
+    private func finishFailedDelivery(
         _ snapshot: PasteboardSnapshot,
         sessionID: String,
-        expectedText: String,
-        generation: UInt64,
-        reason: String
+        text: String,
+        originalChangeCount: Int,
+        keepBackup: Bool
     ) {
-        let didRestore = self.pasteboard.restoreTemporarySnapshot(snapshot, sessionID: sessionID, expectedText: expectedText)
-        self.log("failure_restore generation=\(generation) reason=\(reason) success=\(didRestore)")
+        if keepBackup, self.pasteboard.isOwned(sessionID: sessionID, expectedText: text) ||
+            self.pasteboard.changeCount == originalChangeCount
+        {
+            self.writeBackup(text)
+            return
+        }
+        // A partial write may have cleared the board without installing our text. The
+        // manager can still restore that owned revision, but must leave newer copies alone.
+        let restored = self.pasteboard.restoreTemporarySnapshot(snapshot, sessionID: sessionID, expectedText: text)
+        if restored {
+            self.lastWrittenChangeCount = self.pasteboard.changeCount
+            if keepBackup { self.writeBackup(text) }
+        }
+        self.log("failure_restore success=\(restored)")
     }
 
     private func log(_ message: @autoclosure () -> String) {

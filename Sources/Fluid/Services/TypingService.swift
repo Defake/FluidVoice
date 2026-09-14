@@ -490,6 +490,7 @@ final class TypingService {
 
         // Check accessibility permissions first
         guard AXIsProcessTrusted() else {
+            await PasteDeliveryCoordinator.shared.copyBackup(text, enabled: preserveTranscriptOnClipboard)
             self.bench("request_return reason=accessibility_not_trusted")
             self.log("[TypingService] ERROR: Accessibility permissions required for text injection")
             self.log("[TypingService] Current accessibility status: \(AXIsProcessTrusted())")
@@ -518,9 +519,7 @@ final class TypingService {
             )
         } else if await self.insertTextDirectlyOffMain(text, preferredTargetPID: preferredTargetPID) {
             deliveryPath = .direct
-            if preserveTranscriptOnClipboard {
-                _ = ClipboardService.copyToClipboard(text)
-            }
+            await PasteDeliveryCoordinator.shared.copyBackup(text, enabled: preserveTranscriptOnClipboard)
             result = .commandPosted
         } else {
             deliveryPath = .clipboardFallback
@@ -575,6 +574,7 @@ final class TypingService {
                           exactFocusIsActive: Self.isExactFocusTargetActive(requiredFocusTarget)
                       )
                 else {
+                    await PasteDeliveryCoordinator.shared.copyBackup(plan.plainText, enabled: preserveTranscriptOnClipboard)
                     completion?(.actionSuppressed)
                     return
                 }

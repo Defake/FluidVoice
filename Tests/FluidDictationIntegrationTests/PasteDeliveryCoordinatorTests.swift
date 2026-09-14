@@ -172,7 +172,7 @@ final class PasteDeliveryCoordinatorTests: XCTestCase {
         XCTAssertFalse(pasteboard.isTemporary)
     }
 
-    func testPasteCommandFailureRestoresOriginalClipboardWhenCopyPreferenceIsEnabled() async {
+    func testPasteCommandFailureKeepsTranscriptWhenCopyPreferenceIsEnabled() async {
         let pasteboard = FakePasteboardManager(text: "before")
         let coordinator = PasteDeliveryCoordinator(
             pasteboard: pasteboard,
@@ -183,9 +183,9 @@ final class PasteDeliveryCoordinatorTests: XCTestCase {
         let result = await coordinator.deliver("dictated text", preserveTranscriptOnClipboard: true)
 
         XCTAssertEqual(result, .recoverableFailure(.pasteCommandFailed))
-        XCTAssertEqual(pasteboard.text, "before")
-        XCTAssertEqual(pasteboard.restoreCount, 1)
-        XCTAssertEqual(pasteboard.intentionalWriteCount, 0)
+        XCTAssertEqual(pasteboard.text, "dictated text")
+        XCTAssertEqual(pasteboard.restoreCount, 0)
+        XCTAssertEqual(pasteboard.intentionalWriteCount, 1)
     }
 
     func testIncompleteSnapshotDoesNotTouchClipboardOrPostPasteCommand() async {
@@ -451,6 +451,7 @@ final class TextInsertionModeMigrationTests: XCTestCase {
 
 @MainActor
 private final class FakePasteboardManager: PasteboardManaging {
+    private(set) var changeCount = 0
     private(set) var text: String
     private(set) var restoreCount = 0
     private(set) var intentionalWriteCount = 0
@@ -481,6 +482,7 @@ private final class FakePasteboardManager: PasteboardManaging {
     }
 
     func writeTemporaryText(_ text: String, sessionID: String) -> Bool {
+        self.changeCount += 1
         self.temporaryWriteCount += 1
         self.text = text
         self.sessionID = sessionID
@@ -490,6 +492,7 @@ private final class FakePasteboardManager: PasteboardManaging {
     }
 
     func writeIntentionalText(_ text: String) -> Bool {
+        self.changeCount += 1
         self.intentionalWriteCount += 1
         self.text = text
         self.sessionID = nil
@@ -502,6 +505,7 @@ private final class FakePasteboardManager: PasteboardManaging {
     }
 
     func restore(_ snapshot: PasteboardSnapshot) -> Bool {
+        self.changeCount += 1
         self.restoreCount += 1
         self.sessionID = nil
         self.isTemporary = false
@@ -525,6 +529,7 @@ private final class FakePasteboardManager: PasteboardManaging {
     }
 
     func simulateExternalCopy(_ text: String) {
+        self.changeCount += 1
         self.text = text
         self.sessionID = nil
         self.isTemporary = false
