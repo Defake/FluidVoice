@@ -80,10 +80,15 @@ final class PrivateAISettingsController: ObservableObject {
     func usePreviewModel(isInstalled: Bool, onReady: @escaping () -> Void) {
         guard !self.isBusy, let model = PrivateAIModelRegistry.model(id: self.previewModelID) else { return }
         self.persistPrivateAIModelSelection(model.id, loadIfInstalled: false)
+        let activateSmartMode = { [weak self] in
+            guard let self else { return }
+            self.viewModel.selectPrivateAIPromptIfAvailable()
+            onReady()
+        }
         if isInstalled {
-            self.verifyPrivateAIConnection(model, onReady: onReady)
+            self.verifyPrivateAIConnection(model, onReady: activateSmartMode)
         } else {
-            self.downloadPrivateAIModel(model, onReady: onReady)
+            self.downloadPrivateAIModel(model, onReady: activateSmartMode)
         }
     }
 

@@ -346,6 +346,7 @@ struct OnboardingFlowView: View {
     @State private var selectedModelRouteID: String?
     @State private var hoveredLanguageID: String?
     @State private var hoveredModelRouteID: String?
+    @State private var hoveredModelInfoRouteID: String?
     @State private var hoveredModelActionButtonID: String?
     @State private var hoveredPermissionButtonID: String?
     @State private var onboardingInputDevices: [AudioDevice.Device] = []
@@ -359,6 +360,7 @@ struct OnboardingFlowView: View {
     @State private var isOnboardingFlowVisible = false
     @State private var hoveredFooterButton: OnboardingFooterButton?
     @State private var isShowingAllLanguages = false
+    @State private var otherModelsPage = 0
     @State private var isShowingOtherModelRoutes = false
     @State private var preparingModelRouteID: String?
     @State private var uninstallingModelRouteID: String?
@@ -786,29 +788,28 @@ struct OnboardingFlowView: View {
             let landing = self.theme.metrics.onboardingSurface.landing
 
             ZStack {
-                VStack(alignment: .center, spacing: self.theme.metrics.onboardingSurface.landing.sectionSpacing) {
-                    FluidOnboardingLandingHero(
-                        eyebrow: "",
-                        title: "Just speak.",
-                        accentTitle: "We'll handle the rest.",
-                        firstDetail: "Accurate. Fast. Private. Free.",
-                        secondDetail: "Built for creators, thinkers, and builders."
-                    ) {
-                        FluidOnboardingLandingPrimaryButton(title: "Next") {
-                            self.goNext()
-                        }
-                        .frame(
-                            width: FluidOnboardingLandingPrimaryButton.size.width,
-                            height: FluidOnboardingLandingPrimaryButton.size.height
-                        )
+                VStack(spacing: 0) {
+                    OnboardingFittedContent(width: landing.contentWidth + 48) {
+                        FluidOnboardingLandingHero(
+                            eyebrow: "",
+                            title: "Just speak.",
+                            accentTitle: "We'll handle the rest.",
+                            firstDetail: "Accurate. Fast. Private. Free.",
+                            secondDetail: "Built for creators, thinkers, and builders."
+                        ) { EmptyView() }
+                            .padding(24)
                     }
+                    HStack {
+                        Spacer()
+                        FluidOnboardingLandingPrimaryButton(title: "Next") { self.goNext() }
+                            .frame(
+                                width: FluidOnboardingLandingPrimaryButton.size.width,
+                                height: FluidOnboardingLandingPrimaryButton.size.height
+                            )
+                    }
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 24)
                 }
-                .frame(width: landing.contentWidth, alignment: .center)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: proxy.size.height, alignment: .center)
-                .offset(y: -78)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 24)
 
                 FluidOnboardingLandingHoverTracker(
                     onMove: { location, size in
@@ -877,7 +878,7 @@ struct OnboardingFlowView: View {
                     FluidOnboardingCompactProgress(value: self.compactProgressValue)
                         .padding(.top, 28)
 
-                    ScrollView(.vertical, showsIndicators: false) {
+                    OnboardingFittedContent(width: 760) {
                         VStack(spacing: 0) {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
@@ -1119,15 +1120,12 @@ struct OnboardingFlowView: View {
                     )
             )
 
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(spacing: 6) {
-                    ForEach(self.searchedOnboardingLanguages) { language in
-                        self.languageSearchRow(for: language)
-                    }
+            Menu("Choose a language") {
+                ForEach(self.searchedOnboardingLanguages) { language in
+                    Button(language.displayName) { self.selectOnboardingLanguage(language) }
                 }
-                .padding(8)
             }
-            .frame(width: 530, height: 156)
+            .frame(width: 530, height: 38)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.white.opacity(0.045))
@@ -1337,7 +1335,7 @@ struct OnboardingFlowView: View {
                     FluidOnboardingCompactProgress(value: self.compactProgressValue)
                         .padding(.top, 28)
 
-                    ScrollView(.vertical, showsIndicators: self.isShowingOtherModelRoutes) {
+                    OnboardingFittedContent(width: 760) {
                         VStack(spacing: 0) {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
@@ -1369,7 +1367,7 @@ struct OnboardingFlowView: View {
                                 .padding(.bottom, 18)
 
                             VStack(spacing: 10) {
-                                let defaultRoutes = self.defaultDisplayedModelRoutes
+                                let defaultRoutes = self.isShowingOtherModelRoutes ? [] : self.defaultDisplayedModelRoutes
                                 if defaultRoutes.count == 1, let route = defaultRoutes.first {
                                     self.onboardingRouteCard(for: route)
                                 } else if !defaultRoutes.isEmpty {
@@ -1392,10 +1390,21 @@ struct OnboardingFlowView: View {
                                         ],
                                         spacing: 16
                                     ) {
-                                        ForEach(self.otherModelRoutes) { route in
+                                        let page = min(self.otherModelsPage, max(0, (self.otherModelRoutes.count - 1) / 2))
+                                        ForEach(Array(self.otherModelRoutes.dropFirst(page * 2).prefix(2))) { route in
                                             self.onboardingRouteCard(for: route, enablesHover: false)
                                         }
                                     }
+                                    HStack(spacing: 16) {
+                                        let lastPage = max(0, (self.otherModelRoutes.count - 1) / 2)
+                                        let page = min(self.otherModelsPage, lastPage)
+                                        Button("Previous models") { self.otherModelsPage = max(0, page - 1) }
+                                            .disabled(page == 0)
+                                        Text("\(page + 1) / \(lastPage + 1)")
+                                        Button("Next models") { self.otherModelsPage = min(lastPage, page + 1) }
+                                            .disabled(page == lastPage)
+                                    }
+                                    .font(self.theme.typography.caption)
                                 }
                             }
                             .frame(maxWidth: .infinity)
@@ -1406,9 +1415,9 @@ struct OnboardingFlowView: View {
                             .frame(width: 608)
 
                             if self.isModelPreparationInProgress {
-                                Label("Initial preparation can take a while to get your Mac ready for near-instant transcription.", systemImage: "clock.arrow.circlepath")
+                                Label("First-time setup can take a few minutes while your Mac prepares the model. Please keep FluidVoice open.", systemImage: "clock.arrow.circlepath")
                                     .font(self.theme.typography.captionStrong)
-                                    .foregroundStyle(Color.white.opacity(0.58))
+                                    .foregroundStyle(self.theme.palette.warning)
                                     .labelStyle(.titleAndIcon)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.86)
@@ -1416,8 +1425,8 @@ struct OnboardingFlowView: View {
                                     .padding(.vertical, 5)
                                     .background(
                                         Capsule()
-                                            .fill(Color.white.opacity(0.06))
-                                            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+                                            .fill(self.theme.palette.warning.opacity(0.10))
+                                            .overlay(Capsule().stroke(self.theme.palette.warning.opacity(0.24), lineWidth: 1))
                                     )
                                     .padding(.top, 14)
                             }
@@ -1463,7 +1472,7 @@ struct OnboardingFlowView: View {
                     FluidOnboardingCompactProgress(value: self.compactProgressValue)
                         .padding(.top, 28)
 
-                    ScrollView(.vertical, showsIndicators: false) {
+                    OnboardingFittedContent(width: 760) {
                         VStack(spacing: 0) {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
@@ -1561,12 +1570,11 @@ struct OnboardingFlowView: View {
             ),
             progressValue: self.compactProgressValue,
             glowCenter: self.landingGlowCenter,
-            language: self.selectedOnboardingLanguage,
             shortcutDisplay: self.onboardingShortcutDisplay,
-            isTestReady: self.isPlaygroundReady,
-            isRunning: self.asr.isRunning,
+            isRunning: self.asr.isRunning || self.asr.isStarting,
             isRecordingShortcut: self.isRecordingPrimaryShortcut,
-            shortcutRecordingMessage: self.isRecordingPrimaryShortcut ? self.shortcutRecordingMessage : nil,
+            shortcutRecordingMessage: self.shortcutRecordingMessage,
+            onToggleShortcut: self.togglePrimaryShortcutRecording,
             onGlowMove: self.updateLandingGlow(location:in:),
             onGlowExit: self.resetLandingGlow,
             onBack: self.goBack,
@@ -1576,15 +1584,6 @@ struct OnboardingFlowView: View {
                 self.finishOnboardingAtGettingStarted()
                 self.completeCurrentStep(
                     outcome: .skipped,
-                    origin: origin,
-                    completesFlow: self.settings.onboardingCompleted
-                )
-            },
-            onUseAIProvider: {
-                let origin = self.settings.analyticsOnboardingOrigin
-                self.openAIEnhancementSettingsFromOnboarding()
-                self.completeCurrentStep(
-                    outcome: .openedSettings,
                     origin: origin,
                     completesFlow: self.settings.onboardingCompleted
                 )
@@ -1610,7 +1609,7 @@ struct OnboardingFlowView: View {
                     FluidOnboardingCompactProgress(value: self.compactProgressValue)
                         .padding(.top, 28)
 
-                    ScrollView(.vertical, showsIndicators: false) {
+                    OnboardingFittedContent(width: 760) {
                         VStack(spacing: 0) {
                             FluidOnboardingCompactAppIconMark(size: 66)
                                 .padding(.bottom, 22)
@@ -1883,8 +1882,10 @@ struct OnboardingFlowView: View {
                     .foregroundStyle(Color.white.opacity(0.58))
                     .frame(width: 24, height: 24)
                     .contentShape(Circle())
-                    .help(self.onboardingModelTooltip(for: route))
                     .accessibilityLabel(self.onboardingModelTooltip(for: route))
+                    .onHover { isHovered in
+                        self.hoveredModelInfoRouteID = isHovered ? route.id : nil
+                    }
             }
             .frame(height: 38, alignment: .top)
 
@@ -1998,6 +1999,13 @@ struct OnboardingFlowView: View {
         )
         .shadow(color: Color.black.opacity(0.34), radius: isHovered ? 20 : 14, x: 0, y: isHovered ? 12 : 8)
         .contentShape(shape)
+        .overlay(alignment: .topTrailing) {
+            if self.hoveredModelInfoRouteID == route.id {
+                OnboardingModelInfoTooltip(text: self.onboardingModelTooltip(for: route), font: self.theme.typography.caption)
+                    .padding(.top, 46)
+                    .padding(.trailing, 16)
+            }
+        }
         .onTapGesture {
             guard !areModelActionsBlocked else { return }
             self.selectOnboardingRoute(route)

@@ -182,15 +182,15 @@ struct SettingsView: View {
             Spacer()
             Picker("", selection: self.dictationPromptSelectionBinding(for: slot)) {
                 Section("ON-DEVICE") {
-                    Text("Fast — No cleanup").tag("__OFF__")
+                    Text("Basic — No cleanup").tag("__OFF__")
                     if PrivateFeatures.privateAIProvider {
-                        Text("Cleanup — Fluid-1")
+                        Text("Smart — Fluid-1")
                             .tag(PrivateAIProviderPromptFormat.promptSelectionID)
                             .disabled(!privateAIAvailable)
                     }
                 }
                 Section("EXTERNAL") {
-                    Text("Cleanup").tag("__DEFAULT__")
+                    Text("Smart").tag("__DEFAULT__")
                     ForEach(profiles) { profile in
                         Text(profile.name.isEmpty ? "Untitled" : profile.name)
                             .tag(profile.id)

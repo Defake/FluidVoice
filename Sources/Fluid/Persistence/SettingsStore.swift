@@ -749,25 +749,25 @@ final class SettingsStore: ObservableObject {
     func dictationPromptDisplayName(for slot: DictationShortcutSlot, appBundleID: String?) -> String {
         switch self.dictationPromptSelection(for: slot) {
         case .off:
-            return "Off"
+            return "Basic"
         case .default:
             if let profile = self.resolvedDictationPromptProfile(for: slot, appBundleID: appBundleID) {
                 let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 return name.isEmpty ? "Untitled" : name
             }
-            return "Default"
+            return "Smart"
         case .privateAI:
             if self.isAppDictationPromptBindingActive(for: slot, appBundleID: appBundleID) {
                 if let profile = self.resolvedDictationPromptProfile(for: slot, appBundleID: appBundleID) {
                     let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
                     return name.isEmpty ? "Untitled" : name
                 }
-                return "Default"
+                return "Smart"
             }
-            return PrivateAIProviderFeature.displayName
+            return "Smart"
         case let .profile(promptID):
             guard let profile = self.dictationPromptProfiles.first(where: { $0.id == promptID && $0.mode.normalized == .dictate }) else {
-                return "Default"
+                return "Smart"
             }
             let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
             return name.isEmpty ? "Untitled" : name

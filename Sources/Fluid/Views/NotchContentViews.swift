@@ -97,6 +97,7 @@ class NotchContentState: ObservableObject {
     /// Keep overlay state bounded even during very long recordings.
     private static let maxStoredTranscriptionCharacters = SettingsStore.transcriptionPreviewCharLimitRange.upperBound
 
+    @Published var showsOnboardingModeHint = false
     @Published var transcriptionText: String = ""
     @Published var mode: OverlayMode = .dictation
     @Published var promptPickerMode: SettingsStore.PromptMode = .dictate
@@ -822,7 +823,7 @@ struct NotchExpandedView: View {
 
                     if promptMode.normalized == .dictate {
                         self.promptMenuRow(
-                            "Off",
+                            "Basic",
                             rowID: "off",
                             isSelected: self.settings.dictationPromptSelection(for: activeDictationSlot) == .off,
                             isEnabled: true
@@ -833,7 +834,7 @@ struct NotchExpandedView: View {
                         }
                     }
 
-                    self.promptMenuRow("Default", rowID: "default", isSelected: defaultSelected) {
+                    self.promptMenuRow(promptMode.normalized == .dictate ? "Smart" : "Default", rowID: "default", isSelected: defaultSelected) {
                         if promptMode.normalized == .dictate {
                             self.contentState.onDictationPromptSelectionRequested?(.default)
                         } else {
@@ -846,7 +847,7 @@ struct NotchExpandedView: View {
                     if promptMode.normalized == .dictate && PrivateFeatures.privateAIProvider {
                         let privateAIAvailable = PrivateAIProviderPromptFormat.isAvailable(settings: self.settings)
                         self.promptMenuRow(
-                            PrivateAIProviderFeature.displayName,
+                            "Smart — Fluid-1",
                             rowID: PrivateAIProviderFeature.shared.providerID,
                             isSelected: self.settings.dictationPromptSelection(for: activeDictationSlot) == .privateAI,
                             isEnabled: privateAIAvailable

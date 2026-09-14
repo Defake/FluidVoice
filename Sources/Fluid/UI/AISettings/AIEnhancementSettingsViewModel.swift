@@ -1949,7 +1949,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
                       $0.mode.normalized == mode.normalized
               })
         else {
-            return "Built-in Default"
+            return mode.normalized == .dictate ? "Smart" : "Built-in Default"
         }
 
         let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)

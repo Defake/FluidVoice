@@ -2046,7 +2046,7 @@ extension DictationE2ETests {
 
             settings.setDictationPromptSelection(.off)
             XCTAssertEqual(settings.dictationPromptSelection(for: .primary), .off)
-            XCTAssertEqual(settings.dictationPromptDisplayName(for: .primary, appBundleID: nil), "Off")
+            XCTAssertEqual(settings.dictationPromptDisplayName(for: .primary, appBundleID: nil), "Basic")
 
             settings.selectedProviderID = "openai"
             settings.setDictationPromptSelection(.profile(custom.id))

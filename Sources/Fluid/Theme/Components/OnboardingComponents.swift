@@ -1,6 +1,28 @@
 import AppKit
 import SwiftUI
 
+struct OnboardingModelInfoTooltip: View {
+    let text: String
+    let font: Font
+
+    var body: some View {
+        Text(self.text)
+            .font(self.font)
+            .foregroundStyle(.white.opacity(0.92))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(width: 260, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(red: 0.075, green: 0.085, blue: 0.11))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.16), lineWidth: 1))
+            )
+            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 struct FluidOnboardingLandingHero<Actions: View>: View {
     @Environment(\.theme) private var theme
 

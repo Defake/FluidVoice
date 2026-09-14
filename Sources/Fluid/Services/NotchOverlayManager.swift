@@ -49,6 +49,23 @@ final class NotchOverlayManager {
         EmptyView
     >?
     private var currentMode: OverlayMode = .dictation
+    private var onboardingOverlayOwner: UUID?
+
+    /// Shows the real controls without starting microphone capture.
+    func beginOnboardingOverlay(owner: UUID) {
+        guard self.onboardingOverlayOwner != owner else { return }
+        self.hideImmediately()
+        self.onboardingOverlayOwner = owner
+        self.show(audioLevelPublisher: Empty<CGFloat, Never>().eraseToAnyPublisher(), mode: .dictation)
+        NotchContentState.shared.showsOnboardingModeHint = true
+    }
+
+    func endOnboardingOverlay(owner: UUID) {
+        guard self.onboardingOverlayOwner == owner else { return }
+        self.onboardingOverlayOwner = nil
+        NotchContentState.shared.showsOnboardingModeHint = false
+        self.hideImmediately()
+    }
 
     /// Store last audio publisher for re-showing during processing
     private var lastAudioPublisher: AnyPublisher<CGFloat, Never>?
@@ -150,6 +167,7 @@ final class NotchOverlayManager {
     }
 
     func show(audioLevelPublisher: AnyPublisher<CGFloat, Never>, mode: OverlayMode) {
+        NotchContentState.shared.showsOnboardingModeHint = false
         self.refreshNotchPresentationPolicy()
         Self.overlayBench("show_called mode=\(mode.rawValue) state=\(self.state) commandExpanded=\(self.isCommandOutputExpanded)")
         self.cancelInFlightHideForNewPresentation()
@@ -186,7 +204,7 @@ final class NotchOverlayManager {
         let targetScreen = OverlayScreenResolver.screenForCurrentPointer()
 
         // Route to bottom overlay if user preference is set
-        if SettingsStore.shared.overlayPosition == .bottom {
+        if self.onboardingOverlayOwner != nil || SettingsStore.shared.overlayPosition == .bottom {
             Self.overlayBench("show_internal_route target=bottom")
             self.showBottomOverlay(audioLevelPublisher: audioLevelPublisher, mode: mode)
             return

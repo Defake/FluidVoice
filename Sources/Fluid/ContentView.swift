@@ -3497,7 +3497,12 @@ struct ContentView: View {
     private func currentDictationOutputRouteForHotkeyStop() -> DictationOutputRoute {
         let isDictationMode = self.activeRecordingMode == .dictate || self.activeRecordingMode == .promptMode
 
-        if self.isOnboardingSandboxRouteActive && isDictationMode {
+        if OnboardingDictationOutputPolicy.usesSandbox(
+            onboardingPracticeActive: self.isOnboardingSandboxRouteActive,
+            isDictation: isDictationMode,
+            targetProcessID: NotchContentState.shared.recordingTargetPID,
+            fluidVoiceProcessID: ProcessInfo.processInfo.processIdentifier
+        ) {
             return .onboardingSandbox
         }
         return .normal

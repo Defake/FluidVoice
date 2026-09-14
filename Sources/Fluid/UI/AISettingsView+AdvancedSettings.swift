@@ -1032,8 +1032,8 @@ extension AIEnhancementSettingsView {
                     let privateAISelection = SettingsStore.DictationPromptSelection.privateAI
                     self.promptProfileCard(
                         cardKey: "\(mode.normalized.rawValue)-\(PrivateAIProviderFeature.shared.providerID)",
-                        title: PrivateAIProviderFeature.displayName,
-                        subtitle: "",
+                        title: "Smart",
+                        subtitle: PrivateAIProviderFeature.displayName,
                         mode: mode,
                         isSelected: self.viewModel.isPrivateAIPromptSelected(),
                         assignments: self.promptAssignments(selection: privateAISelection, isPrivateAI: true),
@@ -1046,7 +1046,7 @@ extension AIEnhancementSettingsView {
                     let defaultSelection = SettingsStore.DictationPromptSelection.default
                     self.promptProfileCard(
                         cardKey: "\(mode.normalized.rawValue)-default",
-                        title: mode.normalized == .dictate ? "Built-in Default" : "Default \(self.friendlyModeName(mode))",
+                        title: mode.normalized == .dictate ? "Smart" : "Default \(self.friendlyModeName(mode))",
                         subtitle: "",
                         mode: mode,
                         isSelected: self.viewModel.selectedPromptID(for: mode) == nil,

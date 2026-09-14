@@ -60,6 +60,13 @@ final class AIEnhancementSettingsViewModel {
     var verificationCount = 0
     var resetCount = 0
     var verified = true
+    var smartSelectionCount = 0
+    var smartSelected = false
+    func selectPrivateAIPromptIfAvailable() {
+        guard verified else { return }
+        smartSelectionCount += 1
+        smartSelected = true
+    }
     func providerKey(for id: String) -> String { id }
     func refreshProviderItems() {}
     func connectionErrorMessage(for id: String) -> String { "test failure" }
@@ -239,7 +246,7 @@ enum PrivateAIControllerChecks {
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
         await eventually { !controller.isBusy }
-        check(activations == 0, "Failed activation must not switch shortcut routing")
+        check(activations == 0 && vm.smartSelectionCount == 0, "Failed activation must not switch shortcut routing")
         controller.refreshPrivateAILoadState()
         for _ in 0..<20 { await Task.yield() }
         check(controller.privateAILoadState.failureMessage(for: "mini") != nil, "Passive runtime refresh preserves failed activation")
@@ -247,7 +254,11 @@ enum PrivateAIControllerChecks {
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
         await eventually { !controller.isBusy }
         check(activations == 1 && controller.privateAILoadState.isLoaded("mini"), "Explicit activation calls routing once after successful verification")
+        check(vm.smartSelected && vm.smartSelectionCount == 1, "Successful explicit activation selects Smart once")
         check(vm.selectedProviderID == "external" && vm.selectedModel == "external-model", "Activation preserves external editor configuration")
+        vm.smartSelected = false // User manually chooses Basic after activation.
+        controller.synchronizeSelection()
+        check(!vm.smartSelected, "Reopening settings preserves manually selected Basic")
         var completionCount = 0
         var reportedError: String?
         let writesBeforeVerification = UserDefaults.standard.writes
@@ -258,6 +269,7 @@ enum PrivateAIControllerChecks {
         controller.verifyPrivateAIConnection(.init(id: "mini"), onCompletion: { _ in completionCount += 100 })
         await eventually { !controller.isBusy }
         check(completionCount == 1 && reportedError == nil, "Manual verification reports success once; duplicate clicks do not report")
+        check(!vm.smartSelected && vm.smartSelectionCount == 1, "Verification preserves manually selected Basic")
         vm.verified = false
         controller.verifyPrivateAIConnection(.init(id: "mini"), onCompletion: { error in
             completionCount += 1
@@ -267,5 +279,9 @@ enum PrivateAIControllerChecks {
         check(completionCount == 2 && reportedError?.contains("test failure") == true, "Manual verification reports the actual failure")
         controller.verifyPrivateAIConnection(.init(id: "pico"), onCompletion: { _ in completionCount += 100 })
         check(completionCount == 2 && UserDefaults.standard.writes == writesBeforeVerification, "Inactive verification has no result or persistence side effects")
+        vm.verified = true
+        controller.usePreviewModel(isInstalled: true) {}
+        await eventually { !controller.isBusy }
+        check(vm.smartSelected && vm.smartSelectionCount == 2, "Another explicit activation switches Basic back to Smart")
     }
 }

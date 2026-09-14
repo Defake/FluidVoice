@@ -1596,7 +1596,7 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Fast")
+                Text("Basic")
                 Spacer(minLength: 12)
                 Text("No cleanup")
                     .font(.fluidSystem(size: 10, weight: .medium))
@@ -1635,7 +1635,7 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack {
-                Text("Cleanup")
+                Text("Smart")
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
@@ -1665,7 +1665,7 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Cleanup")
+                Text("Smart")
                 Spacer(minLength: 12)
                 Text("Fluid-1")
                     .font(.fluidSystem(size: 10, weight: .medium))
@@ -2134,6 +2134,9 @@ private struct DynamicPreviewHeightPreferenceKey: PreferenceKey {
 // MARK: - Bottom Overlay SwiftUI View
 
 struct BottomOverlayView: View {
+    private var showsOnboardingHint: Bool { self.contentState.showsOnboardingModeHint }
+    @State private var onboardingHighlight = false
+
     @ObservedObject private var contentState = NotchContentState.shared
     @ObservedObject private var appServices = AppServices.shared
     @ObservedObject private var activeAppMonitor = ActiveAppMonitor.shared
@@ -2428,15 +2431,15 @@ struct BottomOverlayView: View {
         if activePromptMode.normalized == .dictate {
             switch self.settings.dictationPromptSelection(for: self.activeDictationShortcutSlot) {
             case .off:
-                return "Fast"
+                return "Basic"
             case .privateAI:
-                return "Cleanup"
+                return "Smart"
             case .default:
                 let hasAppOverride = self.settings.resolvedDictationPromptProfile(
                     for: self.activeDictationShortcutSlot,
                     appBundleID: self.promptResolutionBundleID
                 ) != nil
-                return hasAppOverride ? nil : "Cleanup"
+                return hasAppOverride ? nil : "Smart"
             case .profile:
                 return nil
             }
@@ -2445,7 +2448,7 @@ struct BottomOverlayView: View {
         return self.settings.resolvedPromptProfile(
             for: activePromptMode,
             appBundleID: self.promptResolutionBundleID
-        ) == nil ? "Cleanup" : nil
+        ) == nil ? "Smart" : nil
     }
 
     private var promptSelectorDisplayLabel: String {
@@ -2469,9 +2472,9 @@ struct BottomOverlayView: View {
 
     private var promptSelectorIconName: String? {
         switch self.promptSelectorBuiltInLabel {
-        case "Fast"?:
+        case "Basic"?:
             return "bolt.fill"
-        case "Cleanup"?:
+        case "Smart"?:
             return "sparkles"
         default:
             return nil
@@ -2886,8 +2889,8 @@ struct BottomOverlayView: View {
                 )
         )
         .overlay(alignment: .top) {
-            if self.isHoveringPromptChip, self.isPromptSelectableMode, !self.contentState.isProcessing {
-                Text("Select cleanup mode")
+            if self.isHoveringPromptChip, !self.showsOnboardingHint, self.isPromptSelectableMode, !self.contentState.isProcessing {
+                Text("Select dictation mode")
                     .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 8)
@@ -2904,7 +2907,42 @@ struct BottomOverlayView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Select cleanup mode")
+        .accessibilityLabel("Select dictation mode")
+        .overlay {
+            if self.showsOnboardingHint {
+                RoundedRectangle(cornerRadius: self.promptSelectorCornerRadius)
+                    .stroke(FluidOnboardingLandingColors.blue, lineWidth: 1.5)
+                    .padding(-3)
+                    .opacity(self.reduceMotion || self.onboardingHighlight ? 1 : 0.2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay(alignment: .top) {
+            if self.showsOnboardingHint {
+                VStack(spacing: 5) {
+                    Text("Switch modes here")
+                        .font(.fluidSystem(size: 12, weight: .semibold))
+                    Text("Click to switch between Basic and Smart")
+                        .font(.fluidSystem(size: 11))
+                        .foregroundStyle(.white.opacity(0.65))
+                    Image(systemName: "arrow.down")
+                        .font(.fluidSystem(size: 11, weight: .medium))
+                        .foregroundStyle(FluidOnboardingLandingColors.blue)
+                }
+                .fixedSize()
+                .offset(y: -78)
+                .allowsHitTesting(false)
+            }
+        }
+        .task(id: self.showsOnboardingHint) {
+            guard self.showsOnboardingHint, !self.reduceMotion else { return }
+            for _ in 0..<2 {
+                withAnimation(.easeInOut(duration: 0.45)) { self.onboardingHighlight = true }
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+                withAnimation(.easeInOut(duration: 0.45)) { self.onboardingHighlight = false }
+                do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            }
+        }
     }
 
     private var promptSelectorView: some View {
@@ -2923,6 +2961,7 @@ struct BottomOverlayView: View {
                     }
                     .onTapGesture {
                         guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else { return }
+                        self.contentState.showsOnboardingModeHint = false
                         self.closeModeMenu()
                         self.closeActionsMenu()
                         BottomOverlayPromptMenuController.shared.updateAnchor(
@@ -3482,6 +3521,10 @@ struct BottomOverlayView: View {
         )
         // Reserve space around the pill so its drop shadow isn't clipped by the (content-sized) window.
         .padding(self.isPillSize ? 26 : 0)
+        .padding(.top, self.showsOnboardingHint ? 82 : 0)
+        .onChange(of: self.showsOnboardingHint) { _, _ in
+            BottomOverlayWindowController.shared.refreshSizeForContent()
+        }
         .frame(maxHeight: .infinity, alignment: .top)
         .scaleEffect(self.overlayAnimatedScale, anchor: .center)
         .offset(y: self.overlayAnimatedOffsetY)
