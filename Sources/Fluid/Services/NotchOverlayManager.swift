@@ -130,10 +130,10 @@ final class NotchOverlayManager {
     /// Setup cancel shortcut monitors - both global (other apps) and local (our app)
     private func setupEscapeKeyMonitors() {
         let escapeHandler: (NSEvent) -> NSEvent? = { [weak self] event in
-            guard SettingsStore.shared.cancelRecordingHotkeyShortcut.matches(
+            guard SettingsStore.shared.cancelRecordingHotkeyShortcut?.matches(
                 keyCode: event.keyCode,
                 modifiers: event.modifierFlags
-            ) else { return event }
+            ) == true else { return event }
 
             Task { @MainActor in
                 guard self != nil else { return }

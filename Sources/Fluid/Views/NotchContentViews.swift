@@ -610,7 +610,7 @@ struct NotchExpandedView: View {
     }
 
     private var promptResolutionBundleID: String? {
-        self.activeAppMonitor.activeAppBundleID
+        DictationAppSession.shared.appID
     }
 
     private var activeDictationShortcutSlot: SettingsStore.DictationShortcutSlot {
@@ -634,7 +634,7 @@ struct NotchExpandedView: View {
     private var selectedPromptLabel: String {
         guard let activePromptMode else { return "N/A" }
         if activePromptMode.normalized == .dictate {
-            return self.settings.dictationPromptDisplayName(
+            return self.settings.dictationOverlayLabel(
                 for: self.activeDictationShortcutSlot,
                 appBundleID: self.promptResolutionBundleID
             )
@@ -650,9 +650,7 @@ struct NotchExpandedView: View {
     }
 
     private var compactPromptLabel: String {
-        let label = self.selectedPromptLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard label.count > 7 else { return label }
-        return String(label.prefix(7))
+        self.selectedPromptLabel
     }
 
     private var previewMaxHeight: CGFloat {
@@ -664,7 +662,7 @@ struct NotchExpandedView: View {
     }
 
     private var promptSelectorFixedWidth: CGFloat {
-        52
+        self.showsSpokenSendIndicator ? 82 : 100
     }
 
     private var promptMenuWidth: CGFloat {
@@ -817,14 +815,14 @@ struct NotchExpandedView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 2) {
                     let defaultSelected = promptMode.normalized == .dictate
-                        ? (self.settings.dictationPromptSelection(for: activeDictationSlot) == .default)
+                        ? (self.settings.resolvedDictationPromptSelection(for: activeDictationSlot, appBundleID: self.promptResolutionBundleID) == .default)
                         : (self.settings.selectedPromptID(for: promptMode) == nil)
 
                     if promptMode.normalized == .dictate {
                         self.promptMenuRow(
                             "Basic",
                             rowID: "off",
-                            isSelected: self.settings.dictationPromptSelection(for: activeDictationSlot) == .off,
+                            isSelected: self.settings.resolvedDictationPromptSelection(for: activeDictationSlot, appBundleID: self.promptResolutionBundleID) == .off,
                             isEnabled: true
                         ) {
                             self.contentState.onDictationPromptSelectionRequested?(.off)
@@ -833,7 +831,7 @@ struct NotchExpandedView: View {
                         }
                     }
 
-                    self.promptMenuRow(promptMode.normalized == .dictate ? "Smart" : "Default", rowID: "default", isSelected: defaultSelected) {
+                    self.promptMenuRow(SettingsStore.DictationModeLabels.externalDefault, rowID: "default", isSelected: defaultSelected) {
                         if promptMode.normalized == .dictate {
                             self.contentState.onDictationPromptSelectionRequested?(.default)
                         } else {
@@ -846,9 +844,9 @@ struct NotchExpandedView: View {
                     if promptMode.normalized == .dictate && PrivateFeatures.privateAIProvider {
                         let privateAIAvailable = PrivateAIProviderPromptFormat.isAvailable(settings: self.settings)
                         self.promptMenuRow(
-                            "Smart — Fluid-1",
+                            SettingsStore.DictationModeLabels.smartWithModel,
                             rowID: PrivateAIProviderFeature.shared.providerID,
-                            isSelected: self.settings.dictationPromptSelection(for: activeDictationSlot) == .privateAI,
+                            isSelected: self.settings.resolvedDictationPromptSelection(for: activeDictationSlot, appBundleID: self.promptResolutionBundleID) == .privateAI,
                             isEnabled: privateAIAvailable
                         ) {
                             self.contentState.onDictationPromptSelectionRequested?(.privateAI)
@@ -861,7 +859,7 @@ struct NotchExpandedView: View {
                     if !profiles.isEmpty {
                         ForEach(profiles) { profile in
                             let isSelected = promptMode.normalized == .dictate
-                                ? (self.settings.dictationPromptSelection(for: activeDictationSlot) == .profile(profile.id))
+                                ? (self.settings.resolvedDictationPromptSelection(for: activeDictationSlot, appBundleID: self.promptResolutionBundleID) == .profile(profile.id))
                                 : (self.settings.selectedPromptID(for: promptMode) == profile.id)
                             self.promptMenuRow(
                                 profile.name.isEmpty ? "Untitled" : profile.name,
@@ -900,11 +898,13 @@ struct NotchExpandedView: View {
         if self.presentationPolicy.showsPromptSelector {
             HStack(spacing: 3) {
                 Text(self.compactPromptLabel)
+                    .help(self.selectedPromptLabel)
+                    .accessibilityLabel(self.selectedPromptLabel)
                     .font(.fluidSystem(size: 9, weight: .medium))
                     .foregroundStyle(self.isHoveringPromptChip ? .white.opacity(0.94) : .white.opacity(0.86))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .fixedSize(horizontal: false, vertical: false)
                 Image(systemName: "chevron.down")
                     .font(.fluidSystem(size: 8, weight: .bold))
                     .foregroundStyle(self.isHoveringPromptChip ? .white.opacity(0.78) : .white.opacity(0.62))
@@ -923,21 +923,7 @@ struct NotchExpandedView: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 3)
             .frame(width: self.promptSelectorFixedWidth, alignment: .leading)
-            .background(
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.black.opacity(self.isHoveringPromptChip ? 0.96 : 0.92),
-                                Color(white: self.isHoveringPromptChip ? 0.10 : 0.06),
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            )
-            .shadow(color: .black.opacity(0.28), radius: 8, x: 0, y: 4)
-            .shadow(color: .white.opacity(self.isHoveringPromptChip ? 0.06 : 0.03), radius: 0, x: 0, y: 1)
+            .fluidDropdownSurface()
             .opacity(self.isPromptSelectableMode ? (self.contentState.isProcessing ? 0.7 : 1.0) : 0.6)
             .allowsHitTesting(self.isPromptSelectableMode && !self.contentState.isProcessing)
             .onHover { hovering in

@@ -3426,7 +3426,7 @@ struct AddDictionaryEntrySheet: View {
                     .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
             }
 
             Divider()
@@ -3578,7 +3578,7 @@ struct EditDictionaryEntrySheet: View {
                     .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
             }
 
             Divider()

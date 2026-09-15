@@ -244,7 +244,7 @@ struct DashboardView: View {
     @ViewBuilder
     private var shortcutKey: some View {
         let button = Button(action: self.openShortcutSettings) {
-            Text(self.settings.primaryDictationShortcuts.first?.displayString ?? self.shortcut)
+            Text(self.settings.primaryDictationShortcuts.first?.displayString ?? "Off")
                 .font(.fluidSystem(size: 25, weight: .medium))
                 .lineLimit(2).minimumScaleFactor(0.5)
                 .multilineTextAlignment(.center)

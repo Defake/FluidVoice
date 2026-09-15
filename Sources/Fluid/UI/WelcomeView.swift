@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Combine
 import SwiftUI
 
 struct WelcomeView: View {
@@ -296,7 +297,7 @@ struct OnboardingFlowView: View {
     }
 
     private var isAIReady: Bool {
-        self.settings.onboardingAISkipped || DictationAIPostProcessingGate.isProviderConfigured()
+        self.settings.onboardingAISkipped || DictationAIPostProcessingGate.isOnboardingChoiceConfigured()
     }
 
     private var isPlaygroundReady: Bool {
@@ -839,15 +840,8 @@ struct OnboardingFlowView: View {
                     Button(language.displayName) { self.selectOnboardingLanguage(language) }
                 }
             }
-            .frame(width: 530, height: 38)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.045))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-            )
+            .fluidDropdownStyle()
+            .frame(width: 530)
         }
     }
 
@@ -2488,6 +2482,7 @@ private struct OnboardingMicrophoneSetupPanel: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    .fluidDropdownStyle()
                     .frame(width: 248)
                     .tint(.white)
                     .accessibilityHint("Moves the selected microphone to first in FluidVoice priority")

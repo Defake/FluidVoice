@@ -92,8 +92,8 @@ enum AISettingsLayout {
     static let promptInlinePickerWidth: CGFloat = 145
     static let promptInlineModelWidth: CGFloat = 180
     static let promptScopeLabelWidth: CGFloat = 110
-    static let promptEditorLabelColumnWidth: CGFloat = 180
-    static let promptEditorControlColumnWidth: CGFloat = 270
+    static let promptEditorLabelColumnWidth: CGFloat = 140
+    static let promptEditorControlColumnWidth: CGFloat = 340
     static let rowLeadingIndent: CGFloat = labelWidth + 12
 }
 

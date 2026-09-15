@@ -899,6 +899,7 @@ extension AIEnhancementSettingsView {
             }
         }
         .pickerStyle(.menu)
+        .fluidDropdownStyle()
         .labelsHidden()
         .disabled(isBusy)
         .help("Local Fluid-1 runtime. Default is MLX on Apple Silicon.")
@@ -1887,36 +1888,7 @@ extension AIEnhancementSettingsView {
     }
 
     var promptsStepContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "text.bubble.fill")
-                    .font(.fluidSystem(size: 12, weight: .medium))
-                    .foregroundStyle(self.theme.palette.accent)
-                Text("Styles")
-                    .font(.fluidSystem(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Button {
-                    self.isPromptProfilesHelpPresented.toggle()
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.fluidSystem(size: 12, weight: .semibold))
-                        .foregroundStyle(self.theme.palette.secondaryText.opacity(0.78))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("About prompt profiles")
-                .popover(isPresented: self.$isPromptProfilesHelpPresented, arrowEdge: .top) {
-                    self.promptProfilesHelpPopover
-                }
-
-                Spacer()
-            }
-
-            self.advancedSettingsCard
-        }
+        self.advancedSettingsCard
     }
 
     var builtInProvidersList: [(id: String, name: String)] {
@@ -2485,6 +2457,7 @@ extension AIEnhancementSettingsView {
                             Text("Custom...").tag("custom")
                         }
                         .pickerStyle(.menu)
+                        .fluidDropdownStyle()
                         .labelsHidden()
                         .frame(width: 140)
                     }
@@ -2521,6 +2494,7 @@ extension AIEnhancementSettingsView {
                                 Text("high").tag("high")
                             }
                             .pickerStyle(.menu)
+                            .fluidDropdownStyle()
                             .labelsHidden()
                             .frame(width: 100)
                         } else if self.viewModel.editingReasoningParamName == "enable_thinking" {
@@ -2529,6 +2503,7 @@ extension AIEnhancementSettingsView {
                                 Text("false").tag("false")
                             }
                             .pickerStyle(.menu)
+                            .fluidDropdownStyle()
                             .labelsHidden()
                             .frame(width: 100)
                         } else {

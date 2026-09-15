@@ -1585,7 +1585,7 @@ private struct BottomOverlayPromptMenuView: View {
     @ViewBuilder
     private func offRow() -> some View {
         let activeSlot = self.contentState.activeDictationShortcutSlot ?? .primary
-        let isSelected = self.settings.dictationPromptSelection(for: activeSlot) == .off
+        let isSelected = self.settings.resolvedDictationPromptSelection(for: activeSlot, appBundleID: DictationAppSession.shared.appID) == .off
         Button(action: {
             if self.promptMode.normalized == .dictate {
                 self.contentState.onDictationPromptSelectionRequested?(.off)
@@ -1622,7 +1622,7 @@ private struct BottomOverlayPromptMenuView: View {
         let activeSlot = self.contentState.activeDictationShortcutSlot ?? .primary
         let isSelected = (
             self.promptMode.normalized == .dictate
-                ? (self.settings.dictationPromptSelection(for: activeSlot) == .default)
+                ? (self.settings.resolvedDictationPromptSelection(for: activeSlot, appBundleID: DictationAppSession.shared.appID) == .default)
                 : (selectedID == nil)
         )
         Button(action: {
@@ -1635,7 +1635,7 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack {
-                Text("Default")
+                Text(SettingsStore.DictationModeLabels.externalDefault)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
@@ -1657,7 +1657,7 @@ private struct BottomOverlayPromptMenuView: View {
     private func privateAIRow() -> some View {
         let activeSlot = self.contentState.activeDictationShortcutSlot ?? .primary
         let isAvailable = PrivateAIProviderPromptFormat.isAvailable(settings: self.settings)
-        let isSelected = self.settings.dictationPromptSelection(for: activeSlot) == .privateAI
+        let isSelected = self.settings.resolvedDictationPromptSelection(for: activeSlot, appBundleID: DictationAppSession.shared.appID) == .privateAI
         Button(action: {
             guard isAvailable else { return }
             self.contentState.onDictationPromptSelectionRequested?(.privateAI)
@@ -1665,9 +1665,9 @@ private struct BottomOverlayPromptMenuView: View {
             self.onDismissRequested()
         }) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Smart")
+                Text(SettingsStore.DictationModeLabels.smart)
                 Spacer(minLength: 12)
-                Text("Fluid-1")
+                Text(PrivateAIModelRegistry.model(id: PrivateAIIntegrationService.configuredModelID)?.displayName ?? "Fluid-1")
                     .font(.fluidSystem(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.45))
                 if isSelected {
@@ -1694,7 +1694,7 @@ private struct BottomOverlayPromptMenuView: View {
         let activeSlot = self.contentState.activeDictationShortcutSlot ?? .primary
         let isSelected = (
             self.promptMode.normalized == .dictate
-                ? (self.settings.dictationPromptSelection(for: activeSlot) == .profile(profile.id))
+                ? (self.settings.resolvedDictationPromptSelection(for: activeSlot, appBundleID: DictationAppSession.shared.appID) == .profile(profile.id))
                 : (selectedID == profile.id)
         )
         Button(action: {
@@ -2384,7 +2384,7 @@ struct BottomOverlayView: View {
     }
 
     private var promptResolutionBundleID: String? {
-        self.activeAppMonitor.activeAppBundleID
+        DictationAppSession.shared.appID
     }
 
     private var activeDictationShortcutSlot: SettingsStore.DictationShortcutSlot {
@@ -2408,7 +2408,7 @@ struct BottomOverlayView: View {
     private var selectedPromptLabel: String {
         guard let activePromptMode else { return "N/A" }
         if activePromptMode.normalized == .dictate {
-            return self.settings.dictationPromptDisplayName(
+            return self.settings.dictationOverlayLabel(
                 for: self.activeDictationShortcutSlot,
                 appBundleID: self.promptResolutionBundleID
             )
@@ -2426,17 +2426,17 @@ struct BottomOverlayView: View {
     private var promptSelectorBuiltInLabel: String? {
         guard let activePromptMode else { return nil }
         if activePromptMode.normalized == .dictate {
-            switch self.settings.dictationPromptSelection(for: self.activeDictationShortcutSlot) {
+            switch self.settings.resolvedDictationPromptSelection(for: self.activeDictationShortcutSlot, appBundleID: self.promptResolutionBundleID) {
             case .off:
                 return "Basic"
             case .privateAI:
-                return self.isAppPromptOverrideActive ? nil : "Smart"
+                return self.isAppPromptOverrideActive ? nil : SettingsStore.DictationModeLabels.smart
             case .default:
                 let hasAppOverride = self.settings.resolvedDictationPromptProfile(
                     for: self.activeDictationShortcutSlot,
                     appBundleID: self.promptResolutionBundleID
                 ) != nil
-                return hasAppOverride ? nil : "Default"
+                return hasAppOverride ? nil : SettingsStore.DictationModeLabels.externalDefault
             case .profile:
                 return nil
             }
@@ -2449,6 +2449,7 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorDisplayLabel: String {
+        if self.activePromptMode?.normalized == .dictate { return self.selectedPromptLabel }
         let selectedLabel = self.selectedPromptLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = self.promptSelectorBuiltInLabel ?? selectedLabel
         guard !label.isEmpty else { return "Default" }
@@ -2471,7 +2472,7 @@ struct BottomOverlayView: View {
         switch self.promptSelectorBuiltInLabel {
         case "Basic"?:
             return "bolt.fill"
-        case "Smart"?:
+        case SettingsStore.DictationModeLabels.smart?:
             return "sparkles"
         default:
             return nil
@@ -2813,9 +2814,7 @@ struct BottomOverlayView: View {
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 8)
         .padding(.vertical, self.promptSelectorVerticalPadding)
-        .background(
-            self.chipBackground(isHovered: self.isHoveringModeChip, disabled: self.contentState.isProcessing)
-        )
+        .fluidDropdownSurface(cornerRadius: self.promptSelectorCornerRadius)
     }
 
     private var modeSelectorView: some View {
@@ -2852,12 +2851,14 @@ struct BottomOverlayView: View {
                     .foregroundStyle(.white.opacity(0.72))
             }
             Text(self.promptSelectorDisplayLabel)
+                .help(self.selectedPromptLabel)
+                .accessibilityLabel(self.selectedPromptLabel)
                 .font(.fluidSystem(size: self.promptSelectorFontSize, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(
-                    maxWidth: self.promptSelectorBuiltInLabel == nil ? 72 : nil,
+                    maxWidth: self.activePromptMode?.normalized == .dictate ? nil : (self.promptSelectorBuiltInLabel == nil ? 72 : nil),
                     alignment: .leading
                 )
             if self.isAppPromptOverrideActive {

@@ -18,7 +18,7 @@ struct AnalyticsPrivacyView: View {
                 Spacer()
 
                 Button("Done") { self.dismiss() }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
             }
 
             Divider().opacity(0.4)

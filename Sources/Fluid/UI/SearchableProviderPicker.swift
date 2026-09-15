@@ -73,7 +73,7 @@ struct SearchableProviderPicker: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 6)
-                FluidPickerDisclosureIcon(backgroundOpacity: 0.7)
+                FluidDropdownChevron()
             }
             .searchablePickerControlChrome(width: self.controlWidth, height: self.controlHeight)
         }

@@ -826,7 +826,7 @@ final class GlobalHotkeyManager: NSObject {
         let commandEnabled: Bool
         let edit: HotkeyShortcut
         let editEnabled: Bool
-        let cancel: HotkeyShortcut
+        let cancel: HotkeyShortcut?
         let pasteLast: HotkeyShortcut?
         let pasteLastEnabled: Bool
         let mode: HotkeyActivationMode
@@ -1248,7 +1248,7 @@ final class GlobalHotkeyManager: NSObject {
             self.markOtherInputDuringModifierOnly()
 
             // Check the configured cancel shortcut first.
-            if SettingsStore.shared.cancelRecordingHotkeyShortcut.matches(keyCode: keyCode, modifiers: eventModifiers) {
+            if SettingsStore.shared.cancelRecordingHotkeyShortcut?.matches(keyCode: keyCode, modifiers: eventModifiers) == true {
                 var handled = false
 
                 if self.asrService.isRunning || self.asrService.isStarting {

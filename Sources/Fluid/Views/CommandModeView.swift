@@ -124,7 +124,7 @@ struct CommandModeView: View {
                 Button(action: { self.service.createNewChat() }) {
                     Image(systemName: "plus")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(FluidOutlinedButtonStyle(height: 24))
                 .help("New chat")
                 .disabled(self.service.isProcessing)
 
@@ -168,7 +168,7 @@ struct CommandModeView: View {
                 Button(action: { self.showingClearConfirmation = true }) {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(FluidOutlinedButtonStyle(height: 24))
                 .help("Delete chat")
                 .disabled(self.service.isProcessing)
             }
@@ -456,7 +456,7 @@ struct CommandModeView: View {
                 Button(action: { self.service.cancelPendingCommand() }) {
                     Label("Cancel", systemImage: "xmark")
                 }
-                .buttonStyle(.bordered)
+                .fluidOutlinedButton()
                 .keyboardShortcut(.escape, modifiers: [])
 
                 Button(action: {

@@ -95,7 +95,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
             )
             settings.dictationPromptProfiles = [profile]
             settings.selectedDictationPromptID = profile.id
-            settings.sendCustomPromptOnly = true
 
             let prompt = settings.effectiveDictationSystemPrompt(for: .primary)
             XCTAssertEqual(prompt, profile.prompt)
@@ -112,7 +111,7 @@ final class LLMClientRequestBodyTests: XCTestCase {
         }
     }
 
-    func testCustomPromptOnly_defaultFalsePrependsBasePrompt() {
+    func testCustomPromptOnly_newProfilesNeverPrependBasePrompt() {
         self.withPromptSettingsRestored {
             let settings = SettingsStore.shared
             self.resetPromptSettings(settings)
@@ -124,11 +123,10 @@ final class LLMClientRequestBodyTests: XCTestCase {
             )
             settings.dictationPromptProfiles = [profile]
             settings.selectedDictationPromptID = profile.id
-            settings.sendCustomPromptOnly = false
 
             XCTAssertEqual(
                 settings.effectiveDictationSystemPrompt(for: .primary),
-                SettingsStore.combineBasePrompt(for: .dictate, with: profile.prompt)
+                profile.prompt
             )
         }
     }
@@ -137,8 +135,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
         self.withPromptSettingsRestored {
             let settings = SettingsStore.shared
             self.resetPromptSettings(settings)
-
-            settings.sendCustomPromptOnly = true
 
             let prompt = settings.effectiveDictationSystemPrompt(for: .primary)
             XCTAssertFalse(prompt.isEmpty)
@@ -172,7 +168,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
                     promptID: mail.id
                 ),
             ]
-            settings.sendCustomPromptOnly = true
 
             XCTAssertEqual(
                 settings.effectiveDictationSystemPrompt(for: .primary, appBundleID: "com.apple.mail"),
@@ -196,22 +191,70 @@ final class LLMClientRequestBodyTests: XCTestCase {
                 mode: .dictate
             )
             settings.dictationPromptProfiles = [profile]
-            settings.sendCustomPromptOnly = true
 
             XCTAssertEqual(
                 settings.shortcutOverrideSystemPrompt(for: profile),
                 profile.prompt
             )
 
-            settings.sendCustomPromptOnly = false
             XCTAssertEqual(
                 settings.shortcutOverrideSystemPrompt(for: profile),
-                SettingsStore.combineBasePrompt(for: .dictate, with: profile.prompt)
+                profile.prompt
             )
         }
     }
 
+    func testCustomPromptOnly_emptyExplicitProfileDoesNotFallBackToDefault() {
+        self.withPromptSettingsRestored {
+            let settings = SettingsStore.shared
+            self.resetPromptSettings(settings)
+            let profile = SettingsStore.DictationPromptProfile(name: "Blank", prompt: "")
+            settings.dictationPromptProfiles = [profile]
+            settings.selectedDictationPromptID = profile.id
+            XCTAssertEqual(settings.effectiveDictationSystemPrompt(for: .primary), "")
+            XCTAssertEqual(SettingsStore.renderDictationUserMessage(promptText: "", transcript: "hello"), "hello")
+        }
+    }
+
     private static let basePromptMarker = "You are a voice-to-text dictation cleaner"
+
+    func testAppVisitOverrideUsesActualPromptAndDoesNotPersist() {
+        self.withPromptSettingsRestored {
+            let settings = SettingsStore.shared
+            self.resetPromptSettings(settings)
+            let session = DictationAppSession.shared
+            let previousApp = session.appID
+            defer { session.activate(previousApp ?? "test.finished") }
+            let saved = SettingsStore.DictationPromptProfile(name: "App rule", prompt: "App rule body", mode: .dictate)
+            let manual = SettingsStore.DictationPromptProfile(name: "Temporary", prompt: "Temporary body", mode: .dictate)
+            settings.dictationPromptProfiles = [saved, manual]
+            settings.appPromptBindings = [.init(mode: .dictate, appBundleID: "test.editor", appName: "Editor", promptID: saved.id)]
+            let originalSelection = settings.dictationPromptSelection(for: .primary)
+            session.activate("test.other")
+            session.activate("test.editor")
+            XCTAssertEqual(settings.resolvedDictationPromptSelection(for: .primary, appBundleID: "test.editor"), .profile(saved.id))
+            session.select(.profile(manual.id), slot: .primary, appID: "test.editor")
+            XCTAssertEqual(settings.resolvedDictationPromptSelection(for: .primary, appBundleID: "test.editor"), .profile(manual.id))
+            XCTAssertEqual(settings.effectiveDictationSystemPrompt(for: .primary, appBundleID: "test.editor"), "Temporary body")
+            session.activate("test.editor")
+            XCTAssertEqual(settings.dictationPromptDisplayName(for: .primary, appBundleID: "test.editor"), "Temporary")
+            session.select(.off, slot: .primary, appID: "test.editor")
+            XCTAssertEqual(settings.dictationOverlayLabel(for: .primary, appBundleID: "test.editor"), "Basic")
+            XCTAssertFalse(DictationAIPostProcessingGate.isConfigured(for: .primary, appBundleID: "test.editor"))
+            XCTAssertEqual(settings.dictationPromptSelection(for: .primary), originalSelection)
+            XCTAssertEqual(settings.appPromptBindings.first?.promptID, saved.id)
+            session.activate("test.other")
+            session.activate("test.editor")
+            XCTAssertEqual(settings.resolvedDictationPromptSelection(for: .primary, appBundleID: "test.editor"), .profile(saved.id))
+            XCTAssertEqual(settings.effectiveDictationSystemPrompt(for: .primary, appBundleID: "test.editor"), "App rule body")
+            settings.dictationPromptRoutingScope = .selectedAppsOnly
+            session.activate("test.unbound")
+            XCTAssertEqual(settings.resolvedDictationPromptSelection(for: .primary, appBundleID: "test.unbound"), .off)
+            session.select(.profile(manual.id), slot: .primary, appID: "test.unbound")
+            XCTAssertEqual(settings.resolvedDictationPromptSelection(for: .primary, appBundleID: "test.unbound"), .profile(manual.id))
+            XCTAssertEqual(settings.effectiveDictationSystemPrompt(for: .primary, appBundleID: "test.unbound"), "Temporary body")
+        }
+    }
 
     private func resetPromptSettings(_ settings: SettingsStore) {
         settings.dictationPromptProfiles = []
@@ -220,7 +263,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
         settings.isDictationPromptOff = false
         settings.dictationPromptRoutingScope = .allApps
         settings.defaultDictationPromptOverride = nil
-        settings.sendCustomPromptOnly = false
     }
 
     private func withPromptSettingsRestored(run: () -> Void) {
@@ -231,7 +273,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
         let isDictationPromptOff = settings.isDictationPromptOff
         let dictationPromptRoutingScope = settings.dictationPromptRoutingScope
         let defaultDictationPromptOverride = settings.defaultDictationPromptOverride
-        let sendCustomPromptOnly = settings.sendCustomPromptOnly
 
         defer {
             settings.dictationPromptProfiles = profiles
@@ -240,7 +281,6 @@ final class LLMClientRequestBodyTests: XCTestCase {
             settings.isDictationPromptOff = isDictationPromptOff
             settings.dictationPromptRoutingScope = dictationPromptRoutingScope
             settings.defaultDictationPromptOverride = defaultDictationPromptOverride
-            settings.sendCustomPromptOnly = sendCustomPromptOnly
         }
 
         run()
@@ -256,7 +296,7 @@ final class LLMClientRequestBodyTests: XCTestCase {
 final class LLMClientStreamingTests: XCTestCase {
     // Regression test for https://github.com/altic-dev/FluidVoice/issues/445
     func testReasoningContentDeltaPreservesChunkedToolCall() async throws {
-        let client = makeClient()
+        let client = self.makeClient()
         var config = LLMClient.Config(
             messages: [["role": "user", "content": "Show the working directory"]],
             model: "qwen3.5:9b",
@@ -278,7 +318,7 @@ final class LLMClientStreamingTests: XCTestCase {
     }
 
     func testTagBasedReasoningStillPreservesChunkedToolCall() async throws {
-        let client = makeClient()
+        let client = self.makeClient()
         var config = LLMClient.Config(
             messages: [["role": "user", "content": "Show the working directory"]],
             model: "qwen-thinking",

@@ -15,12 +15,15 @@ extension View {
     /// Applies an app theme to the view hierarchy.
     @ViewBuilder
     func appTheme(_ theme: AppTheme) -> some View {
-        if FluidTypography.overridesStandard {
-            self.environment(\.theme, theme)
-                .font(.fluidSystem(.body))
-        } else {
-            self.environment(\.theme, theme)
+        Group {
+            if FluidTypography.overridesStandard {
+                self.font(.fluidSystem(.body))
+            } else {
+                self
+            }
         }
+        .environment(\.theme, theme)
+        .buttonStyle(FluidOutlinedButtonStyle())
     }
 }
 

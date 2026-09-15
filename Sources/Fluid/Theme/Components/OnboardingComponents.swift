@@ -534,11 +534,11 @@ private struct OnboardingSecondaryButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         if let controlSize {
             content
-                .buttonStyle(.bordered)
+                .fluidOutlinedButton()
                 .controlSize(controlSize)
         } else {
             content
-                .buttonStyle(.bordered)
+                .fluidOutlinedButton()
         }
     }
 }

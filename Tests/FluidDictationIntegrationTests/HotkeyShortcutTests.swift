@@ -6,6 +6,55 @@ import Foundation
 import XCTest
 
 final class HotkeyShortcutTests: XCTestCase {
+    func testExplicitCustomPromptMigrationPreservesRulesAndIdentity() throws {
+        var legacy = SettingsStore.DictationPromptProfile(name: "Brief", prompt: "Keep it short.")
+        legacy.usesExplicitDictationPrompt = false
+        let migrated = SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: false)
+        XCTAssertEqual(migrated.prompt, SettingsStore.combineBasePrompt(for: .dictate, with: legacy.prompt))
+        XCTAssertEqual(migrated.id, legacy.id)
+        XCTAssertEqual(migrated.updatedAt, legacy.updatedAt)
+        XCTAssertTrue(migrated.usesExplicitDictationPrompt)
+        XCTAssertEqual(SettingsStore.migrateExplicitDictationPrompt(migrated, legacySendOnly: false), migrated)
+        let restored = try JSONDecoder().decode(SettingsStore.DictationPromptProfile.self, from: JSONEncoder().encode(migrated))
+        XCTAssertEqual(SettingsStore.migrateExplicitDictationPrompt(restored, legacySendOnly: false), migrated)
+        XCTAssertEqual(SettingsStore.shared.shortcutOverrideSystemPrompt(for: migrated), migrated.prompt)
+    }
+
+    func testExplicitCustomPromptMigrationHonorsLegacyToggleAndEditMode() {
+        var legacy = SettingsStore.DictationPromptProfile(name: "Brief", prompt: "Keep it short.")
+        legacy.usesExplicitDictationPrompt = false
+        let standalone = SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: true)
+        XCTAssertEqual(standalone.prompt, legacy.prompt)
+        legacy.mode = .edit
+        XCTAssertEqual(SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: false), legacy)
+        legacy.mode = .dictate
+        legacy.prompt = ""
+        XCTAssertEqual(SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: false).prompt, "")
+    }
+
+    func testLegacyEmptyCustomShortcutPreservesBothFallbacks() throws {
+        var legacy = SettingsStore.DictationPromptProfile(name: "Legacy empty", prompt: "")
+        legacy.usesExplicitDictationPrompt = false
+        let withBase = SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: false)
+        let defaultFallback = SettingsStore.migrateExplicitDictationPrompt(legacy, legacySendOnly: true)
+        XCTAssertEqual(SettingsStore.shared.shortcutOverrideSystemPrompt(for: withBase), SettingsStore.baseDictationPromptText())
+        XCTAssertNil(SettingsStore.shared.shortcutOverrideSystemPrompt(for: defaultFallback))
+        let restored = try JSONDecoder().decode(SettingsStore.DictationPromptProfile.self, from: JSONEncoder().encode(withBase))
+        XCTAssertEqual(SettingsStore.shared.shortcutOverrideSystemPrompt(for: restored), SettingsStore.baseDictationPromptText())
+        XCTAssertTrue(withBase.usesLegacyEmptyPromptFallback)
+        XCTAssertTrue(defaultFallback.usesLegacyEmptyPromptFallback)
+    }
+
+    func testNewCustomPromptsUseWrittenTextWithoutStrippingOrAddingRules() {
+        let written = SettingsStore.baseDictationPromptText() + "\n\nUse lowercase.  "
+        let profile = SettingsStore.DictationPromptProfile(name: "Custom", prompt: written)
+        XCTAssertEqual(SettingsStore.migrateExplicitDictationPrompt(profile, legacySendOnly: false), profile)
+        XCTAssertEqual(SettingsStore.customPromptBody(written, mode: .dictate), written)
+        XCTAssertEqual(SettingsStore.shared.shortcutOverrideSystemPrompt(for: profile), written)
+        XCTAssertEqual(SettingsStore.shared.shortcutOverrideSystemPrompt(for: .init(name: "Blank", prompt: "")), "")
+        XCTAssertTrue(SettingsStore.defaultDictationPromptText().contains(SettingsStore.baseDictationPromptText()))
+    }
+
     func testInputDeliveryTimingKeepsClocksSeparate() {
         let input = HotkeyInputTiming(
             receivedAt: 100, eventTimestamp: 5_000_000_000, eventType: 12, receivedTimestamp: 5_050_000_000
@@ -14,6 +63,29 @@ final class HotkeyShortcutTests: XCTestCase {
         XCTAssertEqual(input.receivedAt, 100)
         XCTAssertEqual(input.eventTimestamp, 5_000_000_000)
         XCTAssertEqual(input.eventType, 12)
+    }
+
+    func testRemovingAllPrimaryShortcutsPreservesExplicitEmptyState() throws {
+        try self.withRestoredDefaults(keys: [self.legacyHotkeyShortcutKey, self.primaryDictationShortcutsKey]) {
+            let existing = SettingsStore.shared.hotkeyShortcut
+            SettingsStore.shared.primaryDictationShortcuts = []
+            XCTAssertEqual(SettingsStore.shared.primaryDictationShortcuts, [])
+            XCTAssertEqual(SettingsStore.shared.primaryDictationShortcutDisplayString, "Off")
+            SettingsStore.shared.primaryDictationShortcuts = [existing]
+            XCTAssertEqual(SettingsStore.shared.primaryDictationShortcuts, [existing])
+        }
+    }
+
+    func testCancelShortcutRemovalDoesNotRestoreEscape() throws {
+        try self.withRestoredDefaults(keys: ["CancelRecordingHotkeyShortcut"]) {
+            UserDefaults.standard.removeObject(forKey: "CancelRecordingHotkeyShortcut")
+            XCTAssertEqual(SettingsStore.shared.cancelRecordingHotkeyShortcut, HotkeyShortcut(keyCode: 53, modifierFlags: []))
+            SettingsStore.shared.cancelRecordingHotkeyShortcut = nil
+            XCTAssertNil(SettingsStore.shared.cancelRecordingHotkeyShortcut)
+            let shortcut = HotkeyShortcut(keyCode: 53, modifierFlags: [.command])
+            SettingsStore.shared.cancelRecordingHotkeyShortcut = shortcut
+            XCTAssertEqual(SettingsStore.shared.cancelRecordingHotkeyShortcut, shortcut)
+        }
     }
 
     func testInputDeliveryTimingRejectsMissingAndFutureEventTimestamps() {

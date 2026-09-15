@@ -276,47 +276,7 @@ struct SecondaryButtonStyle: ButtonStyle {
     var height: CGFloat = 42
 
     func makeBody(configuration: Configuration) -> some View {
-        SecondaryButton(configuration: configuration, height: self.height)
-    }
-
-    private struct SecondaryButton: View {
-        @Environment(\.theme) private var theme
-        @State private var isHovered = false
-        let configuration: ButtonStyle.Configuration
-        let height: CGFloat
-
-        private var shape: RoundedRectangle {
-            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
-        }
-
-        var body: some View {
-            self.configuration.label
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-                .frame(height: self.height)
-                .foregroundStyle(self.theme.palette.primaryText)
-                .background(self.theme.materials.card, in: self.shape)
-                .background(
-                    self.shape
-                        .fill(self.theme.palette.cardBackground)
-                        .overlay(
-                            self.shape.stroke(
-                                self.theme.palette.cardBorder.opacity(self.isHovered ? 0.45 : 0.25),
-                                lineWidth: 1
-                            )
-                        )
-                )
-                .shadow(
-                    color: self.theme.palette.cardBorder.opacity(self.isHovered ? 0.35 : 0.15),
-                    radius: self.isHovered ? self.theme.metrics.cardShadow.radius : max(self.theme.metrics.cardShadow.radius - 4, 1),
-                    x: 0,
-                    y: self.isHovered ? self.theme.metrics.cardShadow.y : self.theme.metrics.cardShadow.y - 2
-                )
-                .scaleEffect(FluidInteractionVisuals.scale(isPressed: self.configuration.isPressed, isHovered: self.isHovered))
-                .animation(FluidInteractionVisuals.hoverAnimation, value: self.isHovered)
-                .animation(FluidInteractionVisuals.pressedAnimation, value: self.configuration.isPressed)
-                .onHover { self.isHovered = $0 }
-        }
+        FluidOutlinedButtonStyle(height: self.height, fillsWidth: true).makeBody(configuration: configuration)
     }
 }
 
@@ -326,65 +286,12 @@ struct CompactButtonStyle: ButtonStyle {
     var isReady: Bool = false
     var foreground: Color? = nil
     var borderColor: Color? = nil
+
     var height: CGFloat = 34
 
     func makeBody(configuration: Configuration) -> some View {
-        CompactButton(
-            configuration: configuration,
-            isReady: self.isReady,
-            foreground: self.foreground,
-            borderColor: self.borderColor,
-            height: self.height
-        )
-    }
-
-    private struct CompactButton: View {
-        @Environment(\.theme) private var theme
-        @State private var isHovered = false
-        let configuration: ButtonStyle.Configuration
-        let isReady: Bool
-        let foreground: Color?
-        let borderColor: Color?
-        let height: CGFloat
-
-        private var shape: RoundedRectangle {
-            RoundedRectangle(cornerRadius: self.theme.metrics.corners.sm, style: .continuous)
-        }
-
-        var body: some View {
-            let border = self.borderColor ?? (self.isReady ? self.theme.palette.accent : self.theme.palette.cardBorder)
-            let foregroundColor = self.foreground ?? self.theme.palette.primaryText
-            let borderOpacity = self.borderColor == nil
-                ? (self.isHovered ? 0.56 : 0.38)
-                : (self.isHovered ? 0.64 : 0.48)
-
-            self.configuration.label
-                .fontWeight(.medium)
-                .padding(.horizontal, self.theme.metrics.spacing.md)
-                .frame(height: self.height)
-                .foregroundStyle(foregroundColor)
-                .background(self.theme.materials.card, in: self.shape)
-                .background(
-                    self.shape
-                        .fill(self.theme.palette.cardBackground)
-                        .overlay(
-                            self.shape.stroke(
-                                border.opacity(borderOpacity),
-                                lineWidth: 1
-                            )
-                        )
-                )
-                .shadow(
-                    color: border.opacity(self.isHovered ? 0.18 : 0.06),
-                    radius: self.isHovered ? 4 : 1.5,
-                    x: 0,
-                    y: self.isHovered ? 1 : 0.5
-                )
-                .scaleEffect(FluidInteractionVisuals.scale(isPressed: self.configuration.isPressed, isHovered: self.isHovered))
-                .animation(FluidInteractionVisuals.hoverAnimation, value: self.isHovered)
-                .animation(FluidInteractionVisuals.pressedAnimation, value: self.configuration.isPressed)
-                .onHover { self.isHovered = $0 }
-        }
+        FluidOutlinedButtonStyle(height: self.height, foreground: self.foreground, borderColor: self.borderColor)
+            .makeBody(configuration: configuration)
     }
 }
 
@@ -540,72 +447,20 @@ struct FormRowStyle: ViewModifier {
 
 // MARK: - Searchable Picker Chrome
 
-struct FluidPickerDisclosureIcon: View {
-    @Environment(\.theme) private var theme
-    var backgroundOpacity: Double
-
-    var body: some View {
-        let picker = self.theme.metrics.pickerControl
-
-        Image(systemName: "chevron.down")
-            .font(.fluidSystem(.caption2))
-            .foregroundStyle(.secondary)
-            .frame(width: picker.disclosureSize, height: picker.disclosureSize)
-            .background(
-                Circle()
-                    .fill(self.theme.palette.cardBackground.opacity(self.backgroundOpacity))
-                    .overlay(
-                        Circle()
-                            .stroke(self.theme.palette.cardBorder.opacity(picker.disclosureBorderOpacity), lineWidth: 1)
-                    )
-            )
-    }
-}
-
 struct SearchablePickerControlChrome: ViewModifier {
+    static let horizontalPadding: CGFloat = 12
     @Environment(\.theme) private var theme
     let width: CGFloat?
     let height: CGFloat?
-    let usesMaterial: Bool
-    let showsShadow: Bool
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        let picker = self.theme.metrics.pickerControl
-        let shape = RoundedRectangle(cornerRadius: picker.cornerRadius, style: .continuous)
-        let control = content
+        content
             .frame(width: self.width, alignment: .leading)
             .frame(maxWidth: self.width == nil ? .infinity : nil, alignment: .leading)
-            .padding(.horizontal, picker.horizontalPadding)
-            .padding(.vertical, picker.verticalPadding)
+            .padding(.horizontal, Self.horizontalPadding)
+            .padding(.vertical, self.height == nil ? 9 : 0)
             .frame(height: self.height)
-            .contentShape(Rectangle())
-
-        if self.usesMaterial {
-            control
-                .background(self.theme.materials.card, in: shape)
-                .background(self.pickerSurface(shape, picker: picker))
-                .shadow(
-                    color: self.theme.palette.cardBorder.opacity(self.showsShadow ? 0.18 : 0),
-                    radius: self.showsShadow ? 3 : 0,
-                    x: 0,
-                    y: self.showsShadow ? 1 : 0
-                )
-        } else {
-            control
-                .background(self.pickerSurface(shape, picker: picker))
-        }
-    }
-
-    private func pickerSurface(
-        _ shape: RoundedRectangle,
-        picker: AppTheme.Metrics.PickerControl
-    ) -> some View {
-        shape
-            .fill(self.theme.palette.cardBackground)
-            .overlay(
-                shape.stroke(self.theme.palette.cardBorder.opacity(picker.borderOpacity), lineWidth: 1)
-            )
+            .fluidDropdownSurface()
     }
 }
 
@@ -635,15 +490,11 @@ extension View {
 
     func searchablePickerControlChrome(
         width: CGFloat? = nil,
-        height: CGFloat? = nil,
-        usesMaterial: Bool = false,
-        showsShadow: Bool = false
+        height: CGFloat? = nil
     ) -> some View {
         modifier(SearchablePickerControlChrome(
             width: width,
-            height: height,
-            usesMaterial: usesMaterial,
-            showsShadow: showsShadow
+            height: height
         ))
     }
 

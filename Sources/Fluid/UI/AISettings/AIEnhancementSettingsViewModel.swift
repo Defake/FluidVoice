@@ -116,7 +116,6 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
     @Published var appPromptBindingErrorMessage: String = ""
     @Published var selectedDictationPromptID: String? = nil
     @Published var selectedEditPromptID: String? = nil
-    @Published var sendCustomPromptOnly: Bool = false
     @Published var promptEditorMode: PromptEditorMode? = nil
     @Published var draftPromptName: String = ""
     @Published var draftPromptText: String = ""
@@ -170,7 +169,6 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         self.appPromptBindings = self.settings.appPromptBindings
         self.selectedDictationPromptID = self.settings.selectedDictationPromptID
         self.selectedEditPromptID = self.settings.selectedEditPromptID
-        self.sendCustomPromptOnly = self.settings.sendCustomPromptOnly
         self.isDictationPromptOff = self.settings.isDictationPromptOff
         self.isEditPromptOff = self.settings.isEditPromptOff
 
@@ -1645,8 +1643,9 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         return singleLine.count > 120 ? String(singleLine.prefix(120)) + "…" : singleLine
     }
 
-    /// Combine a user-visible body with the hidden base prompt to ensure role/intent is always present.
+    /// Preview uses the same prompt composition as the selected editor mode.
     func combinedDraftPrompt(_ text: String, mode: SettingsStore.PromptMode) -> String {
+        if mode.normalized == .dictate, self.promptEditorMode?.isDefault != true { return text }
         let body = SettingsStore.stripBasePrompt(for: mode, from: text)
         return SettingsStore.combineBasePrompt(for: mode, with: body)
     }
@@ -1737,7 +1736,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         self.draftPromptMode = profile.mode.normalized
         self.draftIncludeContext = (self.draftPromptMode == .edit) ? true : profile.includeContext
         self.draftPromptName = profile.name
-        self.draftPromptText = SettingsStore.stripBasePrompt(for: self.draftPromptMode, from: profile.prompt)
+        self.draftPromptText = SettingsStore.customPromptBody(profile.prompt, mode: self.draftPromptMode)
         self.promptEditorSessionID = UUID()
         self.promptEditorMode = .edit(promptID: profile.id)
     }
@@ -1770,7 +1769,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         }
 
         let name = self.draftPromptName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let promptBody = SettingsStore.stripBasePrompt(for: self.draftPromptMode, from: self.draftPromptText)
+        let promptBody = SettingsStore.customPromptBody(self.draftPromptText, mode: self.draftPromptMode)
         let includeContext = (self.draftPromptMode.normalized == .edit) ? true : self.draftIncludeContext
 
         var profiles = self.settings.dictationPromptProfiles
@@ -1783,6 +1782,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
             var updated = profiles[idx]
             updated.name = name
             updated.prompt = promptBody
+            updated.usesLegacyEmptyPromptFallback = false
             updated.mode = self.draftPromptMode.normalized
             updated.includeContext = includeContext
             updated.updatedAt = now
@@ -1949,7 +1949,7 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
                       $0.mode.normalized == mode.normalized
               })
         else {
-            return mode.normalized == .dictate ? "Smart" : "Built-in Default"
+            return mode.normalized == .dictate ? SettingsStore.DictationModeLabels.externalDefault : "Built-in Default"
         }
 
         let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1966,11 +1966,6 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         self.selectedEditPromptID = self.settings.selectedEditPromptID
         self.isDictationPromptOff = self.settings.isDictationPromptOff
         self.isEditPromptOff = self.settings.isEditPromptOff
-    }
-
-    func setSendCustomPromptOnly(_ sendOnly: Bool) {
-        self.settings.sendCustomPromptOnly = sendOnly
-        self.sendCustomPromptOnly = self.settings.sendCustomPromptOnly
     }
 
     func isPrimaryDictationPromptSelectionOff() -> Bool {
@@ -2078,7 +2073,6 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
     private func refreshPromptSelectionState() {
         self.selectedDictationPromptID = self.settings.selectedDictationPromptID
         self.selectedEditPromptID = self.settings.selectedEditPromptID
-        self.sendCustomPromptOnly = self.settings.sendCustomPromptOnly
         self.isDictationPromptOff = self.settings.isDictationPromptOff
         self.isEditPromptOff = self.settings.isEditPromptOff
     }

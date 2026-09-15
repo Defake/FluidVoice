@@ -131,7 +131,7 @@ struct RewriteModeView: View {
                                 Button("Try Again") {
                                     self.service.rewrittenText = ""
                                 }
-                                .buttonStyle(.bordered)
+                                .fluidOutlinedButton()
 
                                 Spacer()
 

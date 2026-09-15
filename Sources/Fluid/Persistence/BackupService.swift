@@ -40,7 +40,7 @@ struct SettingsBackupPayload: Codable, Equatable {
     let rewriteModeSelectedModel: String?
     let rewriteModeSelectedProviderID: String
     let rewriteModeLinkedToGlobal: Bool
-    let cancelRecordingHotkeyShortcut: HotkeyShortcut
+    let cancelRecordingHotkeyShortcut: HotkeyShortcut?
     // Optional so older backup files (which predate this setting) still decode.
     let pasteLastTranscriptionHotkeyShortcut: HotkeyShortcut?
     let pasteLastTranscriptionShortcutEnabled: Bool?

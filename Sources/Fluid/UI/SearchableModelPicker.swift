@@ -77,13 +77,11 @@ struct SearchableModelPicker: View {
                         .truncationMode(.middle)
                         .foregroundStyle(self.selectedModel.isEmpty ? .secondary : self.theme.palette.primaryText)
                     Spacer(minLength: 6)
-                    FluidPickerDisclosureIcon(backgroundOpacity: 0.6)
+                    FluidDropdownChevron()
                 }
                 .searchablePickerControlChrome(
                     width: self.pickerControlWidth,
-                    height: self.controlHeight,
-                    usesMaterial: true,
-                    showsShadow: true
+                    height: self.controlHeight
                 )
             }
             .buttonStyle(.plain)

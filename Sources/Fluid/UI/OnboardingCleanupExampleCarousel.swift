@@ -37,7 +37,7 @@ struct OnboardingCleanupExampleCarousel: View {
     private var ids: [String] { Self.examples.map(\.id) }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             GeometryReader { geometry in
                 let width = min(640, geometry.size.width * 0.76)
                 let sideWidth = max(48, (geometry.size.width - width - 48) / 2)
@@ -64,7 +64,7 @@ struct OnboardingCleanupExampleCarousel: View {
                     self.advance(forward: value.translation.width < 0)
                 })
             }
-            .frame(height: 440)
+            .frame(height: 380)
             FluidGlassControlGroup {
                 HStack(spacing: 24) {
                     self.arrow(forward: false)
@@ -90,19 +90,19 @@ struct OnboardingCleanupExampleCarousel: View {
     }
 
     private func card(_ example: Example, compact: Bool, contentWidth: CGFloat, visibleWidth: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             Group {
                 Text(example.title)
-                    .font(.fluidSystem(size: 28, weight: .regular, design: .serif))
+                    .font(.fluidSystem(size: 25, weight: .regular, design: .serif))
                     .tracking(-0.5)
                     .foregroundStyle(Color(red: 0.96, green: 0.95, blue: 0.91))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 68)
+                    .frame(height: 56)
                     .accessibilityAddTraits(.isHeader)
                 self.mode(title: "Basic · Without Fluid Intelligence", text: example.spoken, enhanced: false)
-                    .frame(minHeight: 88, alignment: .topLeading)
+                    .frame(minHeight: 76, alignment: .topLeading)
                 Rectangle()
                     .fill(.white.opacity(0.12))
                     .frame(height: 1)
@@ -110,11 +110,11 @@ struct OnboardingCleanupExampleCarousel: View {
             }
         }
         // Keep text at its final reading width while the glass surface slides and narrows.
-        .frame(width: contentWidth - 64, alignment: .leading)
+        .frame(width: contentWidth - 48, alignment: .leading)
         .opacity(compact ? 0 : 1)
         .animation(self.reduceMotion ? nil : .easeOut(duration: 0.18), value: compact)
-        .padding(32)
-        .frame(width: visibleWidth, height: 420, alignment: .top)
+        .padding(24)
+        .frame(width: visibleWidth, height: 360, alignment: .top)
         .clipped()
         .accessibilityHidden(compact)
         .modifier(OnboardingGlassSurface(selected: !compact))
@@ -130,7 +130,7 @@ struct OnboardingCleanupExampleCarousel: View {
     }
 
     private func mode(title: String, text: String, enhanced: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.fluidSystem(size: 18, weight: .regular, design: .serif))
                 .tracking(-0.5)

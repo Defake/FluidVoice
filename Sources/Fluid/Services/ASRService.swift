@@ -4847,6 +4847,12 @@ final class ASRService: ObservableObject {
             DebugLogger.shared.info("Total initialization time: \(String(format: "%.1f", totalDuration)) seconds", source: "ASRService")
 
             self.isAsrReady = true
+            if !SettingsStore.shared.onboardingCompleted,
+               SettingsStore.shared.analyticsOnboardingOrigin == .firstRun
+            {
+                DebugLogger.shared.info("Voice model ready; requesting FI prefetch", source: "OnboardingAI")
+                OnboardingAISetupController.live.prefetch()
+            }
             self.isCancellingModelPreparation = false
             self.refreshWordBoostStatus()
             self.finishModelDownloadAnalytics(operationID: operationID, outcome: .succeeded)

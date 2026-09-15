@@ -12,6 +12,28 @@ import SwiftUI
 import UserNotifications
 
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    private static var restartPrepared = false
+    private static var restartInProgress = false
+
+    @MainActor
+    static func restartAfterSaving() {
+        guard !self.restartInProgress else { return }
+        self.restartInProgress = true
+        Task { @MainActor in
+            await TranscriptionHistoryStore.shared.finishPendingWrites()
+            guard TranscriptionHistoryStore.shared.persistenceError == nil else {
+                self.restartInProgress = false
+                DebugLogger.shared.error("Restart cancelled: history could not be saved", source: "AppDelegate")
+                return
+            }
+            UserDefaults.standard.synchronize()
+            await PrivateAIIntegrationService.shared.shutdownForTermination()
+            await AppServices.shared.shutdownForTermination()
+            self.restartPrepared = true
+            NSApp.terminate(nil)
+        }
+    }
+
     private var updateCheckTimer: Timer?
     private var didRevealMainWindowOnLaunch = false
     private var didRequestMainWindowReopen = false
@@ -42,6 +64,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
         // Initialize app settings (dock visibility, etc.)
         SettingsStore.shared.initializeAppSettings()
+        DictationAppSession.shared.start()
+        OnboardingAISetupController.live.resumePendingDownload()
         LocalAPIServer.shared.start()
 
         // Record first-open synchronously before async analytics bootstrap so
@@ -65,6 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if Self.restartPrepared { return .terminateNow }
         Task { @MainActor in
             await TranscriptionHistoryStore.shared.finishPendingWrites()
             if let error = TranscriptionHistoryStore.shared.persistenceError {
@@ -82,9 +107,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if Self.restartPrepared {
+            // Launch only after this process exits: never overlap two app instances.
+            let helper = Process()
+            helper.executableURL = URL(fileURLWithPath: "/bin/sh")
+            let waitForExit = "i=0; while kill -0 \"$1\" 2>/dev/null; do i=$((i+1)); [ \"$i\" -lt 120 ] || exit 1; sleep 1; done; exec /usr/bin/open \"$2\""
+            helper.arguments = ["-c", waitForExit, "fluidvoice-restart", String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath]
+            do { try helper.run() } catch {
+                DebugLogger.shared.error("Could not schedule relaunch: \(error)", source: "AppDelegate")
+            }
+        }
         DebugLogger.shared.info("Application will terminate", source: "AppDelegate")
-        self.shutdownPrivateAIRuntimeForTermination()
-        self.shutdownASRRuntimeForTermination()
+        if !Self.restartPrepared {
+            self.shutdownPrivateAIRuntimeForTermination()
+            self.shutdownASRRuntimeForTermination()
+        }
         LocalAPIServer.shared.stop()
         // Clean up the update check timer
         self.updateCheckTimer?.invalidate()

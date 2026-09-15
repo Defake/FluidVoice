@@ -202,6 +202,7 @@ struct MeetingTranscriptionView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fluidDropdownStyle()
                                 .labelsHidden()
                                 .frame(width: 90)
                             }

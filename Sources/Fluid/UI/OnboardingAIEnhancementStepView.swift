@@ -65,17 +65,6 @@ struct OnboardingAIEnhancementStepView: View {
     private var canNavigate: Bool { !self.isRunning && !self.isRecordingShortcut && !self.contentState.isProcessing && !self.isShowingIntroduction }
     private var isShowingIntroduction: Bool { self.isReady && !self.setup.introductionFinished && !self.reduceMotion }
     private var isReady: Bool { self.setup.phase == .ready }
-    private var sizeText: String? {
-        guard let count = self.setup.model?.byteCount, count > 0 else { return nil }
-        return ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
-    }
-
-    private var enableTitle: String {
-        guard let model = self.setup.model else { return "Download" }
-        if model.installed { return "Enable" }
-        return self.sizeText.map { "Download · \($0)" } ?? "Download"
-    }
-
     var body: some View {
         GeometryReader { proxy in
             ZStack {
@@ -84,12 +73,17 @@ struct OnboardingAIEnhancementStepView: View {
                     FluidOnboardingCompactProgress(value: self.progressValue)
                         .padding(.top, 28)
                     self.mainContent
+                    if !self.isReady {
+                        self.offerStatus
+                            .padding(.horizontal, 30)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     HStack(alignment: .center, spacing: 20) {
                         self.action(id: "back", title: "Back", tone: .secondary, width: 132) {
                             if self.isReady && self.showPractice {
                                 self.showPractice = false
                             } else {
-                                self.setup.cancel()
+                                self.setup.leavePage()
                                 self.onBack()
                             }
                         }
@@ -143,7 +137,7 @@ struct OnboardingAIEnhancementStepView: View {
         }
         .task { self.setup.refresh() }
         .onDisappear {
-            self.setup.cancel()
+            self.setup.leavePage()
         }
     }
 
@@ -159,33 +153,32 @@ struct OnboardingAIEnhancementStepView: View {
                     .padding(.bottom, 24)
             }
         } else {
-            // Keep example text at its designed size. Only the offer scrolls;
-            // Back, Skip and Enable remain in the fixed footer at every window height.
-            ScrollView {
+            // Fit the showcase into the space left above the fixed status and footer.
+            OnboardingFittedContent(width: 880) {
                 VStack(spacing: 0) {
-                    self.hero.padding(.bottom, 24)
-                    self.offer
+                    self.hero.padding(.bottom, 16)
+                    OnboardingCleanupExampleCarousel(autoplay: self.carouselAutoplay)
                     Text("You can choose a different model or turn off Fluid Intelligence anytime in Settings.")
                         .font(self.theme.typography.caption)
                         .foregroundStyle(.white.opacity(0.46))
                         .multilineTextAlignment(.center)
-                        .padding(.top, 28)
+                        .padding(.top, 12)
                 }
                 .frame(maxWidth: 880)
                 .padding(.horizontal, 32)
-                .padding(.top, 36)
-                .padding(.bottom, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
                 .frame(maxWidth: .infinity)
             }
         }
     }
 
     private var hero: some View {
-        VStack(spacing: 14) {
-            FluidOnboardingCompactAppIconMark(size: 52)
-                .padding(.bottom, 8)
+        VStack(spacing: 10) {
+            FluidOnboardingCompactAppIconMark(size: 40)
+                .padding(.bottom, 4)
             Text("Meet Fluid Intelligence")
-                .font(.fluidSystem(size: 32, weight: .semibold))
+                .font(.fluidSystem(size: 28, weight: .semibold))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
@@ -204,14 +197,12 @@ struct OnboardingAIEnhancementStepView: View {
         }
     }
 
-    private var offer: some View {
-        VStack(spacing: 20) {
-            OnboardingCleanupExampleCarousel(autoplay: self.carouselAutoplay)
-                .padding(.bottom, 8)
-            if self.setup.phase == .checking {
+    private var offerStatus: some View {
+        VStack(spacing: 8) {
+            if self.setup.phase == .checking, !self.setup.canEnable {
                 ProgressView("Finding the right model for your Mac…")
                     .controlSize(.small)
-            } else if self.setup.isBusy {
+            } else if self.setup.showsPreparationProgress || self.setup.phase == .cancelling {
                 self.preparationProgress
                     .transition(.opacity)
             }
@@ -232,15 +223,14 @@ struct OnboardingAIEnhancementStepView: View {
                     .foregroundStyle(FluidOnboardingLandingColors.blue)
             }
         }
-        .frame(minHeight: 180)
         .animation(self.reduceMotion ? nil : .easeInOut(duration: 0.32), value: self.setup.isBusy)
     }
 
     private var offerNavigation: some View {
         HStack(spacing: 20) {
-            if !self.setup.isBusy {
+            if !self.setup.showsPreparationProgress {
                 Button("I’ll set it up later") {
-                    self.setup.cancel()
+                    self.setup.setUpLater()
                     self.onSkip()
                 }
                 .buttonStyle(.plain)
@@ -249,8 +239,8 @@ struct OnboardingAIEnhancementStepView: View {
                 .disabled(!self.canNavigate)
             }
 
-            if self.setup.phase == .offered {
-                self.action(id: "enable", title: self.enableTitle, tone: .primary, width: 210) {
+            if self.setup.canEnable {
+                self.action(id: "enable", title: "Enable", tone: .primary, width: 210) {
                     self.setup.enable { model in
                         guard self.canNavigate else {
                             throw SetupError(message: "Stop dictation, then enable Smart mode again.")
@@ -283,7 +273,7 @@ struct OnboardingAIEnhancementStepView: View {
                             ProgressView().controlSize(.small)
                         }
                         if let bytes = self.setup.progress?.bytes {
-                            Text(bytes)
+                            Text(bytes.replacingOccurrences(of: " downloaded", with: " ready").replacingOccurrences(of: " download", with: ""))
                                 .font(self.theme.typography.caption)
                                 .foregroundStyle(.white.opacity(0.62))
                                 .monospacedDigit()
@@ -327,16 +317,16 @@ struct OnboardingAIEnhancementStepView: View {
     }
 
     private var downloadProgressTitle: String {
-        guard let fraction = self.setup.progress?.fraction, fraction.isFinite else { return "Downloading…" }
+        guard let fraction = self.setup.progress?.fraction, fraction.isFinite else { return "Preparing…" }
         let percent = min(max(fraction, 0), 1).formatted(.percent.precision(.fractionLength(0)))
-        return "Downloading \(percent)"
+        return "Preparing \(percent)"
     }
 
     private var preparationStatus: String {
         switch self.setup.phase {
         case .loading: "Preparing the model for your Mac. This can take a little while."
         case .cancelling: "Cancelling setup… You can go back or set this up later."
-        default: self.setup.progress?.status ?? "Starting download…"
+        default: "Preparing Fluid Intelligence…"
         }
     }
 
@@ -392,7 +382,7 @@ struct OnboardingAIEnhancementStepView: View {
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 self.modeSummary(
-                    name: "Smart",
+                    name: SettingsStore.DictationModeLabels.smart,
                     subtitle: "With Fluid Intelligence",
                     detail: "Removes rambling, fixes mistakes, and formats your text.",
                     smart: true

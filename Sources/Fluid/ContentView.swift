@@ -275,7 +275,7 @@ struct ContentView: View {
     @State private var promptModeHotkeyShortcut: HotkeyShortcut = SettingsStore.shared.promptModeHotkeyShortcut
     @State private var commandModeHotkeyShortcut: HotkeyShortcut? = SettingsStore.shared.commandModeHotkeyShortcut
     @State private var rewriteModeHotkeyShortcut: HotkeyShortcut = SettingsStore.shared.rewriteModeHotkeyShortcut
-    @State private var cancelRecordingHotkeyShortcut: HotkeyShortcut = SettingsStore.shared.cancelRecordingHotkeyShortcut
+    @State private var cancelRecordingHotkeyShortcut: HotkeyShortcut? = SettingsStore.shared.cancelRecordingHotkeyShortcut
     @State private var pasteLastTranscriptionHotkeyShortcut: HotkeyShortcut? = SettingsStore.shared.pasteLastTranscriptionHotkeyShortcut
     @State private var isPasteLastTranscriptionShortcutEnabled: Bool = SettingsStore.shared.pasteLastTranscriptionShortcutEnabled
     @State private var isPromptModeShortcutEnabled: Bool = SettingsStore.shared.promptModeShortcutEnabled
@@ -431,12 +431,15 @@ struct ContentView: View {
                 if !self.settings.shouldShowOnboarding {
                     ToolbarItemGroup(placement: .primaryAction) {
                         self.todayStatsButton
+                            .buttonStyle(.automatic)
 
                         self.themePreferenceButton
+                            .buttonStyle(.automatic)
 
                         Button(action: self.openIssueReportingPage) {
                             Image(systemName: "ladybug.fill")
                         }
+                        .buttonStyle(.automatic)
                         .help("Report an issue")
                         .accessibilityLabel("Report an issue")
                     }
@@ -544,6 +547,9 @@ struct ContentView: View {
             }
             .onChange(of: self.isRewriteModeShortcutEnabled) { newValue in
                 self.handleRewriteShortcutEnabledChange(newValue)
+            }
+            .onChange(of: self.cancelRecordingHotkeyShortcut) { _, newValue in
+                SettingsStore.shared.cancelRecordingHotkeyShortcut = newValue
             }
             .onChange(of: self.pasteLastTranscriptionHotkeyShortcut) { _, newValue in
                 SettingsStore.shared.pasteLastTranscriptionHotkeyShortcut = newValue
@@ -814,7 +820,7 @@ struct ContentView: View {
         recordingTarget: ShortcutRecordingTarget?
     ) -> NSEvent? {
         guard isRecordingAnyShortcut else {
-            if self.cancelRecordingHotkeyShortcut.matches(keyCode: event.keyCode, modifiers: eventModifiers),
+            if self.cancelRecordingHotkeyShortcut?.matches(keyCode: event.keyCode, modifiers: eventModifiers) == true,
                self.handleCancelShortcut()
             {
                 return nil
@@ -1128,14 +1134,15 @@ struct ContentView: View {
             }
         }
 
-        var configuredShortcuts: [(ShortcutRecordingTarget, HotkeyShortcut)] = [
-            (.edit, self.rewriteModeHotkeyShortcut),
-            (.cancel, self.cancelRecordingHotkeyShortcut),
-        ]
+        var configuredShortcuts: [(ShortcutRecordingTarget, HotkeyShortcut)] = []
+        if self.isRewriteModeShortcutEnabled {
+            configuredShortcuts.append((.edit, self.rewriteModeHotkeyShortcut))
+        }
         if self.isPromptModeShortcutEnabled {
             configuredShortcuts.append((.secondaryDictation, self.promptModeHotkeyShortcut))
         }
         let optionalConfiguredShortcuts: [(ShortcutRecordingTarget, HotkeyShortcut?)] = [
+            (.cancel, self.cancelRecordingHotkeyShortcut),
             (.command, self.commandModeHotkeyShortcut),
             (.pasteLast, self.pasteLastTranscriptionHotkeyShortcut),
         ]
@@ -2384,8 +2391,7 @@ struct ContentView: View {
         // Resolve the effective prompt once so every provider path honors
         // transient overrides such as "Transcribe with Prompt".
         let promptText: String = {
-            let override = overrideSystemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !override.isEmpty { return override }
+            if let overrideSystemPrompt { return overrideSystemPrompt }
             return self.buildSystemPrompt(appInfo: appInfo, dictationSlot: dictationSlot)
         }()
 
@@ -2715,9 +2721,9 @@ struct ContentView: View {
         let sendsExistingDraft = spokenSendParse.shouldSend &&
             normalizedTranscribedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        let shouldUseAI = !sendsExistingDraft && (activeDictationSlot.map {
-            DictationAIPostProcessingGate.isConfigured(for: $0, appBundleID: appInfo.bundleId)
-        } ?? DictationAIPostProcessingGate.isConfigured(for: .primary, appBundleID: appInfo.bundleId))
+        let practiceModelID = route == .onboardingSandbox && self.settings.onboardingCurrentStep == 5
+            ? PrivateAIProviderPromptFormat.verifiedModelID(settings: self.settings) : nil
+        let shouldUseAI = !sendsExistingDraft && (practiceModelID != nil || DictationAIPostProcessingGate.isConfigured(for: activeDictationSlot ?? .primary, appBundleID: appInfo.bundleId))
         let transcriptionModelInfo = self.currentTranscriptionModelInfo()
         let postProcessingModelInfo = self.recordDictationUsage(
             shouldUseAI: shouldUseAI,
@@ -2744,6 +2750,8 @@ struct ContentView: View {
                 let result = try await self.processTextWithAIMetrics(
                     normalizedTranscribedText,
                     overrideSystemPrompt: promptOverride,
+                    overrideProviderID: practiceModelID == nil ? nil : PrivateAIProviderFeature.shared.providerID,
+                    overrideModel: practiceModelID,
                     dictationSlot: activeDictationSlot,
                     streamHandler: streamHandler,
                     benchmarkID: pipelineID
@@ -4119,7 +4127,7 @@ struct ContentView: View {
     }
 
     private func prewarmPrivateAIDictationIfNeeded(for slot: SettingsStore.DictationShortcutSlot) {
-        let appBundleID = self.recordingAppInfo?.bundleId
+        let appBundleID = self.asr.isRunningOrStarting ? self.recordingAppInfo?.bundleId : DictationAppSession.shared.appID
         let settings = SettingsStore.shared
         let route = DictationProviderRoute.resolve(
             settings: settings,
@@ -4286,8 +4294,9 @@ struct ContentView: View {
         NotchContentState.shared.onDictationPromptSelectionRequested = { selection in
             guard selection != .privateAI || PrivateAIProviderPromptFormat.isAvailable() else { return }
             let slot = self.activeDictationShortcutSlot ?? .primary
-            SettingsStore.shared.setDictationPromptSelection(selection, for: slot)
+            DictationAppSession.shared.select(selection, slot: slot, appID: DictationAppSession.shared.appID)
             self.applyDictationShortcutSelectionContext(for: slot)
+            self.prewarmPrivateAIDictationIfNeeded(for: slot)
         }
 
         guard self.hotkeyManager == nil else { return }
@@ -4688,7 +4697,7 @@ extension ContentView {
         NotchContentState.shared.activeDictationShortcutSlot = slot
         NotchContentState.shared.isPromptModeActive = (slot == .secondary)
 
-        switch settings.dictationPromptSelection(for: slot) {
+        switch settings.resolvedDictationPromptSelection(for: slot, appBundleID: DictationAppSession.shared.appID) {
         case .off, .default:
             self.promptModeOverrideText = nil
             NotchContentState.shared.promptModeOverrideProfileName = nil
@@ -4698,10 +4707,9 @@ extension ContentView {
             NotchContentState.shared.promptModeOverrideProfileName = PrivateAIProviderFeature.displayName
             NotchContentState.shared.promptModeOverrideProfileID = PrivateAIProviderPromptFormat.promptSelectionID
         case let .profile(profileID):
-            guard let profile = settings.selectedDictationPromptProfile(for: slot) ?? settings.dictationPromptProfiles.first(where: {
+            guard let profile = settings.dictationPromptProfiles.first(where: {
                 $0.id == profileID && $0.mode.normalized == .dictate
             }) else {
-                settings.setDictationPromptSelection(.default, for: slot)
                 self.promptModeOverrideText = nil
                 NotchContentState.shared.promptModeOverrideProfileName = nil
                 NotchContentState.shared.promptModeOverrideProfileID = nil
@@ -4845,7 +4853,7 @@ extension ContentView {
     }
 
     private var onboardingAIReady: Bool {
-        self.settings.onboardingAISkipped || DictationAIPostProcessingGate.isProviderConfigured()
+        self.settings.onboardingAISkipped || DictationAIPostProcessingGate.isOnboardingChoiceConfigured()
     }
 
     private var onboardingPlaygroundReady: Bool {
@@ -4931,8 +4939,19 @@ extension ContentView {
     @discardableResult
     private func refreshAccessibilityPermissionState() -> Bool {
         let trusted = self.checkAccessibilityPermissions()
+        let newlyGranted = trusted && !self.accessibilityEnabled
         if trusted != self.accessibilityEnabled {
             self.accessibilityEnabled = trusted
+        }
+        if newlyGranted,
+           UserDefaults.standard.bool(forKey: self.accessibilityRestartFlagKey),
+           !UserDefaults.standard.bool(forKey: self.hasAutoRestartedForAccessibilityKey)
+        {
+            UserDefaults.standard.set(true, forKey: self.hasAutoRestartedForAccessibilityKey)
+            DebugLogger.shared.info("Auto-restarting app after accessibility grant", source: "ContentView")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.restartApp()
+            }
         }
         return trusted
     }
@@ -5201,17 +5220,10 @@ extension ContentView {
     }
 
     func restartApp() {
-        let appPath = Bundle.main.bundlePath
-        let process = Process()
-        process.launchPath = "/usr/bin/open"
-        process.arguments = ["-n", appPath]
         // Clear pending flag and hide prompt before restarting
         UserDefaults.standard.set(false, forKey: self.accessibilityRestartFlagKey)
         self.showRestartPrompt = false
-        try? process.run()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            NSApp.terminate(nil)
-        }
+        AppDelegate.restartAfterSaving()
     }
 
     func startAccessibilityPolling() {
@@ -5234,18 +5246,6 @@ extension ContentView {
                         DebugLogger.shared.info("Accessibility permission granted", source: "ContentView")
                         self.refreshAccessibilityPermissionState()
                         self.finishAccessibilityPermissionFlow()
-
-                        guard !UserDefaults.standard.bool(forKey: self.hasAutoRestartedForAccessibilityKey) else {
-                            self.hotkeyManager?.reinitialize()
-                            return
-                        }
-
-                        // Mark that we've auto-restarted to prevent loops.
-                        UserDefaults.standard.set(true, forKey: self.hasAutoRestartedForAccessibilityKey)
-                        DebugLogger.shared.info("Auto-restarting app after accessibility grant", source: "ContentView")
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            self.restartApp()
-                        }
                     }
                     break // Stop polling after triggering restart
                 }

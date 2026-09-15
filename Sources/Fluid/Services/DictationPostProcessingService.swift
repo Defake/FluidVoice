@@ -22,11 +22,7 @@ struct DictationProviderRoute: Equatable {
         let configuredModel: String?
 
         if let dictationSlot {
-            let selection = self.effectivePromptSelection(
-                settings: settings,
-                dictationSlot: dictationSlot,
-                appBundleID: appBundleID
-            )
+            let selection = settings.resolvedDictationPromptSelection(for: dictationSlot, appBundleID: appBundleID)
             if selection == .off {
                 return Self(providerID: "", providerKey: "", baseURL: "", model: "", apiKey: "")
             }
@@ -159,30 +155,6 @@ struct DictationProviderRoute: Equatable {
             return self.resolve(settings: settings)
         }
         return self.resolve(settings: settings, dictationSlot: dictationSlot)
-    }
-
-    private static func effectivePromptSelection(
-        settings: SettingsStore,
-        dictationSlot: SettingsStore.DictationShortcutSlot,
-        appBundleID: String?
-    ) -> SettingsStore.DictationPromptSelection {
-        let selection = settings.dictationPromptSelection(for: dictationSlot)
-        guard selection != .off else { return selection }
-
-        let usesOnlyAppBindings = settings.promptRoutingScope(for: .dictate) == .selectedAppsOnly
-        let supportsAppOverride = SettingsStore.dictationSelectionSupportsAppOverride(selection)
-        guard usesOnlyAppBindings || supportsAppOverride else { return selection }
-        guard let binding = settings.appPromptBinding(for: .dictate, appBundleID: appBundleID) else {
-            return usesOnlyAppBindings ? .off : selection
-        }
-        guard let promptID = binding.promptID,
-              settings.dictationPromptProfiles.contains(where: {
-                  $0.id == promptID && $0.mode.normalized == .dictate
-              })
-        else {
-            return .default
-        }
-        return .profile(promptID)
     }
 }
 

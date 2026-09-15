@@ -44,7 +44,7 @@ struct SettingsView: View {
     @Binding var shortcutRecordingMessage: String?
     @Binding var commandModeShortcut: HotkeyShortcut?
     @Binding var rewriteShortcut: HotkeyShortcut
-    @Binding var cancelRecordingShortcut: HotkeyShortcut
+    @Binding var cancelRecordingShortcut: HotkeyShortcut?
     @Binding var pasteLastTranscriptionShortcut: HotkeyShortcut?
     @Binding var commandModeShortcutEnabled: Bool
     @Binding var rewriteShortcutEnabled: Bool
@@ -174,30 +174,40 @@ struct SettingsView: View {
     private func dictationPromptPicker(for slot: SettingsStore.DictationShortcutSlot) -> some View {
         let profiles = self.settings.promptProfiles(for: .dictate)
         let privateAIAvailable = PrivateAIProviderPromptFormat.isAvailable(settings: self.settings)
-        HStack {
+        let selection = self.dictationPromptSelectionBinding(for: slot)
+        let title: String = switch self.settings.dictationPromptSelection(for: slot) {
+        case .off: "Basic — No cleanup"
+        case .default: SettingsStore.DictationModeLabels.externalDefault
+        case .privateAI: SettingsStore.DictationModeLabels.smartWithModel
+        case let .profile(id): profiles.first(where: { $0.id == id }).map { $0.name.isEmpty ? "Untitled" : $0.name } ?? "Default"
+        }
+        HStack(spacing: 10) {
             Text("Cleanup style")
                 .font(self.theme.typography.bodySmall)
                 .foregroundStyle(self.settingsSecondaryText)
                 .padding(.leading, 30)
-            Spacer()
-            Picker("", selection: self.dictationPromptSelectionBinding(for: slot)) {
-                Section("ON-DEVICE") {
-                    Text("Basic — No cleanup").tag("__OFF__")
-                    if PrivateFeatures.privateAIProvider {
-                        Text("Smart — Fluid-1")
-                            .tag(PrivateAIProviderPromptFormat.promptSelectionID)
-                            .disabled(!privateAIAvailable)
+            FluidDropdown(title: title) {
+                Picker("Cleanup style", selection: selection) {
+                    Section("ON-DEVICE") {
+                        Text("Basic — No cleanup").tag("__OFF__")
+                        if PrivateFeatures.privateAIProvider {
+                            Text(SettingsStore.DictationModeLabels.smartWithModel)
+                                .tag(PrivateAIProviderPromptFormat.promptSelectionID)
+                                .disabled(!privateAIAvailable)
+                        }
+                    }
+                    Section("CUSTOM STYLES") {
+                        Text(SettingsStore.DictationModeLabels.externalDefault).tag("__DEFAULT__")
+                        ForEach(profiles) { profile in
+                            Text(profile.name.isEmpty ? "Untitled" : profile.name)
+                                .tag(profile.id)
+                        }
                     }
                 }
-                Section("EXTERNAL") {
-                    Text("Smart").tag("__DEFAULT__")
-                    ForEach(profiles) { profile in
-                        Text(profile.name.isEmpty ? "Untitled" : profile.name)
-                            .tag(profile.id)
-                    }
-                }
+                .pickerStyle(.inline)
             }
-            .frame(width: 220)
+            .accessibilityLabel("Cleanup style")
+            .accessibilityValue(title)
         }
         .padding(.bottom, 4)
     }
@@ -338,6 +348,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fluidDropdownStyle()
                                 .frame(width: 170, alignment: .trailing)
                             }
                             .settingsSearchTarget(.transcriptionSounds)
@@ -489,7 +500,7 @@ struct SettingsView: View {
                                         NSWorkspace.shared.open(url)
                                     }
                                 }
-                                .buttonStyle(.bordered)
+                                .fluidOutlinedButton()
                                 .controlSize(.regular)
 
                                 Button(self.rollbackVersion.isEmpty ? "Rollback" : "Rollback to \(self.rollbackVersion)") {
@@ -541,7 +552,7 @@ struct SettingsView: View {
                                         }
                                     }
                                 }
-                                .buttonStyle(.bordered)
+                                .fluidOutlinedButton()
                                 .controlSize(.regular)
                                 .disabled(self.rollbackVersion.isEmpty || self.isRollingBack)
                                 .opacity(self.isRollingBack ? 0.7 : 1.0)
@@ -549,7 +560,7 @@ struct SettingsView: View {
                                 Button("Get Previous Builds") {
                                     self.openPreviousBuildPicker()
                                 }
-                                .buttonStyle(.bordered)
+                                .fluidOutlinedButton()
                                 .controlSize(.regular)
                             }
                             .padding(.top, 12)
@@ -613,7 +624,7 @@ struct SettingsView: View {
                                         } label: {
                                             Label("Open Settings", systemImage: "gear")
                                         }
-                                        .buttonStyle(.bordered)
+                                        .fluidOutlinedButton()
                                         .controlSize(.regular)
                                     }
                                 }
@@ -637,7 +648,7 @@ struct SettingsView: View {
                 }
 
                 // Shortcuts and dictation behavior
-                self.shortcutPageContainer {
+                ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 8) {
                             Label(self.selectedSection == .shortcuts ? "Shortcuts" : "Dictation behavior", systemImage: self.selectedSection == .shortcuts ? "keyboard" : "mic")
@@ -651,16 +662,7 @@ struct SettingsView: View {
                                     Text("Recording…")
                                         .font(.fluidSystem(.caption).weight(.semibold))
                                         .foregroundStyle(.orange)
-                                } else if self.hotkeyManagerInitialized {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(Color.fluidGreen)
-                                            .font(.fluidSystem(.caption))
-                                        Text("Active")
-                                            .font(.fluidSystem(.caption).weight(.semibold))
-                                            .foregroundStyle(self.settingsSecondaryText)
-                                    }
-                                } else {
+                                } else if !self.hotkeyManagerInitialized {
                                     Text("Initializing…")
                                         .font(.fluidSystem(.caption).weight(.semibold))
                                         .foregroundStyle(self.settingsSecondaryText)
@@ -697,10 +699,10 @@ struct SettingsView: View {
                                         self.shortcutGroup {
                                             self.primaryDictationShortcutsList()
                                                 .settingsSearchTarget(.primaryDictationShortcuts)
-                                            self.dictationPromptPicker(for: .primary)
                                             self.shortcutGroupDivider
                                             self.smartDictationShortcutRow
                                         }
+                                        self.shortcutGroupDivider
                                         self.shortcutGroup {
                                             self.shortcutRow(
                                                 content: .init(
@@ -714,7 +716,6 @@ struct SettingsView: View {
                                                 isAnyRecordingActive: self.isRecordingAnyShortcut,
                                                 recordingMessage: self.isRecording(.command) ? self.shortcutRecordingMessage : nil,
                                                 isEnabled: self.$commandModeShortcutEnabled,
-                                                requiresShortcutToEnable: true,
                                                 onChangePressed: {
                                                     DebugLogger.shared.debug("Starting to record new command mode shortcut", source: "SettingsView")
                                                     self.shortcutRecordingMessage = nil
@@ -752,6 +753,7 @@ struct SettingsView: View {
                                             )
                                             .settingsSearchTarget(.editModeShortcut)
                                         }
+                                        self.shortcutGroupDivider
                                         self.shortcutGroup {
                                             self.shortcutRow(
                                                 content: .init(
@@ -768,7 +770,8 @@ struct SettingsView: View {
                                                     DebugLogger.shared.debug("Starting to record new cancel shortcut", source: "SettingsView")
                                                     self.shortcutRecordingMessage = nil
                                                     self.activeShortcutRecordingTarget = .cancel
-                                                }
+                                                },
+                                                onRemovePressed: { self.cancelRecordingShortcut = nil }
                                             )
                                             .settingsSearchTarget(.cancelRecordingShortcut)
                                             self.shortcutGroupDivider
@@ -785,7 +788,6 @@ struct SettingsView: View {
                                                 isAnyRecordingActive: self.isRecordingAnyShortcut,
                                                 recordingMessage: self.isRecording(.pasteLast) ? self.shortcutRecordingMessage : nil,
                                                 isEnabled: self.$pasteLastTranscriptionShortcutEnabled,
-                                                requiresShortcutToEnable: true,
                                                 onChangePressed: {
                                                     DebugLogger.shared.debug("Starting to record new paste last transcription shortcut", source: "SettingsView")
                                                     self.shortcutRecordingMessage = nil
@@ -826,6 +828,7 @@ struct SettingsView: View {
                                                 }
                                             }
                                             .pickerStyle(.menu)
+                                            .fluidDropdownStyle()
                                             .frame(width: 170, alignment: .trailing)
                                         }
                                         .onChange(of: self.hotkeyMode) { _, newValue in
@@ -867,6 +870,7 @@ struct SettingsView: View {
                                                 }
                                             }
                                             .pickerStyle(.menu)
+                                            .fluidDropdownStyle()
                                             .fixedSize(horizontal: true, vertical: false)
                                             .frame(minWidth: 170, alignment: .trailing)
                                         }
@@ -1020,13 +1024,13 @@ struct SettingsView: View {
                                     Button("Reveal in Finder") {
                                         self.revealAppInFinder()
                                     }
-                                    .buttonStyle(.bordered)
+                                    .fluidOutlinedButton()
                                     .controlSize(.small)
 
                                     Button("Open Applications") {
                                         self.openApplicationsFolder()
                                     }
-                                    .buttonStyle(.bordered)
+                                    .fluidOutlinedButton()
                                     .controlSize(.small)
                                 }
                             }
@@ -1154,7 +1158,7 @@ struct SettingsView: View {
                             } label: {
                                 Label("Refresh", systemImage: "arrow.clockwise")
                             }
-                            .buttonStyle(.bordered)
+                            .fluidOutlinedButton()
                             .controlSize(.small)
                         }
 
@@ -1193,6 +1197,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fluidDropdownStyle()
                                 .frame(width: 240)
                                 .disabled(self.asr.isRunning) // Disable device changes during recording
                                 .onChange(of: self.selectedOutputUID) { oldUID, newUID in
@@ -1261,7 +1266,7 @@ struct SettingsView: View {
                                     self.visualizerNoiseThreshold = 0.4
                                     SettingsStore.shared.visualizerNoiseThreshold = self.visualizerNoiseThreshold
                                 }
-                                .buttonStyle(.bordered)
+                                .fluidOutlinedButton()
                                 .controlSize(.small)
                             }
                             .settingsSearchTarget(.overlaySensitivity)
@@ -1307,6 +1312,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 .pickerStyle(.menu)
+                                .fluidDropdownStyle()
                                 .frame(width: 170, alignment: .trailing)
                             }
                             .settingsSearchTarget(.overlayPosition)
@@ -1380,6 +1386,7 @@ struct SettingsView: View {
                                         }
                                     }
                                     .pickerStyle(.menu)
+                                    .fluidDropdownStyle()
                                     .frame(width: 170, alignment: .trailing)
                                 } else {
                                     Picker("", selection: self.$settings.notchPresentationMode) {
@@ -1388,6 +1395,7 @@ struct SettingsView: View {
                                         }
                                     }
                                     .pickerStyle(.menu)
+                                    .fluidDropdownStyle()
                                     .frame(width: 170, alignment: .trailing)
                                 }
                             }
@@ -1496,7 +1504,7 @@ struct SettingsView: View {
                             } label: {
                                 Label("Reveal Log File", systemImage: "doc.richtext")
                             }
-                            .buttonStyle(.bordered)
+                            .fluidOutlinedButton()
                             .controlSize(.regular)
 
                             Text("The debug log contains detailed information about app operations and can help with troubleshooting.")
@@ -1546,7 +1554,7 @@ struct SettingsView: View {
                 .shownInSettingsSection(.experimental, selectedSection: self.selectedSection)
             }
             .padding(16)
-            .frame(maxWidth: self.selectedSection == .shortcuts ? 820 : .infinity)
+            .frame(maxWidth: self.selectedSection == .shortcuts ? 960 : .infinity)
             .frame(maxWidth: .infinity)
             .environment(\.settingsSearchPresentation, self.settingsSearchPresentation)
         }
@@ -1899,7 +1907,7 @@ struct SettingsView: View {
                 Button(action: self.importBackup) {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.bordered)
+                .fluidOutlinedButton()
                 .controlSize(.regular)
             }
         }
@@ -2048,122 +2056,133 @@ struct SettingsView: View {
         )
     }
 
-    @ViewBuilder
     private func primaryDictationShortcutsList() -> some View {
         let addTarget = ShortcutRecordingTarget.primaryDictation(.add)
         let isAdding = self.isRecording(addTarget)
-
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "mic.fill")
-                    .foregroundStyle(self.settingsSecondaryText)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Primary dictation")
-                        .font(self.theme.typography.bodyStrong)
-                        .foregroundStyle(self.settingsTitleText)
-                    Text("Keyboard shortcut or mouse button")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.settingsSecondaryText)
-                        .lineLimit(1)
+        return HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
+                self.shortcutLabel(
+                    icon: "mic.fill",
+                    color: self.settingsSecondaryText,
+                    title: "Primary dictation",
+                    description: "Keyboard shortcut or mouse button"
+                )
+                self.dictationPromptPicker(for: .primary)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 10) {
+                ForEach(Array(self.primaryDictationShortcuts.enumerated()), id: \.offset) { index, shortcut in
+                    self.primaryDictationShortcutRow(shortcut: shortcut, index: index)
                 }
-
-                Spacer()
-
-                Button {
-                    if isAdding {
-                        self.shortcutRecordingMessage = nil
-                        self.activeShortcutRecordingTarget = nil
-                    } else {
-                        DebugLogger.shared.debug("Starting to record new primary dictation shortcut", source: "SettingsView")
+                if isAdding {
+                    self.shortcutControls(
+                        shortcut: nil,
+                        isRecording: true,
+                        title: "New dictation shortcut",
+                        onEdit: {},
+                        onRemove: nil
+                    )
+                } else {
+                    Button {
                         self.shortcutRecordingMessage = nil
                         self.activeShortcutRecordingTarget = addTarget
+                    } label: {
+                        Label("Add shortcut", systemImage: "plus")
                     }
-                } label: {
-                    Label(isAdding ? "Cancel" : "Add shortcut", systemImage: isAdding ? "xmark" : "plus")
+                    .buttonStyle(ShortcutHoverButtonStyle())
+                    .disabled(self.isRecordingAnyShortcut)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!isAdding && self.isRecordingAnyShortcut)
-            }
-
-            ForEach(Array(self.primaryDictationShortcuts.enumerated()), id: \.offset) { index, shortcut in
-                self.primaryDictationShortcutRow(shortcut: shortcut, index: index)
-            }
-
-            if isAdding {
-                self.primaryDictationShortcutCaptureStatus(for: addTarget)
+                if isAdding, let message = self.shortcutRecordingMessage {
+                    Text(message).font(self.theme.typography.bodySmall).foregroundStyle(self.theme.palette.warning)
+                }
             }
         }
     }
 
-    @ViewBuilder
     private func primaryDictationShortcutRow(shortcut: HotkeyShortcut, index: Int) -> some View {
         let target = ShortcutRecordingTarget.primaryDictation(.replace(index))
-        let isRecording = self.isRecording(target)
+        return VStack(alignment: .trailing, spacing: 4) {
+            self.shortcutControls(
+                shortcut: shortcut,
+                isRecording: self.isRecording(target),
+                title: "Dictation shortcut",
+                onEdit: {
+                    self.shortcutRecordingMessage = nil
+                    self.activeShortcutRecordingTarget = target
+                },
+                onRemove: {
+                    guard self.primaryDictationShortcuts.indices.contains(index) else { return }
+                    self.primaryDictationShortcuts.remove(at: index)
+                }
+            )
+            if self.isRecording(target), let message = self.shortcutRecordingMessage {
+                Text(message).font(self.theme.typography.bodySmall).foregroundStyle(self.theme.palette.warning)
+            }
+        }
+    }
 
-        HStack(spacing: 10) {
-            Color.clear
-                .frame(width: 20)
+    private func shortcutLabel(icon: String, color: Color, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon).foregroundStyle(color).frame(width: 20).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(self.theme.typography.bodyStrong).foregroundStyle(self.settingsTitleText)
+                Text(description).font(self.theme.typography.bodySmall).foregroundStyle(self.settingsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
+    private func shortcutControls(
+        shortcut: HotkeyShortcut?,
+        isRecording: Bool,
+        title: String,
+        onEdit: @escaping () -> Void,
+        onRemove: (() -> Void)?
+    ) -> some View {
+        HStack(spacing: 12) {
             if isRecording {
                 self.shortcutCapturePill()
-            } else {
+            } else if let shortcut {
                 self.shortcutDisplayPill(shortcut.displayString)
+            } else {
+                Text("Off").foregroundStyle(self.settingsSecondaryText)
             }
-
-            Button(isRecording ? "Cancel" : "Change") {
+            Button {
                 if isRecording {
                     self.shortcutRecordingMessage = nil
                     self.activeShortcutRecordingTarget = nil
                 } else {
-                    DebugLogger.shared.debug("Starting to record replacement primary dictation shortcut", source: "SettingsView")
-                    self.shortcutRecordingMessage = nil
-                    self.activeShortcutRecordingTarget = target
+                    onEdit()
                 }
+            } label: {
+                Group {
+                    if isRecording {
+                        Image(systemName: "xmark").font(.fluidSystem(size: 14, weight: .medium))
+                    } else {
+                        ShortcutPencilShape().stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                            .frame(width: 20, height: 20)
+                    }
+                }
+                .frame(width: 28, height: 28)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(ShortcutHoverButtonStyle())
+            .help(isRecording ? "Cancel recording" : "Set shortcut")
+            .accessibilityLabel(isRecording ? "Cancel recording \(title)" : "Edit \(title)")
             .disabled(!isRecording && self.isRecordingAnyShortcut)
 
-            Button("Remove") {
-                guard self.primaryDictationShortcuts.count > 1,
-                      self.primaryDictationShortcuts.indices.contains(index)
-                else { return }
-                self.primaryDictationShortcuts.remove(at: index)
+            Button {
+                onRemove?()
+            } label: {
+                Image(systemName: "trash").frame(width: 28, height: 28)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(self.primaryDictationShortcuts.count <= 1 || self.isRecordingAnyShortcut)
-
-            if isRecording,
-               let recordingMessage = self.shortcutRecordingMessage,
-               !recordingMessage.isEmpty
-            {
-                Text(recordingMessage)
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(self.theme.palette.warning)
-            }
+            .buttonStyle(ShortcutHoverButtonStyle())
+            .help("Remove shortcut")
+            .accessibilityLabel("Remove \(title)")
+            .disabled(onRemove == nil || shortcut == nil || self.isRecordingAnyShortcut)
+            .opacity(onRemove == nil || shortcut == nil || isRecording ? 0 : 1)
+            .accessibilityHidden(onRemove == nil || shortcut == nil || isRecording)
         }
-    }
-
-    private func primaryDictationShortcutCaptureStatus(for target: ShortcutRecordingTarget) -> some View {
-        HStack(spacing: 10) {
-            Color.clear
-                .frame(width: 20)
-
-            self.shortcutCapturePill()
-
-            if self.isRecording(target),
-               let recordingMessage = self.shortcutRecordingMessage,
-               !recordingMessage.isEmpty
-            {
-                Text(recordingMessage)
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(self.theme.palette.warning)
-            }
-        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func shortcutCapturePill() -> some View {
@@ -2173,7 +2192,7 @@ struct SettingsView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.orange.opacity(0.2))
             )
     }
@@ -2184,10 +2203,10 @@ struct SettingsView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.quaternary.opacity(0.5))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(.primary.opacity(0.15), lineWidth: 1)
                     )
             )
@@ -2201,101 +2220,41 @@ struct SettingsView: View {
         isAnyRecordingActive: Bool,
         recordingMessage: String? = nil,
         isEnabled: Binding<Bool>? = nil,
-        requiresShortcutToEnable: Bool = false,
         onChangePressed: @escaping () -> Void,
         onRemovePressed: (() -> Void)? = nil
     ) -> some View {
         let enabledValue = isEnabled?.wrappedValue ?? true
-        let hasShortcut = shortcut != nil
-        let enableToggleDisabled = isAnyRecordingActive || (requiresShortcutToEnable && !hasShortcut)
-
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: content.icon)
-                    .foregroundStyle(content.iconColor)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(content.title)
-                        .font(self.theme.typography.bodyStrong)
-                        .foregroundStyle(self.settingsTitleText)
-                    Text(content.description)
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.settingsSecondaryText)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if let isEnabled {
-                    Toggle("", isOn: isEnabled)
-                        .toggleStyle(.switch)
-                        .tint(self.theme.palette.accent)
-                        .labelsHidden()
-                        .disabled(enableToggleDisabled)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Color.clear
-                    .frame(width: 20)
-
-                if isRecording {
-                    self.shortcutCapturePill()
-                } else {
-                    self.shortcutDisplayPill(shortcut?.displayString ?? "Not set")
-                }
-
-                Button(isRecording ? "Cancel" : "Change") {
-                    if isRecording {
-                        self.shortcutRecordingMessage = nil
-                        self.activeShortcutRecordingTarget = nil
-                    } else {
-                        onChangePressed()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!isRecording && (isAnyRecordingActive || (!enabledValue && hasShortcut)))
-
-                if let onRemovePressed {
-                    Button("Remove") {
-                        onRemovePressed()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!hasShortcut || isAnyRecordingActive)
-                }
-
+        let remove: (() -> Void)? = onRemovePressed ?? isEnabled.map { binding in
+            { binding.wrappedValue = false }
+        }
+        HStack(alignment: .center, spacing: 20) {
+            self.shortcutLabel(
+                icon: content.icon,
+                color: content.iconColor,
+                title: content.title,
+                description: content.description
+            )
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 4) {
+                self.shortcutControls(
+                    shortcut: enabledValue ? shortcut : nil,
+                    isRecording: isRecording,
+                    title: content.title,
+                    onEdit: onChangePressed,
+                    onRemove: remove
+                )
                 if isRecording, let recordingMessage, !recordingMessage.isEmpty {
-                    Text(recordingMessage)
-                        .font(.fluidSystem(.caption))
-                        .foregroundStyle(self.theme.palette.warning)
+                    Text(recordingMessage).font(self.theme.typography.bodySmall).foregroundStyle(self.theme.palette.warning)
                 }
             }
         }
-        .opacity(enabledValue ? 1 : 0.7)
+        .padding(.vertical, 6)
     }
 }
 
 private extension SettingsView {
-    @ViewBuilder
-    private func shortcutPageContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        if self.selectedSection == .shortcuts {
-            content()
-        } else {
-            ThemedCard(style: .standard, content: content)
-        }
-    }
-
     private func shortcutGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12, content: content)
-            .padding(16)
-            .background(self.theme.palette.elevatedCardBackground, in: RoundedRectangle(cornerRadius: 12))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(self.theme.palette.cardBorder, lineWidth: 1)
-            }
     }
 
     private var shortcutGroupDivider: some View {
@@ -2803,7 +2762,7 @@ struct FillerWordsEditor: View {
                     .onSubmit { self.addWord() }
 
                 Button("Add") { self.addWord() }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
                     .controlSize(.small)
                     .disabled(self.newWord.trimmingCharacters(in: .whitespaces).isEmpty)
 
@@ -2813,7 +2772,7 @@ struct FillerWordsEditor: View {
                     self.fillerWords = SettingsStore.defaultFillerWords
                     SettingsStore.shared.fillerWords = self.fillerWords
                 }
-                .buttonStyle(.bordered)
+                .fluidOutlinedButton()
                 .controlSize(.small)
             }
         }
@@ -2977,6 +2936,7 @@ private extension SettingsView {
                             }
                         }
                         .pickerStyle(.menu)
+                        .fluidDropdownStyle()
                         .frame(width: 170, alignment: .trailing)
                         .accessibilityLabel("Spoken Send command")
                     }
@@ -3009,8 +2969,9 @@ private struct DictionarySuggestionsSettingsRow: View {
                     Text(frequency.displayName).tag(frequency)
                 }
             }
-            .labelsHidden()
-            .frame(width: 138)
+            .pickerStyle(.menu)
+            .fluidDropdownStyle()
+            .frame(width: 180)
             .disabled(!self.settings.automaticDictionaryLearningEnabled)
 
             Toggle("", isOn: Binding(
@@ -3112,5 +3073,48 @@ private extension SettingsView {
             )
         )
         .settingsSearchTarget(.returnToStartingField)
+    }
+}
+
+private struct ShortcutPencilShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height) }
+        path.move(to: point(0.12, 0.88))
+        path.addLine(to: point(0.19, 0.62))
+        path.addLine(to: point(0.69, 0.12))
+        path.addQuadCurve(to: point(0.82, 0.12), control: point(0.755, 0.055))
+        path.addLine(to: point(0.88, 0.18))
+        path.addQuadCurve(to: point(0.88, 0.31), control: point(0.945, 0.245))
+        path.addLine(to: point(0.38, 0.81))
+        path.closeSubpath()
+        path.move(to: point(0.62, 0.19))
+        path.addLine(to: point(0.81, 0.38))
+        path.move(to: point(0.19, 0.62))
+        path.addLine(to: point(0.38, 0.81))
+        return path
+    }
+}
+
+private struct ShortcutHoverButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HoverContent(configuration: configuration)
+    }
+
+    private struct HoverContent: View {
+        let configuration: ButtonStyle.Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.theme) private var theme
+        @State private var isHovered = false
+
+        var body: some View {
+            self.configuration.label
+                .foregroundStyle(self.isHovered && self.isEnabled ? self.theme.palette.accent : self.theme.palette.secondaryText)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 7).fill(self.theme.palette.accent.opacity(self.isEnabled && (self.isHovered || self.configuration.isPressed) ? 0.14 : 0)))
+                .contentShape(Rectangle())
+                .opacity(self.isEnabled ? 1 : 0.4)
+                .onHover { self.isHovered = $0 }
+        }
     }
 }

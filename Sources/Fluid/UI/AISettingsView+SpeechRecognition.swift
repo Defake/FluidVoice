@@ -62,24 +62,9 @@ extension VoiceEngineSettingsView {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "line.3.horizontal.decrease.circle")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                    Text("Filter: \(self.viewModel.providerFilter.rawValue)")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                }
-                                .foregroundStyle(self.voiceEngineTitleText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 9)
-                                        .fill(self.theme.palette.cardBackground.opacity(0.8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                                        )
-                                )
+                                Text("Filter: \(self.viewModel.providerFilter.rawValue)")
                             }
+                            .fluidDropdownStyle()
                             Menu {
                                 ForEach(ModelSortOption.allCases) { option in
                                     Button(option.rawValue) {
@@ -87,22 +72,9 @@ extension VoiceEngineSettingsView {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 6) {
-                                    Text("Sort by: \(self.viewModel.modelSortOption.rawValue)")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                }
-                                .foregroundStyle(self.voiceEngineTitleText)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 9)
-                                        .fill(self.theme.palette.cardBackground.opacity(0.8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 9)
-                                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                                        )
-                                )
+                                Text("Sort by: \(self.viewModel.modelSortOption.rawValue)")
                             }
+                            .fluidDropdownStyle()
                         }
 
                         // Active + Other models list
@@ -164,7 +136,6 @@ extension VoiceEngineSettingsView {
     /// Stats panel showing speed/accuracy bars that animate when model changes
     var modelStatsPanel: some View {
         let model = self.viewModel.previewSpeechModel
-        let supportsCustomWords = model.supportsCustomVocabulary
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 20) {
@@ -269,38 +240,6 @@ extension VoiceEngineSettingsView {
                 .frame(width: 140, alignment: .center)
                 .animation(.spring(response: 0.5, dampingFraction: 0.7), value: model.id)
             }
-
-            if supportsCustomWords {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(Color.fluidGreen)
-
-                    Text("Custom Words supported on Parakeet. Teach names, product terms, and uncommon words for better accuracy.")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.voiceEngineSecondaryText)
-                        .lineLimit(3)
-
-                    Spacer(minLength: 8)
-
-                    Button("Open Custom Dictionary") {
-                        NotificationCenter.default.post(name: .openCustomDictionaryFromVoiceEngine, object: nil)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.fluidGreen)
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.fluidGreen.opacity(0.10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.fluidGreen.opacity(0.30), lineWidth: 1)
-                        )
-                )
-            }
         }
         .padding(.vertical, 6)
     }
@@ -390,7 +329,7 @@ extension VoiceEngineSettingsView {
                     Button(self.viewModel.isCancellingModelDownload ? "Cancelling…" : "Cancel") {
                         self.viewModel.cancelSpeechModelDownload()
                     }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
                     .controlSize(.small)
                     .disabled(self.viewModel.isCancellingModelDownload)
                 }
@@ -431,7 +370,7 @@ extension VoiceEngineSettingsView {
                     Button(self.viewModel.asr.isCancellingModelPreparation ? "Cancelling…" : "Cancel") {
                         self.viewModel.cancelActiveModelPreparation()
                     }
-                    .buttonStyle(.bordered)
+                    .fluidOutlinedButton()
                     .controlSize(.small)
                     .disabled(self.viewModel.asr.isCancellingModelPreparation)
                 }
@@ -565,10 +504,9 @@ extension VoiceEngineSettingsView {
                         }
                     }
                 }
-            } label: {
-                self.languageChipLabel(self.settings.selectedCohereLanguage.displayName)
-            }
-            .buttonStyle(.plain)
+            } label: { Label(self.settings.selectedCohereLanguage.displayName, systemImage: "globe") }
+                .fluidDropdownStyle()
+                .buttonStyle(.plain)
         } else if model == .nemotronOffline || model == .nemotronStreaming || model == .nemotronStreaming320 {
             self.nemotronLanguagePickerButton
         }
@@ -681,28 +619,15 @@ extension VoiceEngineSettingsView {
     }
 
     private func languageChipLabel(_ title: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "globe")
-                .font(self.theme.typography.bodySmall)
-                .foregroundStyle(self.theme.palette.accent)
-            Text(title)
-                .lineLimit(1)
-                .fontWeight(.semibold)
-            Image(systemName: "chevron.down")
-                .font(.fluidSystem(size: 9, weight: .semibold))
-                .foregroundStyle(self.voiceEngineTertiaryText)
+        HStack(spacing: 10) {
+            Image(systemName: "globe").foregroundStyle(self.theme.palette.accent)
+            Text(title).lineLimit(1)
+            FluidDropdownChevron()
         }
-        .font(self.theme.typography.bodySmallStrong)
-        .frame(minHeight: 24)
-        .padding(.horizontal, 9)
-        .background(
-            Capsule()
-                .fill(self.theme.palette.accent.opacity(0.10))
-                .overlay(
-                    Capsule()
-                        .stroke(self.theme.palette.accent.opacity(0.28), lineWidth: 1)
-                )
-        )
+        .font(self.theme.typography.bodySmall)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .fluidDropdownSurface()
     }
 
     private func speechModelSubtitle(for model: SettingsStore.SpeechModel) -> String {

@@ -17,6 +17,7 @@ private final class Harness {
     var loadContinuation: CheckedContinuation<Void, Never>?
     var progressCallback: (@Sendable (Controller.Progress) async -> Void)?
     var lastID: String?
+    var pendingDownload = false
     enum Failure: Error { case simulated }
 
     func controller() -> Controller {
@@ -43,7 +44,9 @@ private final class Harness {
                     await withCheckedContinuation { self.loadContinuation = $0 }
                 }
                 if self.failLoad { throw Failure.simulated }
-            }
+            },
+            readPendingDownload: { self.pendingDownload },
+            writePendingDownload: { self.pendingDownload = $0 }
         ))
     }
 }
@@ -61,6 +64,35 @@ struct OnboardingAISetupControllerTests {
 
     @MainActor
     static func main() async {
+        // A newly created controller recovers a persisted request, never activation.
+        let restarted = Harness()
+        restarted.pendingDownload = true
+        restarted.failDownload = true
+        let firstProcess = restarted.controller()
+        firstProcess.resumePendingDownload()
+        await self.waitUntil { firstProcess.errorMessage != nil }
+        precondition(restarted.pendingDownload && restarted.loads == 0 && restarted.commits == 0)
+        restarted.failDownload = false
+        let nextProcess = restarted.controller()
+        nextProcess.resumePendingDownload()
+        await self.waitUntil { !restarted.pendingDownload }
+        precondition(restarted.downloads == 2 && restarted.loads == 0 && restarted.commits == 0)
+        firstProcess.cancel()
+
+        let cancelled = Harness()
+        cancelled.pendingDownload = true
+        cancelled.controller().cancel()
+        cancelled.controller().resumePendingDownload()
+        precondition(!cancelled.pendingDownload && cancelled.downloads == 0)
+
+        let saved = Harness()
+        saved.installed = true
+        saved.pendingDownload = true
+        let savedController = saved.controller()
+        savedController.resumePendingDownload()
+        await self.waitUntil { !saved.pendingDownload }
+        precondition(saved.downloads == 0 && saved.loads == 0 && saved.commits == 0)
+
         let fresh = Harness()
         let controller = fresh.controller()
         controller.refresh()
@@ -81,7 +113,59 @@ struct OnboardingAISetupControllerTests {
         controller.introductionFinished = false // Explicit Replay changes only video progress.
         precondition(controller.phase == .ready && fresh.loads == 1 && fresh.commits == 1)
 
+        let prefetched = Harness()
+        prefetched.pauseDownload = true
+        let prefetchedController = prefetched.controller()
+        prefetchedController.prefetch()
+        prefetchedController.prefetch()
+        await self.waitUntil { prefetched.downloadContinuation != nil }
+        precondition(prefetchedController.phase == .downloading)
+        precondition(prefetchedController.canEnable && !prefetchedController.showsPreparationProgress)
+        precondition(prefetched.readCount == 1 && prefetched.downloads == 1 && prefetched.loads == 0 && prefetched.commits == 0)
+        prefetchedController.enable { _ in prefetched.commits += 1 }
+        precondition(!prefetchedController.canEnable && prefetchedController.showsPreparationProgress)
+        prefetchedController.enable { _ in preconditionFailure("Duplicate activation") }
+        prefetched.downloadContinuation?.resume()
+        await self.waitUntil { prefetchedController.phase == .ready }
+        precondition(prefetched.downloads == 1 && prefetched.loads == 1 && prefetched.commits == 1)
+
+        let prefetchedCached = Harness()
+        prefetchedCached.installed = true
+        let prefetchedCachedController = prefetchedCached.controller()
+        prefetchedCachedController.prefetch()
+        await self.waitUntil { prefetchedCachedController.phase == .offered }
+        precondition(prefetchedCached.readCount == 1 && prefetchedCached.downloads == 0 && prefetchedCached.loads == 0)
+
+        let cancelledPrefetch = Harness()
+        cancelledPrefetch.pauseDownload = true
+        let cancelledPrefetchController = cancelledPrefetch.controller()
+        cancelledPrefetchController.prefetch()
+        await self.waitUntil { cancelledPrefetch.downloadContinuation != nil }
+        cancelledPrefetchController.enable { _ in preconditionFailure("Cancelled activation") }
+        cancelledPrefetchController.cancel()
+        precondition(cancelledPrefetchController.phase == .cancelling && cancelledPrefetchController.progress == nil)
+        cancelledPrefetch.downloadContinuation?.resume()
+        await self.waitUntil { cancelledPrefetchController.phase == .offered }
+        cancelledPrefetch.pauseDownload = false
+        cancelledPrefetchController.enable { _ in cancelledPrefetch.commits += 1 }
+        await self.waitUntil { cancelledPrefetchController.phase == .ready }
+        precondition(cancelledPrefetch.downloads == 2 && cancelledPrefetch.loads == 1 && cancelledPrefetch.commits == 1)
+
         let cached = Harness()
+        let deferred = Harness()
+        deferred.pauseDownload = true
+        var deferredController: OnboardingAISetupController? = deferred.controller()
+        weak var retainedDownload = deferredController
+        deferredController?.setUpLater()
+        await self.waitUntil { deferred.downloadContinuation != nil }
+        deferredController?.leavePage()
+        deferredController = nil
+        precondition(retainedDownload != nil, "Download survives onboarding dismissal")
+        deferred.downloadContinuation?.resume()
+        deferred.progressCallback = nil
+        await self.waitUntil { retainedDownload == nil }
+        precondition(deferred.downloads == 1 && deferred.loads == 0 && deferred.commits == 0)
+
         cached.installed = true
         let cachedController = cached.controller()
         cachedController.refresh()
@@ -148,6 +232,6 @@ struct OnboardingAISetupControllerTests {
         missing.enable { _ in throw Harness.Failure.simulated }
         await self.waitUntil { missing.errorMessage != nil }
         precondition(missing.phase == .offered && unavailable.commits == 0)
-        print("PASS: read-only recommendation, fresh/cached activation, duplicate actions, cancellation during download/load, stale progress, failure/retry and commit rejection")
+        print("PASS: recommendation prefetch, fresh/cached activation, prefetch cancellation/retry, duplicate actions, cancellation during download/load, stale progress, failure/retry and commit rejection")
     }
 }
