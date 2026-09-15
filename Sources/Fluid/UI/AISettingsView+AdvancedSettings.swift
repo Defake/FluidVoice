@@ -672,13 +672,19 @@ extension AIEnhancementSettingsView {
         Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 14) {
             self.promptEditorShortcutRow(mode: mode)
             if mode.isPrivateAI {
-                self.promptEditorConfigRow(title: "Settings", description: "The same shortcut is available there.") {
-                    Button("Open Smart dictation shortcut settings") {
-                        self.viewModel.closePromptEditor()
-                        AppNavigationRouter.shared.request(.dictationShortcuts)
+                GridRow {
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    HStack(spacing: 3) {
+                        Text("Also available in")
+                            .foregroundStyle(self.theme.palette.secondaryText)
+                        Button("Settings") {
+                            self.viewModel.closePromptEditor()
+                            AppNavigationRouter.shared.request(.dictationShortcuts)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(self.theme.palette.accent)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(self.theme.palette.accent)
+                    .font(self.theme.typography.caption)
                 }
             }
             Group {
@@ -718,14 +724,14 @@ extension AIEnhancementSettingsView {
         }()
         let hasShortcut = self.promptEditorShortcutDraft != nil
 
-        return self.promptEditorConfigRow(title: "Custom shortcut", description: "Optional shortcut just for this prompt.") {
+        return self.promptEditorConfigRow(title: "Shortcut", description: "") {
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     if isRecording {
                         Image(systemName: "keyboard")
                             .font(.fluidSystem(size: 11, weight: .semibold))
                             .foregroundStyle(.orange)
-                        Text("Press shortcut...")
+                        Text("Press shortcut…")
                             .font(.fluidSystem(size: 12, weight: .semibold))
                             .foregroundStyle(.orange)
                             .lineLimit(1)
@@ -748,7 +754,7 @@ extension AIEnhancementSettingsView {
                     Spacer(minLength: 4)
                 }
                 .searchablePickerControlChrome(
-                    width: 114,
+                    width: isRecording ? 192 : 114,
                     height: AISettingsLayout.controlHeight,
                     usesMaterial: true,
                     showsShadow: true
@@ -756,21 +762,22 @@ extension AIEnhancementSettingsView {
 
                 Button {
                     self.shortcutRecordingMessage = nil
-                    if isNewPrompt {
+                    if isRecording {
+                        self.activeShortcutRecordingTarget = nil
+                    } else if isNewPrompt {
                         self.activeShortcutRecordingTarget = .newPrompt
                     } else if let configurationKey {
                         self.activeShortcutRecordingTarget = .dictationPrompt(configurationKey)
                     }
                 } label: {
-                    Text(isRecording ? "Recording..." : "Change")
+                    Text(isRecording ? "Cancel" : "Change")
                         .font(.fluidSystem(size: 12, weight: .semibold))
                         .lineLimit(1)
                         .frame(width: 70, height: AISettingsLayout.controlHeight)
                 }
-                .fluidCompactButton(isReady: !isRecording)
-                .disabled(isRecording)
+                .fluidCompactButton(isReady: true)
 
-                if hasShortcut {
+                if hasShortcut && !isRecording {
                     Button {
                         self.promptEditorShortcutDraft = nil
                         if isNewPrompt {
@@ -787,7 +794,7 @@ extension AIEnhancementSettingsView {
                             .frame(width: 70, height: AISettingsLayout.controlHeight)
                     }
                     .fluidCompactButton(foreground: .red, borderColor: .red.opacity(0.5))
-                } else {
+                } else if !isRecording {
                     Color.clear
                         .frame(width: 70, height: AISettingsLayout.controlHeight)
                 }
@@ -913,11 +920,13 @@ extension AIEnhancementSettingsView {
                 Text(title)
                     .font(.fluidSystem(size: 13, weight: .semibold))
                     .foregroundStyle(self.theme.palette.primaryText)
-                Text(description)
-                    .font(.fluidSystem(size: 11))
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !description.isEmpty {
+                    Text(description)
+                        .font(.fluidSystem(size: 11))
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .gridColumnAlignment(.leading)
             .frame(width: AISettingsLayout.promptEditorLabelColumnWidth, alignment: .leading)
@@ -1716,7 +1725,7 @@ extension AIEnhancementSettingsView {
                             }())
                                 .font(.fluidSystem(.headline))
                             if mode.isPrivateAI {
-                                Text("Built-in system prompt. Edit its shortcut here or in Settings.")
+                                Text("Built-in cleanup.")
                                     .font(.fluidSystem(.caption))
                                     .foregroundStyle(.secondary)
                             } else if mode.isDefault {
