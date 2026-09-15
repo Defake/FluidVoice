@@ -447,9 +447,9 @@ struct TranscriptionHistoryView: View {
                 }
                 HistoryTextComparisonView(entry: entry, copy: self.copyToClipboard)
                     .id(entry.id)
-                if self.settings.showHistoryPerformanceMetrics {
-                    FluidManagementGroup(title: "Processing") {
-                        LazyVGrid(columns: self.detailColumns, alignment: .leading, spacing: 16) {
+                FluidManagementGroup(title: "Processing") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16, alignment: .leading)], alignment: .leading, spacing: 16) {
+                        if self.settings.showHistoryPerformanceMetrics {
                             if let duration = entry.transcriptionDurationMilliseconds {
                                 self.metadataItem(
                                     icon: "waveform",
@@ -472,20 +472,19 @@ struct TranscriptionHistoryView: View {
                                 )
                             }
                         }
+                        self.metadataItem(
+                            icon: "sparkles",
+                            label: entry.aiProcessingError == nil ? "AI model" : "AI model (failed)",
+                            value: self.recordedModel(entry) ?? (entry.wasAIProcessed ? "Not recorded" : "No AI cleanup")
+                        )
                     }
                 }
                 FluidManagementGroup(title: "Details") {
                     LazyVGrid(columns: self.detailColumns, alignment: .leading, spacing: 16) {
                         self.metadataItem(icon: "app", label: "Application", value: entry.appName.isEmpty ? "Unknown" : entry.appName)
-                        self.metadataItem(icon: "character.cursor.ibeam", label: "Characters", value: "\(entry.characterCount)")
-                        self.metadataItem(icon: "waveform", label: "Recording", value: self.audioMetadataText(for: entry))
+                        self.metadataItem(icon: "waveform", label: "Recording", value: self.recordingDurationText(for: entry))
+                        self.metadataItem(icon: "internaldrive", label: "Audio size", value: self.audioSizeText(for: entry))
                     }
-                    Divider().opacity(0.4)
-                    self.metadataItem(
-                        icon: "sparkles",
-                        label: entry.aiProcessingError == nil ? "AI model" : "AI model (failed)",
-                        value: self.recordedModel(entry) ?? (entry.wasAIProcessed ? "Not recorded" : "No AI cleanup")
-                    )
                 }
             }
             .padding(24)
@@ -592,11 +591,15 @@ struct TranscriptionHistoryView: View {
         return self.availableAudioFiles.contains(audio.fileName)
     }
 
-    private func audioMetadataText(for entry: TranscriptionHistoryEntry) -> String {
-        guard let audio = entry.audio, self.hasAudio(entry) else { return "No" }
-        let seconds = Double(audio.durationMilliseconds) / 1000.0
-        let size = ByteCountFormatter.string(fromByteCount: Int64(audio.byteCount), countStyle: .file)
-        return "\(String(format: "%.1f", seconds))s, \(size)"
+    private func recordingDurationText(for entry: TranscriptionHistoryEntry) -> String {
+        guard let audio = entry.audio else { return "Not saved" }
+        return String(format: "%.1fs", Double(audio.durationMilliseconds) / 1000.0)
+    }
+
+    private func audioSizeText(for entry: TranscriptionHistoryEntry) -> String {
+        guard let audio = entry.audio else { return "Not saved" }
+        guard self.hasAudio(entry) else { return "Unavailable" }
+        return ByteCountFormatter.string(fromByteCount: Int64(audio.byteCount), countStyle: .file)
     }
 
     private func revealAudio(_ entry: TranscriptionHistoryEntry) {
