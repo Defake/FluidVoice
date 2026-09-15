@@ -656,7 +656,8 @@ private final class MeetingProviderLanguagePin {
 final class MeetingProcessingPipeline: MeetingProcessingControlling {
     /// Bump whenever classification rules change so a resumed run can't mix rules mid-session.
     /// Era-awareness did NOT bump this: the mic pass re-runs every time, and multi-era tracks cannot predate this build.
-    static let pipelineVersion = 11
+    /// Version 12: Parakeet+Nemotron backend moved to coverage-union overlap dominance (plan §4).
+    static let pipelineVersion = 12
     /// Per-turn engines starve on short turns, and an all-empty chunk collapses to unlabeled.
     static let perTurnTurnMergeGapSeconds = 5.0
 
@@ -1626,37 +1627,55 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         let status: String
         let completeness: String
         let isLikelyEcho: Bool?
+        let attributionState: String?
+    }
+
+    /// Backend-versioned canonical turn policy: how far apart two same-key segments on the
+    /// same track may sit and still count as one continuous turn.
+    nonisolated static let canonicalTurnMergeGapSeconds: TimeInterval = 3
+    /// Backend-versioned canonical turn policy: the longest a merged turn may span before a
+    /// new turn starts even with a matching key and no gap.
+    nonisolated static let canonicalTurnMaximumDurationSeconds: TimeInterval = 30
+
+    private nonisolated static func canonicalSegmentMergeKey(
+        _ segment: MeetingTranscriptSegment
+    ) -> CanonicalSegmentMergeKey {
+        CanonicalSegmentMergeKey(
+            trackID: segment.sourceTrackID,
+            speakerID: segment.speakerID,
+            overlap: segment.overlap.rawValue,
+            status: segment.status.rawValue,
+            completeness: segment.completeness.rawValue,
+            isLikelyEcho: segment.isLikelyEcho,
+            attributionState: segment.attributionState?.rawValue
+        )
     }
 
     /// Canonical evidence remains word-granular in the sidecar, but product session JSON and UI
-    /// rows stay turn-granular. Merge only segments with identical attribution and state, bounded
-    /// by the same 3-second/30-second policy used by aligned legacy meeting turns.
+    /// rows stay turn-granular. Folds each track chronologically and merges only a segment with
+    /// the immediately preceding turn on that same track — never across an intervening
+    /// different-key segment — so A → B → A stays three turns instead of collapsing the two A
+    /// segments around B. A merge additionally requires an identical full attribution/state key
+    /// and the named gap/duration turn bounds.
     nonisolated static func mergeCanonicalSegments(
         _ segments: [MeetingTranscriptSegment],
-        maximumGapSeconds: TimeInterval = 3,
-        maximumDurationSeconds: TimeInterval = 30
+        maximumGapSeconds: TimeInterval = MeetingProcessingPipeline.canonicalTurnMergeGapSeconds,
+        maximumDurationSeconds: TimeInterval = MeetingProcessingPipeline.canonicalTurnMaximumDurationSeconds
     ) -> [MeetingTranscriptSegment] {
-        let grouped = Dictionary(grouping: segments) {
-            CanonicalSegmentMergeKey(
-                trackID: $0.sourceTrackID,
-                speakerID: $0.speakerID,
-                overlap: $0.overlap.rawValue,
-                status: $0.status.rawValue,
-                completeness: $0.completeness.rawValue,
-                isLikelyEcho: $0.isLikelyEcho
-            )
-        }
+        let byTrack = Dictionary(grouping: segments, by: \.sourceTrackID)
         var merged: [MeetingTranscriptSegment] = []
-        for members in grouped.values {
+        for (_, members) in byTrack {
             let ordered = members.sorted {
                 ($0.start, $0.end, $0.id.uuidString) < ($1.start, $1.end, $1.id.uuidString)
             }
             guard var current = ordered.first else { continue }
+            var currentKey = Self.canonicalSegmentMergeKey(current)
             var memberIDs = [current.id]
             for next in ordered.dropFirst() {
+                let nextKey = Self.canonicalSegmentMergeKey(next)
                 let gap = next.start.seconds - current.end.seconds
                 let combinedDuration = max(current.end.seconds, next.end.seconds) - current.start.seconds
-                if gap <= maximumGapSeconds, combinedDuration <= maximumDurationSeconds {
+                if nextKey == currentKey, gap <= maximumGapSeconds, combinedDuration <= maximumDurationSeconds {
                     current.end = Self.mediaTime(max(current.end.seconds, next.end.seconds))
                     current.text = Self.joinTranscriptText(current.text, next.text)
                     memberIDs.append(next.id)
@@ -1666,6 +1685,7 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
                 } else {
                     merged.append(current)
                     current = next
+                    currentKey = nextKey
                     memberIDs = [next.id]
                 }
             }

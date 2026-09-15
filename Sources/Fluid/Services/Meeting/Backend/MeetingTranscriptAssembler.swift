@@ -308,6 +308,10 @@ nonisolated struct MeetingTranscriptAssembler {
             dispositions.map { ($0.unitID, $0.disposition) },
             uniquingKeysWith: { first, _ in first }
         )
+        let dispositionReasonByUnitID = Dictionary(
+            dispositions.map { ($0.unitID, $0.reasonCode) },
+            uniquingKeysWith: { first, _ in first }
+        )
         // Ambiguous-admitted units produce a segment but mint no speaker: their candidates are
         // reported, never resolved into a product identity.
         let speakers = self.makeSpeakers(
@@ -322,11 +326,21 @@ nonisolated struct MeetingTranscriptAssembler {
         let segments = emitted
             .map { unit, presentation -> MeetingTranscriptSegment in
                 let disposition = dispositionByUnitID[unit.id]
+                let reasonCode = dispositionReasonByUnitID[unit.id] ?? nil
+                let isSpeakerAmbiguous = disposition == .ambiguousUnassigned
+                    && reasonCode == MeetingUnitDispositionReason.ambiguousSpeaker.rawValue
+                let isTimingUncertain = disposition == .ambiguousUnassigned
+                    && reasonCode == MeetingUnitDispositionReason.timingUncertain.rawValue
                 let speakerID: SessionSpeakerID? = {
                     guard disposition == .emitted,
                           case let .assigned(token) = unit.speaker
                     else { return nil }
                     return speakerIDsByToken[token]
+                }()
+                let attributionState: MeetingTranscriptAttributionState = {
+                    if isSpeakerAmbiguous { return .overlappingSpeakers }
+                    if isTimingUncertain { return .timingUncertain }
+                    return speakerID != nil ? .assigned : .unassigned
                 }()
                 return MeetingTranscriptSegment(
                     id: Self.stableUUID("segment:\(manifest.attemptID.uuidString):\(unit.id)"),
@@ -337,9 +351,10 @@ nonisolated struct MeetingTranscriptAssembler {
                     text: unit.text,
                     revision: 0,
                     status: .final,
-                    overlap: disposition == .ambiguousUnassigned ? .ambiguous : .none,
+                    overlap: isSpeakerAmbiguous ? .ambiguous : .none,
                     completeness: .complete,
-                    isLikelyEcho: nil
+                    isLikelyEcho: nil,
+                    attributionState: attributionState
                 )
             }
             .sorted {

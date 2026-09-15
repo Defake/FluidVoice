@@ -8,9 +8,53 @@ nonisolated enum MeetingTranscriptExporter {
             .filter { includeEchoes || !$0.isEcho }
             .sorted { $0.start.seconds < $1.start.seconds }
         return segments.map { segment in
-            let speaker = Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames)
+            let speaker = Self.speakerLabel(for: segment, in: session, speakerNames: speakerNames)
             return "[\(Self.timestampText(segment.start.seconds))] \(speaker): \(segment.text)"
         }.joined(separator: "\n\n")
+    }
+
+    /// Single resolver for the label shown next to a segment, shared by text export and
+    /// `MeetingTranscriptionView` so the transcript and the UI never disagree on what a segment
+    /// is called. `attributionState` (when present) is authoritative; its absence means the
+    /// segment predates the state and falls back to inferring from `speakerID`/`overlap`.
+    static func speakerLabel(
+        for segment: MeetingTranscriptSegment,
+        in session: MeetingSession,
+        speakerNames: [SessionSpeakerID: String]
+    ) -> String {
+        guard let state = segment.attributionState else {
+            if let name = Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) {
+                return name
+            }
+            return segment.overlap == .ambiguous ? "Overlapping speakers" : "Unassigned"
+        }
+        switch state {
+        case .assigned:
+            return Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) ?? "Unassigned"
+        case .overlappingSpeakers:
+            return "Overlapping speakers"
+        case .unassigned:
+            return "Unassigned"
+        case .timingUncertain:
+            return "Timing uncertain"
+        }
+    }
+
+    /// Presentation grouping key: labels alone are insufficient because two distinct speakers can
+    /// legitimately share a display name. The semantic attribution state keeps adjacent nil-speaker
+    /// rows such as overlap and timing uncertainty from collapsing into one visual run.
+    static func speakerLabelIdentity(
+        for segment: MeetingTranscriptSegment,
+        in session: MeetingSession,
+        speakerNames: [SessionSpeakerID: String]
+    ) -> String {
+        let label = self.speakerLabel(for: segment, in: session, speakerNames: speakerNames)
+        return [
+            segment.speakerID?.uuidString ?? "nil",
+            segment.attributionState?.rawValue ?? "legacy",
+            segment.overlap.rawValue,
+            label,
+        ].joined(separator: "|")
     }
 
     static func json(for session: MeetingSession) throws -> Data {
@@ -35,7 +79,8 @@ nonisolated enum MeetingTranscriptExporter {
                     status: $0.status.rawValue,
                     overlap: $0.overlap.rawValue,
                     completeness: $0.completeness.rawValue,
-                    isLikelyEcho: $0.isEcho
+                    isLikelyEcho: $0.isEcho,
+                    attributionState: $0.attributionState?.rawValue
                 )
             }
         let document = ExportedTranscript(
@@ -57,16 +102,17 @@ nonisolated enum MeetingTranscriptExporter {
     }
 
     /// A segment may still point at a speaker that was merged away; walk the alias chain
-    /// defensively even though post-merge segments are already repointed to the target.
+    /// defensively even though post-merge segments are already repointed to the target. `nil`
+    /// means no known speaker could be resolved, letting callers apply their own fallback label.
     private static func resolvedSpeakerName(
         _ speakerID: SessionSpeakerID?,
         in session: MeetingSession,
         speakerNames: [SessionSpeakerID: String]
-    ) -> String {
+    ) -> String? {
         guard let resolvedID = speakerID.map({ Self.resolvedAliasID($0, in: session) }) else {
-            return "Unknown speaker"
+            return nil
         }
-        return speakerNames[resolvedID] ?? "Unknown speaker"
+        return speakerNames[resolvedID]
     }
 
     /// The same alias-chain walk as `resolvedSpeakerName`, but returning the id itself so JSON
@@ -119,6 +165,7 @@ private struct ExportedSegment: Codable {
     var overlap: String
     var completeness: String
     var isLikelyEcho: Bool
+    var attributionState: String?
 }
 
 private struct ExportedTranscript: Codable {

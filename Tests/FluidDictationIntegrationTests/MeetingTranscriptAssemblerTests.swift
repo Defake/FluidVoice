@@ -554,6 +554,7 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         XCTAssertEqual(matching.count, 1)
         XCTAssertNil(matching[0].speakerID)
         XCTAssertEqual(matching[0].overlap, .ambiguous)
+        XCTAssertEqual(matching[0].attributionState, .overlappingSpeakers)
         // Ambiguity candidates are reported, never resolved into product speakers.
         XCTAssertTrue(result.speakers.isEmpty)
     }
@@ -576,7 +577,10 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         XCTAssertEqual(record.reasonCode, "timingUncertain")
         let segment = try XCTUnwrap(result.segments.first)
         XCTAssertNil(segment.speakerID)
-        XCTAssertEqual(segment.overlap, .ambiguous)
+        // Timing uncertainty is not speaker overlap: the segment carries no cross-speaker overlap
+        // marker, only the distinct `timingUncertain` attribution state.
+        XCTAssertEqual(segment.overlap, .none)
+        XCTAssertEqual(segment.attributionState, .timingUncertain)
         XCTAssertTrue(result.speakers.isEmpty)
     }
 
@@ -1261,5 +1265,59 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         ))
         XCTAssertTrue(result.coverageGaps.isEmpty)
         XCTAssertFalse(result.isComplete)
+    }
+
+    // MARK: - Attribution state
+
+    func testNormallyEmittedSegmentsCarryAssignedOrUnassignedAttributionState() throws {
+        let (plan, manifest, span) = try self.onlineMicFixture()
+        let assignedUnit = self.unit(id: "u-assigned", span: span, text: "clear", analysisStart: 1, analysisEnd: 2)
+        let unassignedUnit = self.unit(
+            id: "u-unassigned", span: span, text: "noEvidence", analysisStart: 3, analysisEnd: 4,
+            speaker: .unassigned
+        )
+        let result = try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
+            plan: plan,
+            manifest: manifest,
+            evidence: self.evidence(plan: plan, units: [assignedUnit, unassignedUnit]),
+            coverageReceipts: self.receipts(for: manifest),
+            echoVerdicts: ["u-assigned": .notEcho, "u-unassigned": .notEcho]
+        ))
+        XCTAssertEqual(self.dispositions(result)["u-assigned"]?.disposition, .emitted)
+        XCTAssertEqual(self.dispositions(result)["u-unassigned"]?.disposition, .emitted)
+
+        let assignedSegment = try XCTUnwrap(result.segments.first { $0.text == "clear" })
+        XCTAssertNotNil(assignedSegment.speakerID)
+        XCTAssertEqual(assignedSegment.overlap, .none)
+        XCTAssertEqual(assignedSegment.attributionState, .assigned)
+
+        let unassignedSegment = try XCTUnwrap(result.segments.first { $0.text == "noEvidence" })
+        XCTAssertNil(unassignedSegment.speakerID)
+        XCTAssertEqual(unassignedSegment.overlap, .none)
+        XCTAssertEqual(unassignedSegment.attributionState, .unassigned)
+    }
+
+    /// `attributionState` must stay optional: a non-optional defaulted property makes the
+    /// synthesized decoder require the key, and the store silently drops sessions that fail to
+    /// decode.
+    func testSegmentWithoutAttributionStateKeyStillDecodes() throws {
+        let legacySegmentJSON = """
+        {
+          "id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+          "start": { "value": 0, "timescale": 1000 },
+          "end": { "value": 1000, "timescale": 1000 },
+          "sourceTrackID": "3F2504E0-4F89-11D3-9A0C-0305E82C3302",
+          "text": "legacy segment",
+          "revision": 0,
+          "status": "final",
+          "overlap": "none",
+          "completeness": "complete"
+        }
+        """
+        let segment = try JSONDecoder().decode(
+            MeetingTranscriptSegment.self,
+            from: Data(legacySegmentJSON.utf8)
+        )
+        XCTAssertNil(segment.attributionState)
     }
 }

@@ -13,7 +13,7 @@ import Foundation
 final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
     static let descriptor = MeetingBackendDescriptor(
         id: .parakeetNemotron,
-        version: "1",
+        version: "2",
         execution: .local,
         supportedLanguageCodes: ["en"],
         supportedTrackKinds: Set(MeetingAudioTrackKind.allCases),
@@ -450,7 +450,7 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
                 text: text,
                 analysisStart: start,
                 analysisEnd: end,
-                speaker: Self.assignment(start: start, end: end, activity: activity),
+                speaker: Self.assignment(start: start, end: end, activity: activity, allowDominance: true),
                 analysisSpanIDs: spanIDs,
                 confidence: nil
             ))
@@ -469,7 +469,7 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
             text: text,
             analysisStart: epochStart,
             analysisEnd: physicalEnd,
-            speaker: Self.assignment(start: epochStart, end: physicalEnd, activity: activity),
+            speaker: Self.assignment(start: epochStart, end: physicalEnd, activity: activity, allowDominance: false),
             analysisSpanIDs: spanIDs,
             confidence: nil
         )]
@@ -546,22 +546,141 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         return span.analysisInterval.start + fraction * span.analysisInterval.duration
     }
 
-    /// One overlapping slot assigns; two or more are reported ambiguous; none is unassigned.
-    private nonisolated static func assignment(
+    /// Nemotron emits diarization decisions on this cadence (plan §4); a boundary sliver shorter
+    /// than one output hop is model noise, not evidence of a second speaker.
+    private nonisolated static let nemotronCadenceMaximumFloorSeconds: TimeInterval = 0.08
+
+    /// Conservative initial product policy for multi-candidate words, isolated here so the ratios
+    /// are named and covered at exact boundaries instead of living as unexplained literals.
+    private nonisolated enum SpeakerDominancePolicy {
+        static let minimumLeaderCoverageFraction: Double = 0.5
+        static let maximumRunnerUpCoverageFraction: Double = 0.2
+        static let minimumLeaderToRunnerUpRatio: Double = 2.0
+    }
+
+    /// The cadence floor scaled down for short words, so an 80ms boundary hop can never be
+    /// discarded outright from a 150ms word: never more than 20% of the unit's own duration.
+    private nonisolated static func boundaryNoiseThresholdSeconds(duration: TimeInterval) -> TimeInterval {
+        min(self.nemotronCadenceMaximumFloorSeconds, 0.2 * duration)
+    }
+
+    /// Clips each activity interval to the unit and unions same-token intervals before measuring
+    /// coverage, so duplicate or fragmented diarizer segments for one slot never double-count.
+    private nonisolated static func coverageSeconds(
         start: TimeInterval,
         end: TimeInterval,
         activity: [MeetingBackendSpeakerActivity]
-    ) -> MeetingBackendSpeakerAssignment {
-        let tolerance = MeetingAnalysisManifestSchema.mappingToleranceSeconds
-        var tokens = Set<MeetingBackendSpeakerToken>()
-        for entry in activity where min(entry.end, end) - max(entry.start, start) > tolerance {
-            tokens.insert(entry.token)
+    ) -> [MeetingBackendSpeakerToken: TimeInterval] {
+        var intervalsByToken: [MeetingBackendSpeakerToken: [(start: TimeInterval, end: TimeInterval)]] = [:]
+        for entry in activity {
+            let clippedStart = max(entry.start, start)
+            let clippedEnd = min(entry.end, end)
+            guard clippedEnd > clippedStart else { continue }
+            intervalsByToken[entry.token, default: []].append((clippedStart, clippedEnd))
         }
-        let sorted = tokens.sorted { $0.label < $1.label }
-        switch sorted.count {
-        case 0: return .unassigned
-        case 1: return .assigned(sorted[0])
-        default: return .ambiguous(sorted)
+        var coverage: [MeetingBackendSpeakerToken: TimeInterval] = [:]
+        for (token, intervals) in intervalsByToken {
+            coverage[token] = Self.unionDurationSeconds(intervals)
+        }
+        return coverage
+    }
+
+    private nonisolated static func unionDurationSeconds(
+        _ intervals: [(start: TimeInterval, end: TimeInterval)]
+    ) -> TimeInterval {
+        let sorted = intervals.sorted { $0.start < $1.start }
+        guard var runStart = sorted.first?.start else { return 0 }
+        var runEnd = sorted[0].end
+        var total: TimeInterval = 0
+        for interval in sorted.dropFirst() {
+            if interval.start > runEnd {
+                total += runEnd - runStart
+                runStart = interval.start
+                runEnd = interval.end
+            } else {
+                runEnd = max(runEnd, interval.end)
+            }
+        }
+        total += runEnd - runStart
+        return total
+    }
+
+    /// Coverage-based slot attribution (plan §4 "Backend-specific overlap dominance"): a candidate
+    /// must clear the scaled cadence-noise floor to count at all; a sole surviving candidate
+    /// assigns; multiple candidates assign only under a conservative dominance margin, and remain
+    /// ambiguous otherwise. `allowDominance` is `false` for the whole-epoch utterance fallback,
+    /// which has no word-level precision to justify picking a winner among real candidates.
+    nonisolated static func assignment(
+        start: TimeInterval,
+        end: TimeInterval,
+        activity: [MeetingBackendSpeakerActivity],
+        allowDominance: Bool
+    ) -> MeetingBackendSpeakerAssignment {
+        let duration = end - start
+        let threshold = Self.boundaryNoiseThresholdSeconds(duration: duration)
+        let coverage = Self.coverageSeconds(start: start, end: end, activity: activity)
+        let aboveThreshold = coverage.filter { $0.value > threshold }
+        let ranked = aboveThreshold.sorted { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value > rhs.value }
+            return lhs.key.label < rhs.key.label
+        }
+
+        switch ranked.count {
+        case 0:
+            return .unassigned
+        case 1:
+            return .assigned(ranked[0].key)
+        default:
+            let leader = ranked[0]
+            let runnerUp = ranked[1]
+            let leaderFraction = duration > 0 ? leader.value / duration : 0
+            let runnerUpFraction = duration > 0 ? runnerUp.value / duration : 0
+            let decision: MeetingBackendSpeakerAssignment
+            if allowDominance,
+               leaderFraction >= SpeakerDominancePolicy.minimumLeaderCoverageFraction,
+               runnerUpFraction <= SpeakerDominancePolicy.maximumRunnerUpCoverageFraction,
+               leader.value >= runnerUp.value * SpeakerDominancePolicy.minimumLeaderToRunnerUpRatio
+            {
+                decision = .assigned(leader.key)
+            } else {
+                decision = .ambiguous(ranked.map(\.key).sorted { $0.label < $1.label })
+            }
+            #if DEBUG
+            Self.logMultiCandidateDecision(
+                duration: duration,
+                candidateCoverageSeconds: ranked.map(\.value),
+                decision: decision
+            )
+            #endif
+            return decision
         }
     }
+
+    #if DEBUG
+    /// Structured, DEBUG-only measurement of a multi-candidate word decision. Deliberately carries
+    /// only durations, coverage seconds and the resulting decision kind — never transcript text,
+    /// unit/word identity, file paths, or participant identity.
+    private nonisolated static func logMultiCandidateDecision(
+        duration: TimeInterval,
+        candidateCoverageSeconds: [TimeInterval],
+        decision: MeetingBackendSpeakerAssignment
+    ) {
+        let decisionLabel: String
+        switch decision {
+        case .assigned: decisionLabel = "dominant"
+        case .ambiguous: decisionLabel = "ambiguous"
+        case .unassigned: decisionLabel = "unassigned"
+        }
+        let overlaps = candidateCoverageSeconds
+            .map { String(format: "%.3f", $0) }
+            .joined(separator: ",")
+        DebugLogger.shared.info(
+            String(
+                format: "[speakerCoverage] duration=%.3fs candidates=%d overlaps=[%@] decision=%@",
+                duration, candidateCoverageSeconds.count, overlaps, decisionLabel
+            ),
+            source: "MeetingParakeetNemotronBackend"
+        )
+    }
+    #endif
 }

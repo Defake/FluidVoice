@@ -577,7 +577,7 @@ extension MeetingSessionModelTests {
         "schemaVersion", "title", "languageCode", "startedAt", "endedAt", "durationSeconds",
         "mode", "applicationDisplayName", "speakers", "id", "displayName", "isLocalUser",
         "segments", "startSeconds", "endSeconds", "speakerID", "text", "revision", "status",
-        "overlap", "completeness", "isLikelyEcho",
+        "overlap", "completeness", "isLikelyEcho", "attributionState",
     ]
 
     private func collectDictionaryKeys(in value: Any, into keys: inout Set<String>) {
@@ -593,7 +593,7 @@ extension MeetingSessionModelTests {
         }
     }
 
-    func testTextFormatMatchesTimestampFormatAndUnknownSpeaker() {
+    func testTextFormatMatchesTimestampFormatAndLegacyUnassignedSpeaker() {
         var session = MeetingModelFixture.makeSession()
         var unknownSpeakerSegment = session.transcriptSegments[0]
         unknownSpeakerSegment.id = UUID()
@@ -601,6 +601,8 @@ extension MeetingSessionModelTests {
         unknownSpeakerSegment.end = MeetingModelFixture.mediaTime(70)
         unknownSpeakerSegment.speakerID = nil
         unknownSpeakerSegment.text = "No speaker text"
+        // No attributionState set (nil): exercises the legacy fallback path.
+        unknownSpeakerSegment.attributionState = nil
         // Inserted out of chronological order to prove the exporter sorts by start.
         session.transcriptSegments.insert(unknownSpeakerSegment, at: 0)
 
@@ -608,8 +610,144 @@ extension MeetingSessionModelTests {
 
         XCTAssertEqual(lines, [
             "[00:04] Speaker 1: Initial provisional text",
-            "[01:05] Unknown speaker: No speaker text",
+            "[01:05] Unassigned: No speaker text",
         ])
+    }
+
+    /// Legacy fallback (no `attributionState`): a nil speaker with ambiguous overlap reads as
+    /// "Overlapping speakers" rather than plain "Unassigned".
+    func testLegacyNilAttributionStateWithAmbiguousOverlapFallsBackToOverlappingSpeakers() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.id = UUID()
+        segment.speakerID = nil
+        segment.overlap = .ambiguous
+        segment.attributionState = nil
+        segment.text = "Crosstalk"
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Overlapping speakers: Crosstalk"))
+    }
+
+    /// Legacy fallback still prefers a resolvable speaker name over any overlap-derived label.
+    func testLegacyNilAttributionStateWithValidSpeakerResolvesName() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.attributionState = nil
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Speaker 1: Initial provisional text"))
+    }
+
+    func testAssignedAttributionStateShowsResolvedSpeakerName() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.attributionState = .assigned
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Speaker 1: Initial provisional text"))
+    }
+
+    func testOverlappingSpeakersAttributionStateLabel() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.speakerID = nil
+        segment.attributionState = .overlappingSpeakers
+        segment.text = "Crosstalk"
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Overlapping speakers: Crosstalk"))
+    }
+
+    func testUnassignedAttributionStateLabel() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.speakerID = nil
+        segment.attributionState = .unassigned
+        segment.text = "No evidence"
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unassigned: No evidence"))
+    }
+
+    func testTimingUncertainAttributionStateLabel() {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.speakerID = nil
+        segment.attributionState = .timingUncertain
+        segment.text = "Late text"
+        session.transcriptSegments = [segment]
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Timing uncertain: Late text"))
+    }
+
+    /// The `assigned` state still walks the alias chain, so a renamed/merged speaker resolves the
+    /// same way as the legacy path.
+    func testAssignedAttributionStateResolvesThroughAliasChain() throws {
+        var session = MeetingModelFixture.makeSession()
+        let targetID = UUID()
+        session.speakers.append(MeetingModelFixture.speaker(id: targetID, name: "Speaker 2"))
+        try session.mergeSpeakers(MeetingModelFixture.speakerID, into: targetID)
+        session.transcriptSegments = session.transcriptSegments.map {
+            var segment = $0
+            segment.attributionState = .assigned
+            return segment
+        }
+
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Speaker 2: Initial provisional text"))
+    }
+
+    func testJSONExportIncludesAttributionStateRawValue() throws {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.attributionState = .timingUncertain
+        session.transcriptSegments = [segment]
+
+        let data = try MeetingTranscriptExporter.json(for: session)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let segments = try XCTUnwrap(json["segments"] as? [[String: Any]])
+        let firstSegment = try XCTUnwrap(segments.first)
+
+        XCTAssertEqual(firstSegment["attributionState"] as? String, "timingUncertain")
+    }
+
+    func testJSONExportOmitsAttributionStateWhenLegacyNil() throws {
+        var session = MeetingModelFixture.makeSession()
+        var segment = session.transcriptSegments[0]
+        segment.attributionState = nil
+        session.transcriptSegments = [segment]
+
+        let data = try MeetingTranscriptExporter.json(for: session)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let segments = try XCTUnwrap(json["segments"] as? [[String: Any]])
+
+        XCTAssertNil(segments.first?["attributionState"])
+    }
+
+    func testSpeakerLabelIdentityDistinguishesSameNameSpeakersAndNilStates() {
+        var session = MeetingModelFixture.makeSession()
+        let duplicateNameID = UUID()
+        session.speakers.append(MeetingModelFixture.speaker(id: duplicateNameID, name: "Speaker 1"))
+        var first = session.transcriptSegments[0]
+        first.attributionState = .assigned
+        var second = first
+        second.id = UUID()
+        second.speakerID = duplicateNameID
+        let names = Dictionary(uniqueKeysWithValues: session.activeSpeakers.map { ($0.id, $0.displayName) })
+
+        XCTAssertNotEqual(
+            MeetingTranscriptExporter.speakerLabelIdentity(for: first, in: session, speakerNames: names),
+            MeetingTranscriptExporter.speakerLabelIdentity(for: second, in: session, speakerNames: names)
+        )
+
+        first.speakerID = nil
+        first.attributionState = .overlappingSpeakers
+        second.speakerID = nil
+        second.attributionState = .timingUncertain
+        XCTAssertNotEqual(
+            MeetingTranscriptExporter.speakerLabelIdentity(for: first, in: session, speakerNames: names),
+            MeetingTranscriptExporter.speakerLabelIdentity(for: second, in: session, speakerNames: names)
+        )
     }
 
     /// `isLikelyEcho` must stay optional: a non-optional defaulted property makes the synthesized
@@ -1400,6 +1538,21 @@ final class MeetingSessionModelTests: XCTestCase {
         XCTAssertEqual(segment.id, originalSegmentID)
         XCTAssertEqual(segment.speakerID, targetID)
         XCTAssertEqual(segment.revision, originalRevision + 1)
+    }
+
+    func testReassignAmbiguousSegmentMakesManualSpeakerAssignmentAuthoritative() throws {
+        var session = MeetingModelFixture.makeSession()
+        let targetID = UUID()
+        session.speakers.append(MeetingModelFixture.speaker(id: targetID, name: "Speaker 2"))
+        session.transcriptSegments[0].speakerID = nil
+        session.transcriptSegments[0].overlap = .ambiguous
+        session.transcriptSegments[0].attributionState = .overlappingSpeakers
+
+        try session.reassignSegment(id: session.transcriptSegments[0].id, to: targetID)
+
+        XCTAssertEqual(session.transcriptSegments[0].speakerID, targetID)
+        XCTAssertEqual(session.transcriptSegments[0].overlap, .none)
+        XCTAssertEqual(session.transcriptSegments[0].attributionState, .assigned)
     }
 
     func testReassignSegmentToSameSpeakerIsNoOp() throws {

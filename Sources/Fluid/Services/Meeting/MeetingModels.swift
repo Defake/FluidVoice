@@ -91,6 +91,19 @@ nonisolated enum MeetingTranscriptOverlap: String, Codable, Sendable {
     case ambiguous
 }
 
+/// Why a segment does or does not carry a resolved speaker. Additive alongside `speakerID` and
+/// `overlap`; optional so pre-fix manifests still decode.
+nonisolated enum MeetingTranscriptAttributionState: String, Codable, Sendable {
+    /// A single speaker was confidently resolved.
+    case assigned
+    /// Two or more speakers overlapped and could not be separated.
+    case overlappingSpeakers
+    /// No speaker evidence at all, without overlap or timing ambiguity.
+    case unassigned
+    /// Timing was uncertain, so the text is visible but never confidently assigned.
+    case timingUncertain
+}
+
 nonisolated enum MeetingTranscriptCoverageGapReason: String, Codable, Sendable {
     case unprotectedMicrophone
     // Canonical-assembly reasons (C2b2). Additive: old sessions keep decoding, and legacy output
@@ -760,6 +773,8 @@ nonisolated struct MeetingTranscriptSegment: Codable, Identifiable, Equatable, S
     var completeness: MeetingTranscriptCompleteness
     /// Optional so pre-fix manifests still decode; a non-optional default would `keyNotFound`.
     var isLikelyEcho: Bool? = nil
+    /// Optional so pre-fix manifests still decode; a non-optional default would `keyNotFound`.
+    var attributionState: MeetingTranscriptAttributionState? = nil
 
     var isEcho: Bool {
         self.isLikelyEcho == true
@@ -941,6 +956,8 @@ nonisolated struct MeetingSession: Codable, Identifiable, Equatable, Sendable {
         }
         guard self.transcriptSegments[segmentIndex].speakerID != speakerID else { return }
         self.transcriptSegments[segmentIndex].speakerID = speakerID
+        self.transcriptSegments[segmentIndex].attributionState = .assigned
+        self.transcriptSegments[segmentIndex].overlap = .none
         self.transcriptSegments[segmentIndex].revision += 1
         self.updatedAt = Date()
     }

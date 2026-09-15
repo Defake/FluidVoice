@@ -269,28 +269,43 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         XCTAssertEqual(selectedDefault.descriptor.id, .parakeetNemotron)
     }
 
+    // MARK: - Canonical turn merge (chronological fold)
+
+    private func canonicalSegment(
+        id: UUID = UUID(),
+        trackID: UUID,
+        start: Double,
+        end: Double,
+        speakerID: UUID?,
+        text: String,
+        overlap: MeetingTranscriptOverlap = .none,
+        status: MeetingTranscriptStatus = .final,
+        completeness: MeetingTranscriptCompleteness = .complete,
+        isLikelyEcho: Bool? = nil
+    ) -> MeetingTranscriptSegment {
+        MeetingTranscriptSegment(
+            id: id,
+            start: MeetingMediaTime(value: Int64((start * 1000).rounded()), timescale: 1000),
+            end: MeetingMediaTime(value: Int64((end * 1000).rounded()), timescale: 1000),
+            sourceTrackID: trackID,
+            speakerID: speakerID,
+            text: text,
+            revision: 0,
+            status: status,
+            overlap: overlap,
+            completeness: completeness,
+            isLikelyEcho: isLikelyEcho
+        )
+    }
+
     func testCanonicalProductPublicationMergesWordEvidenceIntoTurns() {
         let trackID = UUID()
         let speakerID = UUID()
-        func segment(_ text: String, _ start: Double, _ end: Double, speaker: UUID?) -> MeetingTranscriptSegment {
-            MeetingTranscriptSegment(
-                id: UUID(),
-                start: MeetingMediaTime(value: Int64((start * 1000).rounded()), timescale: 1000),
-                end: MeetingMediaTime(value: Int64((end * 1000).rounded()), timescale: 1000),
-                sourceTrackID: trackID,
-                speakerID: speaker,
-                text: text,
-                revision: 0,
-                status: .final,
-                overlap: .none,
-                completeness: .complete
-            )
-        }
         let input = [
-            segment("Hello", 0, 0.2, speaker: speakerID),
-            segment(",", 0.21, 0.25, speaker: speakerID),
-            segment("world", 0.3, 0.6, speaker: speakerID),
-            segment("Other", 0.4, 0.7, speaker: UUID()),
+            self.canonicalSegment(trackID: trackID, start: 0, end: 0.2, speakerID: speakerID, text: "Hello"),
+            self.canonicalSegment(trackID: trackID, start: 0.21, end: 0.25, speakerID: speakerID, text: ","),
+            self.canonicalSegment(trackID: trackID, start: 0.3, end: 0.6, speakerID: speakerID, text: "world"),
+            self.canonicalSegment(trackID: trackID, start: 0.4, end: 0.7, speakerID: UUID(), text: "Other"),
         ]
 
         let first = MeetingProcessingPipeline.mergeCanonicalSegments(input)
@@ -299,6 +314,154 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         XCTAssertEqual(first.count, 2)
         XCTAssertEqual(first.first { $0.speakerID == speakerID }?.text, "Hello, world")
         XCTAssertEqual(first.map(\.id), second.map(\.id), "merged turn IDs are deterministic")
+    }
+
+    func testCanonicalMergeKeepsABAAsThreeTurnsInsteadOfBridgingAcrossB() {
+        let trackID = UUID()
+        let speakerA = UUID()
+        let speakerB = UUID()
+        // A ends at 1.0, B runs 1.2-1.5, A resumes 1.6-2.0. The two A segments are within the
+        // 3s gap/30s duration bounds of each other, but B sits chronologically between them on
+        // the same track, so they must not bridge across it.
+        let input = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(trackID: trackID, start: 1.2, end: 1.5, speakerID: speakerB, text: "Interject"),
+            self.canonicalSegment(trackID: trackID, start: 1.6, end: 2.0, speakerID: speakerA, text: "Second"),
+        ]
+
+        let turns = MeetingProcessingPipeline.mergeCanonicalSegments(input)
+
+        XCTAssertEqual(turns.count, 3)
+        XCTAssertEqual(turns.map(\.text), ["First", "Interject", "Second"])
+        XCTAssertEqual(turns.map(\.speakerID), [speakerA, speakerB, speakerA])
+    }
+
+    func testCanonicalMergeKeepsAAmbiguousAAsThreeTurns() {
+        let trackID = UUID()
+        let speakerA = UUID()
+        // The ambiguous segment has no resolved speaker and a different overlap state, so its
+        // key differs from both surrounding A segments even though all three are on one track.
+        let input = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(
+                trackID: trackID, start: 1.1, end: 1.4, speakerID: nil, text: "Maybe", overlap: .ambiguous
+            ),
+            self.canonicalSegment(trackID: trackID, start: 1.5, end: 2.0, speakerID: speakerA, text: "Second"),
+        ]
+
+        let turns = MeetingProcessingPipeline.mergeCanonicalSegments(input)
+
+        XCTAssertEqual(turns.count, 3)
+        XCTAssertEqual(turns.map(\.text), ["First", "Maybe", "Second"])
+        XCTAssertEqual(turns.map(\.overlap), [.none, .ambiguous, .none])
+    }
+
+    func testCanonicalMergeCombinesAdjacentSameKeySegments() {
+        let trackID = UUID()
+        let speakerA = UUID()
+        let input = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(trackID: trackID, start: 1.5, end: 2.0, speakerID: speakerA, text: "Second"),
+        ]
+
+        let turns = MeetingProcessingPipeline.mergeCanonicalSegments(input)
+
+        XCTAssertEqual(turns.count, 1)
+        XCTAssertEqual(turns.first?.text, "First Second")
+        XCTAssertEqual(turns.first?.end.seconds ?? -1, 2.0, accuracy: 0.0001)
+    }
+
+    func testCanonicalMergeRespectsMaximumGapBoundary() {
+        let trackID = UUID()
+        let speakerA = UUID()
+        let gap = MeetingProcessingPipeline.canonicalTurnMergeGapSeconds
+        let withinBound = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(
+                trackID: trackID, start: 1.0 + gap, end: 1.0 + gap + 0.5, speakerID: speakerA, text: "Second"
+            ),
+        ]
+        let beyondBound = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(
+                trackID: trackID, start: 1.0 + gap + 0.01, end: 1.0 + gap + 0.51, speakerID: speakerA,
+                text: "Second"
+            ),
+        ]
+
+        XCTAssertEqual(
+            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count, 1,
+            "a gap exactly at the named maximum still merges"
+        )
+        XCTAssertEqual(
+            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count, 2,
+            "a gap past the named maximum starts a new turn"
+        )
+    }
+
+    func testCanonicalMergeRespectsMaximumDurationBoundary() {
+        let trackID = UUID()
+        let speakerA = UUID()
+        let maxDuration = MeetingProcessingPipeline.canonicalTurnMaximumDurationSeconds
+        let withinBound = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(
+                trackID: trackID, start: 1.5, end: maxDuration, speakerID: speakerA, text: "Second"
+            ),
+        ]
+        let beyondBound = [
+            self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
+            self.canonicalSegment(
+                trackID: trackID, start: 1.5, end: maxDuration + 0.01, speakerID: speakerA, text: "Second"
+            ),
+        ]
+
+        XCTAssertEqual(
+            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count, 1,
+            "a combined duration exactly at the named maximum still merges"
+        )
+        XCTAssertEqual(
+            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count, 2,
+            "a combined duration past the named maximum starts a new turn even with no gap"
+        )
+    }
+
+    func testCanonicalMergeOrdersTurnsDeterministicallyAcrossTracks() {
+        let trackA = UUID()
+        let trackB = UUID()
+        // Two tracks whose turns interleave in time; publication must be sorted globally by
+        // (start, end, sourceTrackID, id), independent of input order. Each segment on a track
+        // gets a distinct speaker so none of them merge with each other — this test is about
+        // publication order, not turn merging.
+        let shuffled = [
+            self.canonicalSegment(trackID: trackB, start: 0.5, end: 1.0, speakerID: UUID(), text: "B-second"),
+            self.canonicalSegment(trackID: trackA, start: 0, end: 0.4, speakerID: UUID(), text: "A-first"),
+            self.canonicalSegment(trackID: trackA, start: 1.2, end: 1.6, speakerID: UUID(), text: "A-second"),
+            self.canonicalSegment(trackID: trackB, start: 0, end: 0.3, speakerID: UUID(), text: "B-first"),
+        ]
+
+        let first = MeetingProcessingPipeline.mergeCanonicalSegments(shuffled)
+        let second = MeetingProcessingPipeline.mergeCanonicalSegments(shuffled.shuffled())
+        let expectedIDs = shuffled.sorted {
+            ($0.start, $0.end, $0.sourceTrackID.uuidString, $0.id.uuidString)
+                < ($1.start, $1.end, $1.sourceTrackID.uuidString, $1.id.uuidString)
+        }.map(\.id)
+
+        XCTAssertEqual(first.map(\.id), expectedIDs, "global order uses the documented stable sort key")
+        XCTAssertEqual(first.map(\.id), second.map(\.id), "turn IDs are deterministic regardless of input order")
+    }
+
+    func testCanonicalMergeNeverCombinesAcrossTracksEvenWithSameSpeakerID() {
+        let trackA = UUID()
+        let trackB = UUID()
+        let speakerID = UUID()
+        let turns = MeetingProcessingPipeline.mergeCanonicalSegments([
+            self.canonicalSegment(trackID: trackA, start: 0, end: 1, speakerID: speakerID, text: "A"),
+            self.canonicalSegment(trackID: trackB, start: 1, end: 2, speakerID: speakerID, text: "B"),
+        ])
+
+        XCTAssertEqual(turns.count, 2, "track provenance is a hard merge boundary")
+        XCTAssertEqual(Set(turns.map(\.sourceTrackID)), [trackA, trackB])
     }
 
     // MARK: - Plan validation
@@ -697,6 +860,147 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         XCTAssertEqual(ambiguous.disposition, .ambiguousUnassigned)
         let outside = try XCTUnwrap(assembly.sidecar.dispositions.first { $0.unitID == unitsByText["c"]?.id })
         XCTAssertEqual(outside.disposition, .outsideActivity)
+    }
+
+    func testCoverageUnionDoesNotDoubleCountDuplicateSpeakerIntervals() {
+        let (slot0, slot1) = self.attributionTokens()
+        let activity = [
+            MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.4),
+            MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.4),
+            MeetingBackendSpeakerActivity(token: slot1, start: 0, end: 0.1),
+        ]
+
+        guard case let .ambiguous(tokens) = MeetingParakeetNemotronBackend.assignment(
+            start: 0, end: 1, activity: activity, allowDominance: true
+        ) else { return XCTFail("unioned 40% versus 10% coverage must not become an 80% dominant assignment") }
+        XCTAssertEqual(tokens.map(\.label), ["slot-0", "slot-1"])
+    }
+
+    func testAllCandidatesAtOrBelowScaledFloorAreUnassigned() {
+        let (slot0, slot1) = self.attributionTokens()
+        let decision = MeetingParakeetNemotronBackend.assignment(
+            start: 0,
+            end: 1,
+            activity: [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.08),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0.92, end: 1),
+            ],
+            allowDominance: true
+        )
+        guard case .unassigned = decision else { return XCTFail("sub-frame evidence must not assign a speaker") }
+    }
+
+    func testSoleAboveFloorCandidateAssigns() {
+        let (slot0, slot1) = self.attributionTokens()
+        let decision = MeetingParakeetNemotronBackend.assignment(
+            start: 0,
+            end: 1,
+            activity: [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.2),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0.95, end: 1),
+            ],
+            allowDominance: true
+        )
+        guard case let .assigned(token) = decision else { return XCTFail("the sole significant speaker must assign") }
+        XCTAssertEqual(token, slot0)
+    }
+
+    func testShortWordDoesNotDiscardEightyMillisecondRunnerUp() {
+        let (slot0, slot1) = self.attributionTokens()
+        let decision = MeetingParakeetNemotronBackend.assignment(
+            start: 0,
+            end: 0.15,
+            activity: [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.15),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0.07, end: 0.15),
+            ],
+            allowDominance: true
+        )
+        guard case let .ambiguous(tokens) = decision else {
+            return XCTFail("80ms is material evidence inside a 150ms word")
+        }
+        XCTAssertEqual(tokens.map(\.label), ["slot-0", "slot-1"])
+    }
+
+    func testSixtyFortyAndFullOverlapRemainAmbiguousWithDeterministicOrder() {
+        let (slot0, slot1) = self.attributionTokens()
+        for activity in [
+            [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.6),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0.6, end: 1),
+            ],
+            [
+                MeetingBackendSpeakerActivity(token: slot1, start: 0, end: 1),
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 1),
+            ],
+        ] {
+            guard case let .ambiguous(tokens) = MeetingParakeetNemotronBackend.assignment(
+                start: 0, end: 1, activity: activity, allowDominance: true
+            ) else { return XCTFail("material two-speaker coverage must remain ambiguous") }
+            XCTAssertEqual(tokens.map(\.label), ["slot-0", "slot-1"])
+        }
+    }
+
+    func testClearLeaderAndExactDominanceBoundaryAssign() {
+        let (slot0, slot1) = self.attributionTokens()
+        for leaderEnd in [0.8, 0.5] {
+            let runnerEnd = leaderEnd == 0.5 ? 0.2 : 0.15
+            let decision = MeetingParakeetNemotronBackend.assignment(
+                start: 0,
+                end: 1,
+                activity: [
+                    MeetingBackendSpeakerActivity(token: slot0, start: 0, end: leaderEnd),
+                    MeetingBackendSpeakerActivity(token: slot1, start: 0, end: runnerEnd),
+                ],
+                allowDominance: true
+            )
+            guard case let .assigned(token) = decision else {
+                return XCTFail("coverage at or beyond every named dominance boundary must assign")
+            }
+            XCTAssertEqual(token, slot0)
+        }
+    }
+
+    func testClearPluralityBelowHalfRemainsConservativelyAmbiguous() {
+        let (slot0, slot1) = self.attributionTokens()
+        let decision = MeetingParakeetNemotronBackend.assignment(
+            start: 0,
+            end: 1,
+            activity: [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.45),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0, end: 0.10),
+            ],
+            allowDominance: true
+        )
+        guard case let .ambiguous(tokens) = decision else {
+            return XCTFail("a plurality below the explicit 50% coverage floor must not become confident")
+        }
+        XCTAssertEqual(tokens.map(\.label), ["slot-0", "slot-1"])
+    }
+
+    func testUtteranceFallbackNeverUsesDominanceAcrossTwoSignificantSpeakers() {
+        let (slot0, slot1) = self.attributionTokens()
+        let decision = MeetingParakeetNemotronBackend.assignment(
+            start: 0,
+            end: 1,
+            activity: [
+                MeetingBackendSpeakerActivity(token: slot0, start: 0, end: 0.8),
+                MeetingBackendSpeakerActivity(token: slot1, start: 0, end: 0.15),
+            ],
+            allowDominance: false
+        )
+        guard case let .ambiguous(tokens) = decision else {
+            return XCTFail("epoch-covering utterance timing is too coarse for dominance")
+        }
+        XCTAssertEqual(tokens.map(\.label), ["slot-0", "slot-1"])
+    }
+
+    private func attributionTokens() -> (MeetingBackendSpeakerToken, MeetingBackendSpeakerToken) {
+        let epoch = MeetingAnalysisEpochID(trackID: UUID(), ordinal: 0)
+        return (
+            MeetingBackendSpeakerToken(analysisEpochID: epoch, label: "slot-0"),
+            MeetingBackendSpeakerToken(analysisEpochID: epoch, label: "slot-1")
+        )
     }
 
     func testProviderAndDiarizerTimesMapThroughActualSpanSampleRanges() async throws {

@@ -2562,12 +2562,22 @@ private struct MeetingResultCanvas: View {
         self.showsProbableEchoes ? sorted : sorted.filter { !$0.isEcho }
     }
 
-    /// Sorted once with per-row display state — no per-row re-sorting.
+    /// Sorted once with per-row display state — no per-row re-sorting. Compares the resolved
+    /// displayed label (not the raw speaker id) so consecutive nil-speaker rows in different
+    /// attribution states — e.g. `unassigned` then `timingUncertain` — each still show a label.
     private func rows(
         for visibleSegments: [MeetingTranscriptSegment]
     ) -> [(segment: MeetingTranscriptSegment, showsLabel: Bool, isLocal: Bool)] {
-        visibleSegments.enumerated().map { index, segment in
-            let showsLabel = index == 0 || segment.speakerID != visibleSegments[index - 1].speakerID
+        let speakerNames = self.speakerNames
+        var previousLabelIdentity: String?
+        return visibleSegments.map { segment in
+            let labelIdentity = MeetingTranscriptExporter.speakerLabelIdentity(
+                for: segment,
+                in: self.session,
+                speakerNames: speakerNames
+            )
+            let showsLabel = labelIdentity != previousLabelIdentity
+            previousLabelIdentity = labelIdentity
             return (segment, showsLabel, self.isLocalSegment(segment))
         }
     }
@@ -2644,7 +2654,11 @@ private struct MeetingResultCanvas: View {
                     ForEach(rows, id: \.segment.id) { row in
                         MeetingTranscriptSegmentRow(
                             segment: row.segment,
-                            speakerName: row.segment.speakerID.flatMap { speakerNames[$0] } ?? "Unknown speaker",
+                            speakerName: MeetingTranscriptExporter.speakerLabel(
+                                for: row.segment,
+                                in: self.session,
+                                speakerNames: speakerNames
+                            ),
                             speakerTint: row.segment.speakerID.flatMap { speakerTints[$0] },
                             onRenameSpeakerTapped: row.segment.speakerID.map { speakerID in
                                 { self.presentAssignSpeakers(focusing: speakerID) }

@@ -163,7 +163,13 @@ final class MeetingSessionCoordinator: ObservableObject {
 
     private enum TranscriptCorrection {
         case rename(speakerID: SessionSpeakerID, previousName: String)
-        case reassign(segmentID: MeetingTranscriptSegmentID, previousSpeakerID: SessionSpeakerID?, previousRevision: Int)
+        case reassign(
+            segmentID: MeetingTranscriptSegmentID,
+            previousSpeakerID: SessionSpeakerID?,
+            previousOverlap: MeetingTranscriptOverlap,
+            previousAttributionState: MeetingTranscriptAttributionState?,
+            previousRevision: Int
+        )
         case merge(
             sourceID: SessionSpeakerID,
             targetID: SessionSpeakerID,
@@ -853,9 +859,17 @@ final class MeetingSessionCoordinator: ObservableObject {
                 throw MeetingDomainError.segmentNotFound
             }
             let previousSpeakerID = segment.speakerID
+            let previousOverlap = segment.overlap
+            let previousAttributionState = segment.attributionState
             let previousRevision = segment.revision
             try session.reassignSegment(id: segmentID, to: speakerID)
-            return .reassign(segmentID: segmentID, previousSpeakerID: previousSpeakerID, previousRevision: previousRevision)
+            return .reassign(
+                segmentID: segmentID,
+                previousSpeakerID: previousSpeakerID,
+                previousOverlap: previousOverlap,
+                previousAttributionState: previousAttributionState,
+                previousRevision: previousRevision
+            )
         }
     }
 
@@ -1105,9 +1119,17 @@ final class MeetingSessionCoordinator: ObservableObject {
             guard let index = session.speakers.firstIndex(where: { $0.id == speakerID }) else { return false }
             session.speakers[index].displayName = previousName
             return true
-        case let .reassign(segmentID, previousSpeakerID, previousRevision):
+        case let .reassign(
+            segmentID,
+            previousSpeakerID,
+            previousOverlap,
+            previousAttributionState,
+            previousRevision
+        ):
             guard let index = session.transcriptSegments.firstIndex(where: { $0.id == segmentID }) else { return false }
             session.transcriptSegments[index].speakerID = previousSpeakerID
+            session.transcriptSegments[index].overlap = previousOverlap
+            session.transcriptSegments[index].attributionState = previousAttributionState
             session.transcriptSegments[index].revision = previousRevision
             return true
         case let .merge(sourceID, _, movedSegments):
