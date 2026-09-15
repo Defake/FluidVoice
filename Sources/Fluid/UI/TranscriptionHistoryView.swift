@@ -83,7 +83,7 @@ struct TranscriptionHistoryView: View {
                 self.footerView
                     .disabled(self.historyStore.isLoading)
             }
-            .frame(minWidth: 280, idealWidth: 340, maxWidth: 400)
+            .frame(minWidth: 280, idealWidth: 408, maxWidth: 480)
             .background(self.theme.palette.contentBackground)
 
             // MARK: - Right Panel: Entry Detail
@@ -197,73 +197,91 @@ struct TranscriptionHistoryView: View {
 
     private func entryRow(_ entry: TranscriptionHistoryEntry) -> some View {
         let isSelected = self.selectedEntryID == entry.id
-        return HStack(alignment: .top, spacing: 8) {
-            Button {
-                self.selectedEntryID = entry.id
-            } label: {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 8) {
-                        HistoryAppIcon(appName: entry.appName)
-                        Spacer(minLength: 4)
-                        Text(entry.relativeTimeString)
-                            .font(self.theme.typography.caption).foregroundStyle(.secondary)
-                    }
-                    Text(entry.previewText)
-                        .font(self.theme.typography.body)
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 10) {
-                        if let model = self.recordedModel(entry) {
-                            Label(model, systemImage: "sparkles")
-                                .lineLimit(1).truncationMode(.middle)
-                                .help("Recorded AI model: \(model)")
-                        } else if entry.wasAIProcessed {
-                            Label("AI enhanced", systemImage: "sparkles")
-                        }
-                        if self.hasAudio(entry) {
-                            Image(systemName: "waveform").accessibilityLabel("Saved audio")
-                        }
-                        if entry.aiProcessingError != nil {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.orange).help(entry.aiProcessingError ?? "")
-                        }
-                        Spacer(minLength: 0)
-                        if self.settings.showHistoryPerformanceMetrics, let speed = entry.aiTokensPerSecond {
-                            Text(TranscriptionHistoryEntry.formattedTokensPerSecond(speed, compact: true))
-                                .font(self.theme.typography.captionStrong)
-                                .foregroundStyle(self.theme.palette.accent)
-                                .monospacedDigit()
-                                .fixedSize()
-                                .help("AI generation speed, in tokens per second—not total processing time")
-                        }
-                    }
-                    .font(self.theme.typography.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .simultaneousGesture(TapGesture(count: 2).onEnded {
-                self.selectedEntryID = entry.id
-                self.copyFinalText(entry)
-            })
-            .help("Double-click to copy final text")
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
-            VStack(spacing: 10) {
+        return HistoryHoverRow(isSelected: isSelected) { showsActions in
+            HStack(alignment: .top, spacing: 8) {
                 Button {
-                    self.copyFinalText(entry)
+                    self.selectedEntryID = entry.id
                 } label: {
-                    Image(systemName: self.copiedEntryID == entry.id ? "checkmark" : "doc.on.doc")
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 8) {
+                            HistoryAppIcon(appName: entry.appName)
+                            Spacer(minLength: 4)
+                            Text(entry.relativeTimeString)
+                                .font(self.theme.typography.caption).foregroundStyle(.secondary)
+                        }
+                        Text(entry.previewText)
+                            .font(self.theme.typography.body)
+                            .lineLimit(2).multilineTextAlignment(.leading)
+                        HStack(spacing: 10) {
+                            if let model = self.recordedModel(entry) {
+                                Label(model, systemImage: "sparkles")
+                                    .lineLimit(1).truncationMode(.middle)
+                                    .help("Recorded AI model: \(model)")
+                            } else if entry.wasAIProcessed {
+                                Label("AI enhanced", systemImage: "sparkles")
+                            }
+                            if self.hasAudio(entry) {
+                                Image(systemName: "waveform").accessibilityLabel("Saved audio")
+                            }
+                            if entry.aiProcessingError != nil {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(.orange).help(entry.aiProcessingError ?? "")
+                            }
+                            Spacer(minLength: 0)
+                            if self.settings.showHistoryPerformanceMetrics, let speed = entry.aiTokensPerSecond {
+                                Text(TranscriptionHistoryEntry.formattedTokensPerSecond(speed, compact: true))
+                                    .font(self.theme.typography.captionStrong)
+                                    .foregroundStyle(self.theme.palette.accent)
+                                    .monospacedDigit()
+                                    .fixedSize()
+                                    .help("AI generation speed, in tokens per second—not total processing time")
+                            }
+                        }
+                        .font(self.theme.typography.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Copy final text")
-                .accessibilityLabel(self.copiedEntryID == entry.id ? "Copied" : "Copy final text")
-                Menu { self.entryActions(entry) } label: {
-                    Image(systemName: "ellipsis")
+                .simultaneousGesture(TapGesture(count: 2).onEnded {
+                    self.selectedEntryID = entry.id
+                    self.copyFinalText(entry)
+                })
+                .help("Double-click to copy final text")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .accessibilityAction(named: Text("Copy final text")) { self.copyFinalText(entry) }
+                .accessibilityAction(named: Text("Report issue")) { self.openFeedbackReport(for: entry) }
+                VStack(spacing: 4) {
+                    Button {
+                        self.copyFinalText(entry)
+                    } label: {
+                        Image(systemName: self.copiedEntryID == entry.id ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy final text")
+                    .accessibilityLabel(self.copiedEntryID == entry.id ? "Copied" : "Copy final text")
+                    Button {
+                        self.openFeedbackReport(for: entry)
+                    } label: {
+                        Image(systemName: "flag")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Report an issue with this dictation")
+                    .accessibilityLabel("Report issue")
+                    Menu { self.entryActions(entry) } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .fixedSize().accessibilityLabel("Dictation actions")
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .fixedSize().accessibilityLabel("Dictation actions")
+                .font(self.theme.typography.body)
+                .labelStyle(.iconOnly)
+                .frame(width: 32)
+                .foregroundStyle(.secondary)
+                .opacity(showsActions ? 1 : 0)
+                .allowsHitTesting(showsActions)
+                .accessibilityHidden(!showsActions)
             }
-            .foregroundStyle(.secondary)
         }
         .padding(12)
         .background(self.theme.palette.accent.opacity(isSelected ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 14))
@@ -773,6 +791,19 @@ private struct TranscriptionFeedbackReportSheet: View {
     private static func reportModel(for entry: TranscriptionHistoryEntry) -> String {
         let model = entry.processingModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return model.isEmpty ? "unknown" : model
+    }
+}
+
+private struct HistoryHoverRow<Content: View>: View {
+    let isSelected: Bool
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var isHovered = false
+    @FocusState private var containsFocus: Bool
+
+    var body: some View {
+        self.content(self.isHovered || self.isSelected || self.containsFocus)
+            .focused(self.$containsFocus)
+            .onHover { self.isHovered = $0 }
     }
 }
 
