@@ -78,8 +78,11 @@ enum ClipboardBackupReproductionTests {
                     let poster = InjectedCommandPoster(succeeds: true)
                     let coordinator = PasteDeliveryCoordinator(pasteboard: manager, commandPoster: poster)
                     let target = DictationTargetPolicy.resolve(
-                        returnToStartingField: returnToStart, focusedPID: focusedPID,
-                        ownPID: 999, originalPID: 100, originalFieldIsFocused: false
+                        returnToStartingField: returnToStart,
+                        focusedPID: focusedPID,
+                        ownPID: 999,
+                        originalPID: 100,
+                        originalFieldIsFocused: false
                     )
                     let ready = await coordinator.prepareForDelivery("dictated text", preserveTranscriptOnClipboard: backup) {
                         // Deterministically fail whenever restoration is requested.
