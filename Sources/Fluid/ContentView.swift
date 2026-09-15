@@ -1071,7 +1071,7 @@ struct ContentView: View {
         case .history:
             self.navigateToApp(.history)
         case .dictationShortcuts:
-            self.openSettings(.dictation)
+            self.openSettings(.shortcuts)
         }
     }
 
@@ -1392,7 +1392,7 @@ struct ContentView: View {
                 get: { self.settingsNavigation.selectedSection },
                 set: { newValue in
                     guard let newValue else { return }
-                    if self.settingsNavigation.isLeaving(.dictation, for: newValue) {
+                    if self.settingsNavigation.isLeaving(.shortcuts, for: newValue) {
                         self.clearShortcutRecordingMode()
                     }
                     self.settingsNavigation.selectedSection = newValue
@@ -1716,7 +1716,7 @@ struct ContentView: View {
             playgroundUsed: self.$playgroundUsed,
             accessibilityEnabled: self.accessibilityEnabled,
             openAccessibilitySettings: self.openAccessibilitySettings,
-            openShortcutSettings: { self.openSettings(.dictation) }
+            openShortcutSettings: { self.openSettings(.shortcuts) }
         )
     }
 

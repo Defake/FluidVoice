@@ -114,10 +114,20 @@ final class SettingsNavigationStateTests: XCTestCase {
     func testSettingsSectionsHaveStableTitlesAndIcons() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["General", "Dictation", "Notifications", "Audio", "Overlay", "Data & Diagnostics", "Experimental"]
+            ["General", "Dictation", "Shortcuts", "Notifications", "Audio", "Overlay", "Data & Diagnostics", "Experimental"]
         )
         XCTAssertTrue(SettingsSection.allCases.allSatisfy { !$0.systemImage.isEmpty })
         XCTAssertEqual(SettingsSection.overlay.systemImage, "rectangle.on.rectangle")
+    }
+
+    func testShortcutSearchRoutesToDedicatedPageWithoutMovingDictationOptions() {
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Primary Dictation Shortcuts").first?.section, .shortcuts)
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Copy to Clipboard").first?.section, .dictation)
+        XCTAssertEqual(SettingsSearchTarget.commandModeShortcut.section, .shortcuts)
+        var state = SettingsNavigationState()
+        state.present(.shortcuts, returningTo: .cleanupStyles)
+        XCTAssertTrue(state.isLeaving(.shortcuts, for: .dictation))
+        XCTAssertEqual(state.dismiss(), .cleanupStyles)
     }
 
     func testSettingsSearchRanksExactTitleAheadOfRelatedTerms() {

@@ -175,7 +175,7 @@ struct SettingsView: View {
         let profiles = self.settings.promptProfiles(for: .dictate)
         let privateAIAvailable = PrivateAIProviderPromptFormat.isAvailable(settings: self.settings)
         HStack {
-            Text("AI Prompt")
+            Text("Cleanup style")
                 .font(self.theme.typography.bodySmall)
                 .foregroundStyle(self.settingsSecondaryText)
                 .padding(.leading, 30)
@@ -636,17 +636,17 @@ struct SettingsView: View {
                     .shownInSettingsSection(.dictation, selectedSection: self.selectedSection)
                 }
 
-                // Global Hotkey Card
-                ThemedCard(style: .standard) {
+                // Shortcuts and dictation behavior
+                self.shortcutPageContainer {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 8) {
-                            Label("Global Hotkey", systemImage: "keyboard")
+                            Label(self.selectedSection == .shortcuts ? "Shortcuts" : "Dictation behavior", systemImage: self.selectedSection == .shortcuts ? "keyboard" : "mic")
                                 .font(.fluidSystem(.headline))
                                 .foregroundStyle(.primary)
 
                             Spacer()
 
-                            if self.accessibilityEnabled {
+                            if self.selectedSection == .shortcuts && self.accessibilityEnabled {
                                 if self.isRecordingAnyShortcut {
                                     Text("Recording…")
                                         .font(.fluidSystem(.caption).weight(.semibold))
@@ -667,324 +667,313 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        .settingsSearchTarget(.globalHotkey)
+                        .settingsSearchTarget(self.selectedSection == .shortcuts ? .globalHotkey : .dictation)
 
                         if self.accessibilityEnabled {
                             VStack(alignment: .leading, spacing: 12) {
-                                if self.isRecordingAnyShortcut {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "hand.point.up.left.fill")
-                                            .foregroundStyle(.orange)
-                                        Text("Press your new hotkey combination now…")
-                                            .font(.fluidSystem(.caption))
-                                            .foregroundStyle(.orange)
-                                    }
-                                } else if !self.hotkeyManagerInitialized {
-                                    HStack(spacing: 8) {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                            .fixedSize()
-                                        Text("Hotkey initializing…")
-                                            .font(.fluidSystem(.caption))
-                                            .foregroundStyle(self.settingsSecondaryText)
-                                    }
-                                }
-
-                                // MARK: - Shortcuts Section
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Shortcuts")
-                                        .font(self.theme.typography.bodySmallStrong)
-                                        .foregroundStyle(self.settingsTitleText)
-
-                                    Text("Primary dictation can use a keyboard shortcut or allowed mouse button. Changes usually apply immediately.")
-                                        .font(.fluidSystem(.caption))
-                                        .foregroundStyle(self.settingsTertiaryText)
-
-                                    self.primaryDictationShortcutsList()
-                                        .settingsSearchTarget(.primaryDictationShortcuts)
-                                    self.dictationPromptPicker(for: .primary)
-                                    self.smartDictationShortcutRow
-                                    Divider().opacity(0.2).padding(.vertical, 4)
-
-                                    self.shortcutRow(
-                                        content: .init(
-                                            icon: "terminal.fill",
-                                            iconColor: .secondary,
-                                            title: "Command Mode",
-                                            description: "Execute voice commands"
-                                        ),
-                                        shortcut: self.commandModeShortcut,
-                                        isRecording: self.isRecording(.command),
-                                        isAnyRecordingActive: self.isRecordingAnyShortcut,
-                                        recordingMessage: self.isRecording(.command) ? self.shortcutRecordingMessage : nil,
-                                        isEnabled: self.$commandModeShortcutEnabled,
-                                        requiresShortcutToEnable: true,
-                                        onChangePressed: {
-                                            DebugLogger.shared.debug("Starting to record new command mode shortcut", source: "SettingsView")
-                                            self.shortcutRecordingMessage = nil
-                                            self.activeShortcutRecordingTarget = .command
-                                        },
-                                        onRemovePressed: {
-                                            if self.activeShortcutRecordingTarget == .command {
-                                                self.shortcutRecordingMessage = nil
-                                                self.activeShortcutRecordingTarget = nil
-                                            }
-                                            self.commandModeShortcut = nil
-                                            self.commandModeShortcutEnabled = false
+                                if self.selectedSection == .shortcuts {
+                                    if self.isRecordingAnyShortcut {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: "hand.point.up.left.fill")
+                                                .foregroundStyle(.orange)
+                                            Text("Press your new hotkey combination now…")
+                                                .font(.fluidSystem(.caption))
+                                                .foregroundStyle(.orange)
                                         }
-                                    )
-                                    .settingsSearchTarget(.commandModeShortcut)
-                                    Divider().opacity(0.2).padding(.vertical, 4)
-
-                                    self.shortcutRow(
-                                        content: .init(
-                                            icon: "pencil.and.outline",
-                                            iconColor: .secondary,
-                                            title: "Edit Mode",
-                                            description: "Select text and speak how to edit, or generate new content"
-                                        ),
-                                        shortcut: self.rewriteShortcut,
-                                        isRecording: self.isRecording(.edit),
-                                        isAnyRecordingActive: self.isRecordingAnyShortcut,
-                                        recordingMessage: self.isRecording(.edit) ? self.shortcutRecordingMessage : nil,
-                                        isEnabled: self.$rewriteShortcutEnabled,
-                                        onChangePressed: {
-                                            DebugLogger.shared.debug("Starting to record new write mode shortcut", source: "SettingsView")
-                                            self.shortcutRecordingMessage = nil
-                                            self.activeShortcutRecordingTarget = .edit
-                                        }
-                                    )
-                                    .settingsSearchTarget(.editModeShortcut)
-                                    Divider().opacity(0.2).padding(.vertical, 4)
-
-                                    self.shortcutRow(
-                                        content: .init(
-                                            icon: "xmark.circle.fill",
-                                            iconColor: .secondary,
-                                            title: "Cancel Recording",
-                                            description: "Cancel the current recording or dismiss the active recording overlay"
-                                        ),
-                                        shortcut: self.cancelRecordingShortcut,
-                                        isRecording: self.isRecording(.cancel),
-                                        isAnyRecordingActive: self.isRecordingAnyShortcut,
-                                        recordingMessage: self.isRecording(.cancel) ? self.shortcutRecordingMessage : nil,
-                                        onChangePressed: {
-                                            DebugLogger.shared.debug("Starting to record new cancel shortcut", source: "SettingsView")
-                                            self.shortcutRecordingMessage = nil
-                                            self.activeShortcutRecordingTarget = .cancel
-                                        }
-                                    )
-                                    .settingsSearchTarget(.cancelRecordingShortcut)
-                                    Divider().opacity(0.2).padding(.vertical, 4)
-
-                                    self.shortcutRow(
-                                        content: .init(
-                                            icon: "arrow.down.doc",
-                                            iconColor: .secondary,
-                                            title: "Paste Last Transcription",
-                                            description: "Re-insert your most recent transcription using your selected insertion method"
-                                        ),
-                                        shortcut: self.pasteLastTranscriptionShortcut,
-                                        isRecording: self.isRecording(.pasteLast),
-                                        isAnyRecordingActive: self.isRecordingAnyShortcut,
-                                        recordingMessage: self.isRecording(.pasteLast) ? self.shortcutRecordingMessage : nil,
-                                        isEnabled: self.$pasteLastTranscriptionShortcutEnabled,
-                                        requiresShortcutToEnable: true,
-                                        onChangePressed: {
-                                            DebugLogger.shared.debug("Starting to record new paste last transcription shortcut", source: "SettingsView")
-                                            self.shortcutRecordingMessage = nil
-                                            self.activeShortcutRecordingTarget = .pasteLast
-                                        },
-                                        onRemovePressed: {
-                                            if self.activeShortcutRecordingTarget == .pasteLast {
-                                                self.shortcutRecordingMessage = nil
-                                                self.activeShortcutRecordingTarget = nil
-                                            }
-                                            self.pasteLastTranscriptionShortcut = nil
-                                            self.pasteLastTranscriptionShortcutEnabled = false
-                                        }
-                                    )
-                                    .settingsSearchTarget(.pasteLastTranscriptionShortcut)
-                                }
-                                .padding(12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .fill(self.theme.palette.elevatedCardBackground)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                                        )
-                                )
-
-                                // MARK: - Options Section
-
-                                VStack(spacing: 12) {
-                                    HStack(alignment: .center) {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Activation Mode")
-                                                .font(self.theme.typography.bodyStrong)
-                                                .foregroundStyle(self.settingsTitleText)
-                                            Text(self.hotkeyMode.description)
-                                                .font(self.theme.typography.bodySmall)
+                                    } else if !self.hotkeyManagerInitialized {
+                                        HStack(spacing: 8) {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .fixedSize()
+                                            Text("Hotkey initializing…")
+                                                .font(.fluidSystem(.caption))
                                                 .foregroundStyle(self.settingsSecondaryText)
-                                                .fixedSize(horizontal: false, vertical: true)
                                         }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
 
-                                        Picker("", selection: self.$hotkeyMode) {
-                                            ForEach(HotkeyActivationMode.allCases) { mode in
-                                                Text(mode.displayName).tag(mode)
-                                            }
+                                    // MARK: - Shortcuts Section
+
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        self.shortcutGroup {
+                                            self.primaryDictationShortcutsList()
+                                                .settingsSearchTarget(.primaryDictationShortcuts)
+                                            self.dictationPromptPicker(for: .primary)
+                                            self.shortcutGroupDivider
+                                            self.smartDictationShortcutRow
                                         }
-                                        .pickerStyle(.menu)
-                                        .frame(width: 170, alignment: .trailing)
-                                    }
-                                    .onChange(of: self.hotkeyMode) { _, newValue in
-                                        SettingsStore.shared.hotkeyMode = newValue
-                                        self.hotkeyManager?.setHotkeyMode(newValue)
-                                    }
-                                    .settingsSearchTarget(.activationMode)
-                                    Divider().opacity(0.2)
+                                        self.shortcutGroup {
+                                            self.shortcutRow(
+                                                content: .init(
+                                                    icon: "terminal.fill",
+                                                    iconColor: .secondary,
+                                                    title: "Command Mode",
+                                                    description: "Execute voice commands"
+                                                ),
+                                                shortcut: self.commandModeShortcut,
+                                                isRecording: self.isRecording(.command),
+                                                isAnyRecordingActive: self.isRecordingAnyShortcut,
+                                                recordingMessage: self.isRecording(.command) ? self.shortcutRecordingMessage : nil,
+                                                isEnabled: self.$commandModeShortcutEnabled,
+                                                requiresShortcutToEnable: true,
+                                                onChangePressed: {
+                                                    DebugLogger.shared.debug("Starting to record new command mode shortcut", source: "SettingsView")
+                                                    self.shortcutRecordingMessage = nil
+                                                    self.activeShortcutRecordingTarget = .command
+                                                },
+                                                onRemovePressed: {
+                                                    if self.activeShortcutRecordingTarget == .command {
+                                                        self.shortcutRecordingMessage = nil
+                                                        self.activeShortcutRecordingTarget = nil
+                                                    }
+                                                    self.commandModeShortcut = nil
+                                                    self.commandModeShortcutEnabled = false
+                                                }
+                                            )
+                                            .settingsSearchTarget(.commandModeShortcut)
+                                            self.shortcutGroupDivider
 
-                                    self.optionToggleRow(
-                                        title: "Copy to Clipboard",
-                                        description: "Automatically copy transcribed text to clipboard as a backup.",
-                                        isOn: self.$copyToClipboard
-                                    )
-                                    .onChange(of: self.copyToClipboard) { _, newValue in
-                                        SettingsStore.shared.copyTranscriptionToClipboard = newValue
-                                    }
-                                    .settingsSearchTarget(.copyToClipboard)
-                                    Divider().opacity(0.2)
-
-                                    HStack(alignment: .center) {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Text Insertion Mode")
-                                                .font(self.theme.typography.bodyStrong)
-                                                .foregroundStyle(self.settingsTitleText)
-                                            Text(SettingsStore.shared.textInsertionMode.description)
-                                                .font(self.theme.typography.bodySmall)
-                                                .foregroundStyle(self.settingsSecondaryText)
-                                                .fixedSize(horizontal: false, vertical: true)
+                                            self.shortcutRow(
+                                                content: .init(
+                                                    icon: "pencil.and.outline",
+                                                    iconColor: .secondary,
+                                                    title: "Edit Mode",
+                                                    description: "Select text and speak how to edit, or generate new content"
+                                                ),
+                                                shortcut: self.rewriteShortcut,
+                                                isRecording: self.isRecording(.edit),
+                                                isAnyRecordingActive: self.isRecordingAnyShortcut,
+                                                recordingMessage: self.isRecording(.edit) ? self.shortcutRecordingMessage : nil,
+                                                isEnabled: self.$rewriteShortcutEnabled,
+                                                onChangePressed: {
+                                                    DebugLogger.shared.debug("Starting to record new write mode shortcut", source: "SettingsView")
+                                                    self.shortcutRecordingMessage = nil
+                                                    self.activeShortcutRecordingTarget = .edit
+                                                }
+                                            )
+                                            .settingsSearchTarget(.editModeShortcut)
                                         }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        self.shortcutGroup {
+                                            self.shortcutRow(
+                                                content: .init(
+                                                    icon: "xmark.circle.fill",
+                                                    iconColor: .secondary,
+                                                    title: "Cancel Recording",
+                                                    description: "Cancel the current recording or dismiss the active recording overlay"
+                                                ),
+                                                shortcut: self.cancelRecordingShortcut,
+                                                isRecording: self.isRecording(.cancel),
+                                                isAnyRecordingActive: self.isRecordingAnyShortcut,
+                                                recordingMessage: self.isRecording(.cancel) ? self.shortcutRecordingMessage : nil,
+                                                onChangePressed: {
+                                                    DebugLogger.shared.debug("Starting to record new cancel shortcut", source: "SettingsView")
+                                                    self.shortcutRecordingMessage = nil
+                                                    self.activeShortcutRecordingTarget = .cancel
+                                                }
+                                            )
+                                            .settingsSearchTarget(.cancelRecordingShortcut)
+                                            self.shortcutGroupDivider
 
-                                        Picker("", selection: Binding(
-                                            get: { SettingsStore.shared.textInsertionMode },
-                                            set: { SettingsStore.shared.textInsertionMode = $0 }
-                                        )) {
-                                            ForEach(SettingsStore.TextInsertionMode.allCases) { mode in
-                                                Text(mode.displayName).tag(mode)
-                                            }
+                                            self.shortcutRow(
+                                                content: .init(
+                                                    icon: "arrow.down.doc",
+                                                    iconColor: .secondary,
+                                                    title: "Paste Last Transcription",
+                                                    description: "Re-insert your most recent transcription using your selected insertion method"
+                                                ),
+                                                shortcut: self.pasteLastTranscriptionShortcut,
+                                                isRecording: self.isRecording(.pasteLast),
+                                                isAnyRecordingActive: self.isRecordingAnyShortcut,
+                                                recordingMessage: self.isRecording(.pasteLast) ? self.shortcutRecordingMessage : nil,
+                                                isEnabled: self.$pasteLastTranscriptionShortcutEnabled,
+                                                requiresShortcutToEnable: true,
+                                                onChangePressed: {
+                                                    DebugLogger.shared.debug("Starting to record new paste last transcription shortcut", source: "SettingsView")
+                                                    self.shortcutRecordingMessage = nil
+                                                    self.activeShortcutRecordingTarget = .pasteLast
+                                                },
+                                                onRemovePressed: {
+                                                    if self.activeShortcutRecordingTarget == .pasteLast {
+                                                        self.shortcutRecordingMessage = nil
+                                                        self.activeShortcutRecordingTarget = nil
+                                                    }
+                                                    self.pasteLastTranscriptionShortcut = nil
+                                                    self.pasteLastTranscriptionShortcutEnabled = false
+                                                }
+                                            )
+                                            .settingsSearchTarget(.pasteLastTranscriptionShortcut)
                                         }
-                                        .pickerStyle(.menu)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .frame(minWidth: 170, alignment: .trailing)
                                     }
-                                    .settingsSearchTarget(.textInsertionMode)
-                                    Divider().opacity(0.2)
-
-                                    self.spokenSendSettings
-                                        .settingsSearchTarget(.spokenSend)
-                                    Divider().opacity(0.2)
-
-                                    self.optionToggleRow(
-                                        title: "Save Transcription History",
-                                        description: "Save transcriptions for stats tracking. Disable for privacy.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.saveTranscriptionHistory },
-                                            set: {
-                                                SettingsStore.shared.saveTranscriptionHistory = $0
-                                                self.refreshAudioHistoryUsage()
-                                            }
-                                        )
-                                    )
-                                    .settingsSearchTarget(.transcriptionHistory)
-                                    Divider().opacity(0.2)
-
-                                    self.optionToggleRow(
-                                        title: "Save Audio With History",
-                                        description: "Store actual microphone audio locally with dictation history. Disabled by default.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.saveAudioWithTranscriptionHistory },
-                                            set: {
-                                                SettingsStore.shared.saveAudioWithTranscriptionHistory = $0
-                                                self.refreshAudioHistoryUsage()
-                                            }
-                                        )
-                                    )
-                                    .disabled(!SettingsStore.shared.saveTranscriptionHistory)
-                                    .settingsSearchTarget(.audioHistory)
-
-                                    if SettingsStore.shared.saveTranscriptionHistory,
-                                       SettingsStore.shared.saveAudioWithTranscriptionHistory
-                                    {
-                                        self.audioHistoryControls()
-                                            .padding(.top, 2)
-                                            .settingsSearchTarget(.audioStorage)
-                                        Divider().opacity(0.2)
-                                    } else {
-                                        Divider().opacity(0.2)
-                                    }
-
-                                    self.optionToggleRow(
-                                        title: "Weekends Don't Break Streak",
-                                        description: "Skip Saturday and Sunday when calculating usage streaks. Perfect for weekday-only users.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.weekendsDontBreakStreak },
-                                            set: { SettingsStore.shared.weekendsDontBreakStreak = $0 }
-                                        )
-                                    )
-                                    .settingsSearchTarget(.usageStreak)
-                                    Divider().opacity(0.2)
-
-                                    self.optionToggleRow(
-                                        title: "Skip Silent Recordings",
-                                        description: "Avoid transcription when a recording up to four seconds contains only clear silence. Disabled by default to preserve quiet speech.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.skipSilentRecordingsEnabled },
-                                            set: { SettingsStore.shared.skipSilentRecordingsEnabled = $0 }
-                                        )
-                                    )
-                                    .settingsSearchTarget(.skipSilentRecordings)
-                                    Divider().opacity(0.2)
-
-                                    self.optionToggleRow(
-                                        title: "Pause Media During Transcription",
-                                        description: "Automatically pause currently playing audio/video when transcription starts. Resumes only if FluidVoice paused it.",
-                                        isOn: Binding(
-                                            get: { SettingsStore.shared.pauseMediaDuringTranscription },
-                                            set: { SettingsStore.shared.pauseMediaDuringTranscription = $0 }
-                                        )
-                                    )
-                                    .settingsSearchTarget(.pauseMedia)
-                                    Divider().opacity(0.2)
-
-                                    DictionarySuggestionsSettingsRow()
-                                        .settingsSearchTarget(.dictionarySuggestions)
-                                    Divider().opacity(0.2)
-
-                                    self.optionToggleRow(
-                                        title: "Share Detailed Anonymous Analytics",
-                                        description: "Share anonymous daily feature, insertion performance, onboarding, and model metrics. " +
-                                            "When off, FluidVoice still records the anonymous daily activity signal and, in beta builds, daily ASR and Fluid Intelligence timing summaries. " +
-                                            "Never includes transcription text or prompts.",
-                                        isOn: self.detailedAnalyticsToggleBinding
-                                    )
-                                    .settingsSearchTarget(.analyticsPrivacy)
-
-                                    HStack {
-                                        Button("What we collect") {
-                                            self.showAnalyticsPrivacy = true
-                                        }
-                                        .buttonStyle(.link)
-
-                                        Spacer()
-                                    }
-                                    .padding(.top, 6)
                                 }
-                                .padding(12)
+                                if self.selectedSection == .dictation {
+                                    // MARK: - Options Section
+
+                                    VStack(spacing: 12) {
+                                        HStack(alignment: .center) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Activation Mode")
+                                                    .font(self.theme.typography.bodyStrong)
+                                                    .foregroundStyle(self.settingsTitleText)
+                                                Text(self.hotkeyMode.description)
+                                                    .font(self.theme.typography.bodySmall)
+                                                    .foregroundStyle(self.settingsSecondaryText)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                                            Picker("", selection: self.$hotkeyMode) {
+                                                ForEach(HotkeyActivationMode.allCases) { mode in
+                                                    Text(mode.displayName).tag(mode)
+                                                }
+                                            }
+                                            .pickerStyle(.menu)
+                                            .frame(width: 170, alignment: .trailing)
+                                        }
+                                        .onChange(of: self.hotkeyMode) { _, newValue in
+                                            SettingsStore.shared.hotkeyMode = newValue
+                                            self.hotkeyManager?.setHotkeyMode(newValue)
+                                        }
+                                        .settingsSearchTarget(.activationMode)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Copy to Clipboard",
+                                            description: "Automatically copy transcribed text to clipboard as a backup.",
+                                            isOn: self.$copyToClipboard
+                                        )
+                                        .onChange(of: self.copyToClipboard) { _, newValue in
+                                            SettingsStore.shared.copyTranscriptionToClipboard = newValue
+                                        }
+                                        .settingsSearchTarget(.copyToClipboard)
+                                        Divider().opacity(0.2)
+
+                                        HStack(alignment: .center) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Text Insertion Mode")
+                                                    .font(self.theme.typography.bodyStrong)
+                                                    .foregroundStyle(self.settingsTitleText)
+                                                Text(SettingsStore.shared.textInsertionMode.description)
+                                                    .font(self.theme.typography.bodySmall)
+                                                    .foregroundStyle(self.settingsSecondaryText)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                                            Picker("", selection: Binding(
+                                                get: { SettingsStore.shared.textInsertionMode },
+                                                set: { SettingsStore.shared.textInsertionMode = $0 }
+                                            )) {
+                                                ForEach(SettingsStore.TextInsertionMode.allCases) { mode in
+                                                    Text(mode.displayName).tag(mode)
+                                                }
+                                            }
+                                            .pickerStyle(.menu)
+                                            .fixedSize(horizontal: true, vertical: false)
+                                            .frame(minWidth: 170, alignment: .trailing)
+                                        }
+                                        .settingsSearchTarget(.textInsertionMode)
+                                        Divider().opacity(0.2)
+
+                                        self.spokenSendSettings
+                                            .settingsSearchTarget(.spokenSend)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Save Transcription History",
+                                            description: "Save transcriptions for stats tracking. Disable for privacy.",
+                                            isOn: Binding(
+                                                get: { SettingsStore.shared.saveTranscriptionHistory },
+                                                set: {
+                                                    SettingsStore.shared.saveTranscriptionHistory = $0
+                                                    self.refreshAudioHistoryUsage()
+                                                }
+                                            )
+                                        )
+                                        .settingsSearchTarget(.transcriptionHistory)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Save Audio With History",
+                                            description: "Store actual microphone audio locally with dictation history. Disabled by default.",
+                                            isOn: Binding(
+                                                get: { SettingsStore.shared.saveAudioWithTranscriptionHistory },
+                                                set: {
+                                                    SettingsStore.shared.saveAudioWithTranscriptionHistory = $0
+                                                    self.refreshAudioHistoryUsage()
+                                                }
+                                            )
+                                        )
+                                        .disabled(!SettingsStore.shared.saveTranscriptionHistory)
+                                        .settingsSearchTarget(.audioHistory)
+
+                                        if SettingsStore.shared.saveTranscriptionHistory,
+                                           SettingsStore.shared.saveAudioWithTranscriptionHistory
+                                        {
+                                            self.audioHistoryControls()
+                                                .padding(.top, 2)
+                                                .settingsSearchTarget(.audioStorage)
+                                            Divider().opacity(0.2)
+                                        } else {
+                                            Divider().opacity(0.2)
+                                        }
+
+                                        self.optionToggleRow(
+                                            title: "Weekends Don't Break Streak",
+                                            description: "Skip Saturday and Sunday when calculating usage streaks. Perfect for weekday-only users.",
+                                            isOn: Binding(
+                                                get: { SettingsStore.shared.weekendsDontBreakStreak },
+                                                set: { SettingsStore.shared.weekendsDontBreakStreak = $0 }
+                                            )
+                                        )
+                                        .settingsSearchTarget(.usageStreak)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Skip Silent Recordings",
+                                            description: "Avoid transcription when a recording up to four seconds contains only clear silence. Disabled by default to preserve quiet speech.",
+                                            isOn: Binding(
+                                                get: { SettingsStore.shared.skipSilentRecordingsEnabled },
+                                                set: { SettingsStore.shared.skipSilentRecordingsEnabled = $0 }
+                                            )
+                                        )
+                                        .settingsSearchTarget(.skipSilentRecordings)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Pause Media During Transcription",
+                                            description: "Automatically pause currently playing audio/video when transcription starts. Resumes only if FluidVoice paused it.",
+                                            isOn: Binding(
+                                                get: { SettingsStore.shared.pauseMediaDuringTranscription },
+                                                set: { SettingsStore.shared.pauseMediaDuringTranscription = $0 }
+                                            )
+                                        )
+                                        .settingsSearchTarget(.pauseMedia)
+                                        Divider().opacity(0.2)
+
+                                        DictionarySuggestionsSettingsRow()
+                                            .settingsSearchTarget(.dictionarySuggestions)
+                                        Divider().opacity(0.2)
+
+                                        self.optionToggleRow(
+                                            title: "Share Detailed Anonymous Analytics",
+                                            description: "Share anonymous daily feature, insertion performance, onboarding, and model metrics. " +
+                                                "When off, FluidVoice still records the anonymous daily activity signal and, in beta builds, daily ASR and Fluid Intelligence timing summaries. " +
+                                                "Never includes transcription text or prompts.",
+                                            isOn: self.detailedAnalyticsToggleBinding
+                                        )
+                                        .settingsSearchTarget(.analyticsPrivacy)
+
+                                        HStack {
+                                            Button("What we collect") {
+                                                self.showAnalyticsPrivacy = true
+                                            }
+                                            .buttonStyle(.link)
+
+                                            Spacer()
+                                        }
+                                        .padding(.top, 6)
+                                    }
+                                    .padding(12)
+                                }
                             }
                         } else {
                             // Hotkey disabled - accessibility not enabled
@@ -1046,7 +1035,7 @@ struct SettingsView: View {
                     }
                     .padding(16)
                 }
-                .shownInSettingsSection(.dictation, selectedSection: self.selectedSection)
+                .shownInSettingsSection(self.selectedSection == .shortcuts ? .shortcuts : .dictation, selectedSection: self.selectedSection)
 
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -1557,6 +1546,8 @@ struct SettingsView: View {
                 .shownInSettingsSection(.experimental, selectedSection: self.selectedSection)
             }
             .padding(16)
+            .frame(maxWidth: self.selectedSection == .shortcuts ? 820 : .infinity)
+            .frame(maxWidth: .infinity)
             .environment(\.settingsSearchPresentation, self.settingsSearchPresentation)
         }
         .id(self.selectedSection)
@@ -2069,10 +2060,10 @@ struct SettingsView: View {
                     .frame(width: 20)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Primary Dictation Shortcuts")
+                    Text("Primary dictation")
                         .font(self.theme.typography.bodyStrong)
                         .foregroundStyle(self.settingsTitleText)
-                    Text("Use any keyboard shortcut, auxiliary mouse button, or modified click.")
+                    Text("Keyboard shortcut or mouse button")
                         .font(self.theme.typography.bodySmall)
                         .foregroundStyle(self.settingsSecondaryText)
                         .lineLimit(1)
@@ -2289,6 +2280,32 @@ struct SettingsView: View {
 
 private extension SettingsView {
     @ViewBuilder
+    private func shortcutPageContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if self.selectedSection == .shortcuts {
+            content()
+        } else {
+            ThemedCard(style: .standard, content: content)
+        }
+    }
+
+    private func shortcutGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12, content: content)
+            .padding(16)
+            .background(self.theme.palette.elevatedCardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(self.theme.palette.cardBorder, lineWidth: 1)
+            }
+    }
+
+    private var shortcutGroupDivider: some View {
+        Rectangle()
+            .fill(self.theme.palette.cardBorder)
+            .frame(height: 1)
+            .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
     private var smartDictationShortcutRow: some View {
         if PrivateFeatures.privateAIProvider,
            let key = self.settings.dictationPromptConfigurationKey(for: .privateAI)
@@ -2300,7 +2317,7 @@ private extension SettingsView {
                 content: .init(
                     icon: "sparkles",
                     iconColor: self.theme.palette.accent,
-                    title: "Smart dictation — Fluid Intelligence",
+                    title: "Smart dictation",
                     description: usesPrimary && configuration.shortcut == nil
                         ? "Uses your primary shortcut. An extra shortcut is optional."
                         : "Optional shortcut to dictate with Fluid Intelligence."
@@ -2319,7 +2336,7 @@ private extension SettingsView {
                     self.settings.setDictationPromptConfiguration(updated, for: .privateAI)
                 }
             )
-            .padding(.vertical, 8)
+            .padding(.vertical, 2)
         }
     }
 
@@ -2633,7 +2650,7 @@ private extension SettingsView {
             await self.prepareAudioSettings()
         case .dictation:
             await self.refreshAudioHistoryUsageInBackground()
-        case .notifications, .overlay, .dataAndDiagnostics, .experimental:
+        case .shortcuts, .notifications, .overlay, .dataAndDiagnostics, .experimental:
             break
         }
     }

@@ -20,6 +20,7 @@ enum SettingsSearchTarget: Hashable {
     case analyticsPrivacy
 
     case dictation
+    case shortcuts
     case microphonePermission
     case globalHotkey
     case primaryDictationShortcuts
@@ -79,12 +80,6 @@ enum SettingsSearchTarget: Hashable {
         case .dictation,
              .analyticsPrivacy,
              .microphonePermission,
-             .globalHotkey,
-             .primaryDictationShortcuts,
-             .commandModeShortcut,
-             .editModeShortcut,
-             .cancelRecordingShortcut,
-             .pasteLastTranscriptionShortcut,
              .activationMode,
              .copyToClipboard,
              .textInsertionMode,
@@ -99,6 +94,11 @@ enum SettingsSearchTarget: Hashable {
              .accessibilityPermission,
              .textFormatting:
             return .dictation
+
+        case .shortcuts, .globalHotkey, .primaryDictationShortcuts,
+             .commandModeShortcut, .editModeShortcut, .cancelRecordingShortcut,
+             .pasteLastTranscriptionShortcut:
+            return .shortcuts
 
         case .notifications, .aiEnhancementFailures, .microphoneChanges:
             return .notifications
@@ -129,6 +129,7 @@ extension SettingsSection {
         switch self {
         case .general: return .general
         case .dictation: return .dictation
+        case .shortcuts: return .shortcuts
         case .notifications: return .notifications
         case .audio: return .audio
         case .overlay: return .overlay
@@ -205,6 +206,7 @@ enum SettingsSearchIndex {
             title: "Microphone Permission",
             terms: ["mic access authorization privacy grant denied system settings"]
         ),
+        .init(target: .shortcuts, title: "Shortcuts", terms: ["keyboard hotkeys Smart Fluid Intelligence"]),
         .init(target: .globalHotkey, title: "Global Hotkey", terms: ["keyboard shortcut activation accessibility"]),
         .init(
             target: .primaryDictationShortcuts,
