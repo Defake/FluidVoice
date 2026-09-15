@@ -670,8 +670,9 @@ extension AIEnhancementSettingsView {
 
     private func promptEditorConfigurationPanel(mode: PromptEditorMode) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 14) {
+            self.promptEditorShortcutRow(mode: mode)
             if mode.isPrivateAI {
-                self.promptEditorConfigRow(title: "Shortcut", description: "Managed in Settings.") {
+                self.promptEditorConfigRow(title: "Settings", description: "The same shortcut is available there.") {
                     Button("Open Smart dictation shortcut settings") {
                         self.viewModel.closePromptEditor()
                         AppNavigationRouter.shared.request(.dictationShortcuts)
@@ -679,8 +680,6 @@ extension AIEnhancementSettingsView {
                     .buttonStyle(.plain)
                     .foregroundStyle(self.theme.palette.accent)
                 }
-            } else {
-                self.promptEditorShortcutRow(mode: mode)
             }
             Group {
                 self.promptEditorProviderRow
@@ -1717,7 +1716,7 @@ extension AIEnhancementSettingsView {
                             }())
                                 .font(.fluidSystem(.headline))
                             if mode.isPrivateAI {
-                                Text("Built-in system prompt. Manage its shortcut in Settings.")
+                                Text("Built-in system prompt. Edit its shortcut here or in Settings.")
                                     .font(.fluidSystem(.caption))
                                     .foregroundStyle(.secondary)
                             } else if mode.isDefault {
