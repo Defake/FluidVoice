@@ -198,7 +198,7 @@ struct TranscriptionHistoryView: View {
     private func entryRow(_ entry: TranscriptionHistoryEntry) -> some View {
         let isSelected = self.selectedEntryID == entry.id
         return HistoryHoverRow(isSelected: isSelected) { showsActions in
-            HStack(alignment: .top, spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
                 Button {
                     self.selectedEntryID = entry.id
                 } label: {
@@ -238,6 +238,8 @@ struct TranscriptionHistoryView: View {
                             }
                         }
                         .font(self.theme.typography.caption).foregroundStyle(.secondary)
+                        .padding(.trailing, 76)
+                        .frame(minHeight: 28)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -251,11 +253,13 @@ struct TranscriptionHistoryView: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityAction(named: Text("Copy final text")) { self.copyFinalText(entry) }
                 .accessibilityAction(named: Text("Report issue")) { self.openFeedbackReport(for: entry) }
-                VStack(spacing: 4) {
+                HStack(spacing: 8) {
                     Button {
                         self.copyFinalText(entry)
                     } label: {
                         Image(systemName: self.copiedEntryID == entry.id ? "checkmark" : "doc.on.doc")
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Copy final text")
@@ -264,19 +268,16 @@ struct TranscriptionHistoryView: View {
                         self.openFeedbackReport(for: entry)
                     } label: {
                         Image(systemName: "flag")
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Report an issue with this dictation")
                     .accessibilityLabel("Report issue")
-                    Menu { self.entryActions(entry) } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .fixedSize().accessibilityLabel("Dictation actions")
                 }
                 .font(self.theme.typography.body)
                 .labelStyle(.iconOnly)
-                .frame(width: 32)
+                .frame(width: 64)
                 .foregroundStyle(.secondary)
                 .opacity(showsActions ? 1 : 0)
                 .allowsHitTesting(showsActions)
@@ -333,7 +334,7 @@ struct TranscriptionHistoryView: View {
         Button {
             self.openFeedbackReport(for: entry)
         } label: {
-            Label("Report Bad Result...", systemImage: "hand.thumbsup.slash")
+            Label("Report issue...", systemImage: "flag")
         }
 
         Divider()
@@ -486,15 +487,6 @@ struct TranscriptionHistoryView: View {
                         value: self.recordedModel(entry) ?? (entry.wasAIProcessed ? "Not recorded" : "No AI cleanup")
                     )
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack {
-                        self.secondaryActions(entry)
-                        Spacer()
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        self.secondaryActions(entry)
-                    }
-                }
             }
             .padding(24)
             .frame(maxWidth: 1080, alignment: .leading)
@@ -529,6 +521,10 @@ struct TranscriptionHistoryView: View {
     private func detailActions(_ entry: TranscriptionHistoryEntry) -> some View {
         FluidGlassControlGroup {
             HStack(spacing: 8) {
+                Button { self.openFeedbackReport(for: entry) } label: {
+                    Label("Report issue", systemImage: "flag")
+                }
+                .fluidGlassAction()
                 Button { self.copyFinalText(entry) } label: {
                     Label(
                         self.copiedEntryID == entry.id ? "Copied" : "Copy text",
@@ -551,20 +547,6 @@ struct TranscriptionHistoryView: View {
                     .accessibilityLabel("Dictation actions")
             }
         }
-    }
-
-    @ViewBuilder
-    private func secondaryActions(_ entry: TranscriptionHistoryEntry) -> some View {
-        if self.hasAudio(entry) {
-            Button { self.exportPair(entry) } label: {
-                Label("Export pair", systemImage: "square.and.arrow.up")
-            }
-            .fluidGlassAction()
-        }
-        Button { self.openFeedbackReport(for: entry) } label: {
-            Label("Report issue", systemImage: "hand.thumbsup.slash")
-        }
-        .fluidGlassAction()
     }
 
     private func metadataItem(icon: String, label: String, value: String) -> some View {
