@@ -1070,6 +1070,8 @@ struct ContentView: View {
             self.navigateToApp(.aiEnhancements)
         case .history:
             self.navigateToApp(.history)
+        case .dictationShortcuts:
+            self.openSettings(.dictation)
         }
     }
 

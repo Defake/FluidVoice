@@ -704,6 +704,7 @@ struct SettingsView: View {
                                     self.primaryDictationShortcutsList()
                                         .settingsSearchTarget(.primaryDictationShortcuts)
                                     self.dictationPromptPicker(for: .primary)
+                                    self.smartDictationShortcutRow
                                     Divider().opacity(0.2).padding(.vertical, 4)
 
                                     self.shortcutRow(
@@ -2287,6 +2288,41 @@ struct SettingsView: View {
 }
 
 private extension SettingsView {
+    @ViewBuilder
+    private var smartDictationShortcutRow: some View {
+        if PrivateFeatures.privateAIProvider,
+           let key = self.settings.dictationPromptConfigurationKey(for: .privateAI)
+        {
+            let configuration = self.settings.dictationPromptConfiguration(for: .privateAI)
+            let target = ShortcutRecordingTarget.dictationPrompt(key)
+            let usesPrimary = self.settings.dictationPromptSelection(for: .primary) == .privateAI
+            self.shortcutRow(
+                content: .init(
+                    icon: "sparkles",
+                    iconColor: self.theme.palette.accent,
+                    title: "Smart dictation — Fluid Intelligence",
+                    description: usesPrimary && configuration.shortcut == nil
+                        ? "Uses your primary shortcut. An extra shortcut is optional."
+                        : "Optional shortcut to dictate with Fluid Intelligence."
+                ),
+                shortcut: configuration.shortcut,
+                isRecording: self.activeShortcutRecordingTarget == target,
+                isAnyRecordingActive: self.isRecordingAnyShortcut,
+                recordingMessage: self.activeShortcutRecordingTarget == target ? self.shortcutRecordingMessage : nil,
+                onChangePressed: {
+                    self.shortcutRecordingMessage = nil
+                    self.activeShortcutRecordingTarget = target
+                },
+                onRemovePressed: {
+                    var updated = self.settings.dictationPromptConfiguration(for: .privateAI)
+                    updated.shortcut = nil
+                    self.settings.setDictationPromptConfiguration(updated, for: .privateAI)
+                }
+            )
+            .padding(.vertical, 8)
+        }
+    }
+
     var isRecordingAnyShortcut: Bool {
         self.activeShortcutRecordingTarget != nil
     }
