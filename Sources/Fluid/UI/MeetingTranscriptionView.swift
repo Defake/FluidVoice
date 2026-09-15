@@ -8,6 +8,7 @@ struct MeetingTranscriptionView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @State private var selectedFileURL: URL?
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(asrService: ASRService) {
         self.asrService = asrService
@@ -41,22 +42,24 @@ struct MeetingTranscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.system(size: 32))
                     .foregroundStyle(Color.fluidGreen.gradient)
 
-                Text("Meeting Transcription")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-
-                Text("Choose an audio or video file to transcribe")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("File Transcription")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Choose an audio or video file to transcribe")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
             }
-            .padding(.top, 40)
-            .padding(.bottom, 30)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
 
             // Main Content Area
             ScrollView {
@@ -134,31 +137,78 @@ struct MeetingTranscriptionView: View {
     private var fileSelectionCard: some View {
         VStack(spacing: 16) {
             if let fileURL = selectedFileURL {
-                // Show selected file
-                HStack {
-                    Image(systemName: "doc.fill")
-                        .font(.title2)
-                        .foregroundColor(Color.fluidGreen)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: "doc.fill")
+                            .font(.title2)
+                            .foregroundColor(Color.fluidGreen)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(fileURL.lastPathComponent)
-                            .font(.headline)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(fileURL.lastPathComponent)
+                                .font(.headline)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .help(fileURL.lastPathComponent)
 
-                        Text(self.formatFileSize(fileURL: fileURL))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            Text(self.formatFileSize(fileURL: fileURL))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("Change file…") {
+                            self.showingFilePicker = true
+                        }
+                        .disabled(self.transcriptionService.isTranscribing)
                     }
 
-                    Spacer()
+                    // Speaker labeling options (unavailable on Intel Macs)
+                    if SpeakerDiarizationService.isSupported {
+                        Divider()
+                        VStack(spacing: 12) {
+                            Toggle(isOn: self.$settings.fileTranscriptionSpeakerLabelsEnabled) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Label speakers")
+                                        .font(.subheadline)
 
-                    Button(action: {
-                        self.selectedFileURL = nil
-                        self.transcriptionService.reset()
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                                    Text(self.selectedFileIsVideo
+                                        ? "Available for audio files only"
+                                        : "Identify who said what")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .help("Speaker models download automatically on first use.")
+                            .toggleStyle(.switch)
+                            .disabled(self.selectedFileIsVideo)
+
+                            if self.settings.fileTranscriptionSpeakerLabelsEnabled, !self.selectedFileIsVideo {
+                                HStack {
+                                    Text("Number of speakers")
+                                        .font(.subheadline)
+
+                                    Spacer()
+
+                                    Picker("Number of speakers", selection: self.$settings.fileTranscriptionExpectedSpeakerCount) {
+                                        Text("Auto").tag(0)
+                                        ForEach(2...8, id: \.self) { count in
+                                            Text("\(count)").tag(count)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                    .frame(width: 90)
+                                }
+                                .transition(.opacity)
+                            }
+                        }
+                        .animation(
+                            self.reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1),
+                            value: self.settings.fileTranscriptionSpeakerLabelsEnabled
+                        )
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding()
                 .background(
@@ -170,64 +220,19 @@ struct MeetingTranscriptionView: View {
                         )
                 )
 
-                // Speaker labeling options (unavailable on Intel Macs)
-                if SpeakerDiarizationService.isSupported {
-                    VStack(spacing: 10) {
-                        Toggle(isOn: self.$settings.fileTranscriptionSpeakerLabelsEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Label speakers")
-                                    .font(.subheadline)
-
-                                Text(self.selectedFileIsVideo
-                                    ? "Available for audio files only"
-                                    : "Identify who said what (downloads speaker models on first use)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
-                        .disabled(self.selectedFileIsVideo)
-
-                        if self.settings.fileTranscriptionSpeakerLabelsEnabled, !self.selectedFileIsVideo {
-                            HStack {
-                                Text("Number of speakers")
-                                    .font(.subheadline)
-
-                                Spacer()
-
-                                Picker("", selection: self.$settings.fileTranscriptionExpectedSpeakerCount) {
-                                    Text("Auto").tag(0)
-                                    ForEach(2...8, id: \.self) { count in
-                                        Text("\(count)").tag(count)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .labelsHidden()
-                                .frame(width: 90)
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(self.theme.palette.cardBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                            )
-                    )
-                }
-
-                // Transcribe Button
                 Button(action: {
-                    Task {
-                        await self.transcribeFile()
+                    if self.transcriptionService.result != nil {
+                        self.showingFilePicker = true
+                    } else {
+                        Task {
+                            await self.transcribeFile()
+                        }
                     }
                 }) {
-                    HStack {
-                        Image(systemName: "waveform")
-                        Text("Transcribe")
-                    }
+                    Label(
+                        self.transcriptionService.result == nil ? "Transcribe" : "Transcribe another file",
+                        systemImage: self.transcriptionService.result == nil ? "waveform" : "plus"
+                    )
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 }
@@ -268,10 +273,17 @@ struct MeetingTranscriptionView: View {
                         .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8]))
                         .foregroundColor(Color.fluidGreen.opacity(self.isDropTargeted ? 0.7 : 0.3))
                 )
-                .onDrop(of: [.fileURL], isTargeted: self.$isDropTargeted) { providers in
-                    self.handleDrop(providers: providers)
-                }
             }
+        }
+        .overlay {
+            if self.isDropTargeted, !self.transcriptionService.isTranscribing {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.fluidGreen, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: self.$isDropTargeted) { providers in
+            self.handleDrop(providers: providers)
         }
         .fileImporter(
             isPresented: self.$showingFilePicker,
@@ -281,8 +293,7 @@ struct MeetingTranscriptionView: View {
             switch result {
             case let .success(urls):
                 if let url = urls.first {
-                    self.selectedFileURL = url
-                    self.transcriptionService.reset()
+                    self.selectFile(url)
                 }
             case let .failure(error):
                 DebugLogger.shared.error("File picker error: \(error)", source: "MeetingTranscriptionView")
@@ -444,12 +455,24 @@ struct MeetingTranscriptionView: View {
 
             VStack(spacing: 8) {
                 ForEach(self.fileHistoryStore.entries) { entry in
-                    self.recentEntryRow(entry: entry)
+                    VStack(spacing: 0) {
+                        self.recentEntryRow(entry: entry)
+                        if self.fileHistoryStore.selectedEntryID == entry.id {
+                            Divider()
+                                .padding(.horizontal, 12)
+                            self.historyDetailCard(entry: entry)
+                                .transition(.opacity)
+                        }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(self.theme.palette.cardBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
+                    )
                 }
-            }
-
-            if let entry = self.fileHistoryStore.selectedEntry {
-                self.historyDetailCard(entry: entry)
             }
         }
     }
@@ -457,7 +480,9 @@ struct MeetingTranscriptionView: View {
     private func recentEntryRow(entry: FileTranscriptionEntry) -> some View {
         let isSelected = self.fileHistoryStore.selectedEntryID == entry.id
         return Button(action: {
-            self.fileHistoryStore.selectedEntryID = entry.id
+            withAnimation(self.reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1)) {
+                self.fileHistoryStore.selectedEntryID = isSelected ? nil : entry.id
+            }
         }) {
             HStack {
                 Image(systemName: "doc.text.fill")
@@ -480,22 +505,18 @@ struct MeetingTranscriptionView: View {
 
                 Spacer()
 
-                if isSelected {
-                    Image(systemName: "chevron.right.circle.fill")
-                        .foregroundColor(Color.fluidGreen)
-                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(isSelected ? 90 : 0))
+                    .accessibilityHidden(true)
             }
             .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(self.theme.palette.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isSelected ? Color.fluidGreen.opacity(0.5) : self.theme.palette.cardBorder.opacity(0.3), lineWidth: isSelected ? 2 : 1)
-                    )
-            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "Expanded" : "Collapsed")
+        .accessibilityHint(isSelected ? "Collapse transcription" : "Expand transcription")
     }
 
     private func historyDetailCard(entry: FileTranscriptionEntry) -> some View {
@@ -503,7 +524,7 @@ struct MeetingTranscriptionView: View {
         return VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("From history")
+                    Text("Transcript")
                         .font(.headline)
                     HStack(spacing: 16) {
                         Label("\(String(format: "%.1f", entry.duration))s", systemImage: "clock")
@@ -559,14 +580,6 @@ struct MeetingTranscriptionView: View {
             )
         }
         .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(self.theme.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                )
-        )
     }
 
     // MARK: - Error Card
@@ -632,7 +645,8 @@ struct MeetingTranscriptionView: View {
     private static let dropErrorCopy = MeetingTranscriptionService.dropErrorCopy
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
+        guard !self.transcriptionService.isTranscribing,
+              let provider = providers.first else { return false }
         provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
             let url: URL? = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
             guard let url = url else { return }
@@ -647,12 +661,20 @@ struct MeetingTranscriptionView: View {
                 return
             }
             DispatchQueue.main.async {
-                self.selectedFileURL = url
-                self.transcriptionService.reset()
-                self.dropErrorMessage = nil
+                self.selectFile(url)
             }
         }
         return true
+    }
+
+    private func selectFile(_ url: URL) {
+        // A drop may finish loading after transcription has started.
+        guard !self.transcriptionService.isTranscribing else { return }
+        withAnimation(self.reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1)) {
+            self.selectedFileURL = url
+            self.transcriptionService.reset()
+            self.dropErrorMessage = nil
+        }
     }
 
     private func transcribeFile() async {
