@@ -301,8 +301,11 @@ final class BottomOverlayWindowController {
         )
     }
 
-    /// ignoresMouseEvents is a WindowServer fence (70-90 ms). Apply it only if
-    /// the panel stays hidden, so a rapid restart never pays for it twice.
+    /// ignoresMouseEvents is a WindowServer fence (70-90 ms), so it is applied
+    /// on the pass after the alpha-0 commit rather than inside it. Until it
+    /// lands the invisible panel would swallow clicks under the pill, so this
+    /// must not be deferred further. Skipped if a rapid restart re-showed the
+    /// panel in the meantime.
     private func scheduleIgnoreMouseEventsAfterHide() {
         self.pendingIgnoreMouseWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -315,7 +318,7 @@ final class BottomOverlayWindowController {
             )
         }
         self.pendingIgnoreMouseWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        DispatchQueue.main.async(execute: workItem)
     }
 
     private func clearPresentationStateAfterImmediateHide() {
