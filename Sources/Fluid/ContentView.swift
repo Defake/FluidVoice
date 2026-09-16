@@ -2252,8 +2252,8 @@ struct ContentView: View {
         )
         if !useOriginal { DictationAppSession.shared.activate(target?.bundleIdentifier) }
         let label = self.settings.dictationOverlayLabel(for: slot, appBundleID: info.bundleId)
-        if NotchContentState.shared.frozenDictationLabel != label {
-            NotchContentState.shared.frozenDictationLabel = label
+        if NotchContentState.shared.stopSnapshotLabel != label {
+            NotchContentState.shared.stopSnapshotLabel = label
         }
         return .capture(
             target: target,
@@ -2743,7 +2743,7 @@ struct ContentView: View {
         defer { closeTrace.finish() }
         let lifecycle = self.overlayLifecycleID
         defer {
-            if self.overlayLifecycleID == lifecycle { NotchContentState.shared.frozenDictationLabel = nil }
+            if self.overlayLifecycleID == lifecycle { NotchContentState.shared.stopSnapshotLabel = nil }
         }
         let pipelineID = UUID().uuidString
         await DebugLogger.$pipelineID.withValue(pipelineID) {
@@ -3079,7 +3079,7 @@ struct ContentView: View {
         var didTypeExternally = false
         var didFailTextDelivery = false
 
-        self.appBench("typing_decision frozenTarget=\(stopSnapshot != nil) external=\(shouldTypeExternally)")
+        self.appBench("typing_decision snapshotTarget=\(stopSnapshot != nil) external=\(shouldTypeExternally)")
 
         // A sidebar search field that was already focused when recording began gets
         // the text through its field editor, which also fires change notifications.
@@ -4883,7 +4883,7 @@ extension ContentView {
 
     private func applyDictationShortcutSelectionContext(for slot: SettingsStore.DictationShortcutSlot) {
         let settings = SettingsStore.shared
-        NotchContentState.shared.frozenDictationLabel = nil
+        NotchContentState.shared.stopSnapshotLabel = nil
         self.activeDictationShortcutSlot = slot
         NotchContentState.shared.activeDictationShortcutSlot = slot
         NotchContentState.shared.isPromptModeActive = (slot == .secondary)

@@ -111,7 +111,7 @@ class NotchContentState: ObservableObject {
     private(set) var textDeliveryFailureTranscript: String = ""
     private(set) var textDeliveryFailure: TextDeliveryFailure?
     @Published var activeDictationShortcutSlot: SettingsStore.DictationShortcutSlot? = nil
-    @Published var frozenDictationLabel: String?
+    @Published var stopSnapshotLabel: String?
     @Published var promptModeOverrideProfileName: String? = nil // Name shown in overlay when prompt mode hotkey is active
     @Published var promptModeOverrideProfileID: String? = nil // ID of the active override profile (for checkmark in menu)
     @Published var isPromptModeActive: Bool = false // True for the entire prompt-mode session, even when no profile is selected
@@ -638,7 +638,7 @@ struct NotchExpandedView: View {
     private var selectedPromptLabel: String {
         guard let activePromptMode else { return "N/A" }
         if activePromptMode.normalized == .dictate {
-            if let label = self.contentState.frozenDictationLabel { return label }
+            if let label = self.contentState.stopSnapshotLabel { return label }
             return self.settings.dictationOverlayLabel(
                 for: self.activeDictationShortcutSlot,
                 appBundleID: self.promptResolutionBundleID
