@@ -45,7 +45,7 @@ final class HotkeyShortcutTests: XCTestCase {
                         defaults.set(overlaySize.rawValue, forKey: keys[0])
                         defaults.set(material.rawValue, forKey: keys[1])
                         let host = NSHostingController(rootView: OverlayAppearanceEditor().environment(\.colorScheme, scheme))
-                        let size = host.sizeThatFits(in: NSSize(width: width, height: 10000))
+                        let size = host.sizeThatFits(in: NSSize(width: width, height: 10_000))
                         XCTAssertLessThanOrEqual(size.width, width + 1, "\(overlaySize) / \(material) at \(width)")
                         XCTAssertTrue(size.height.isFinite)
                     }
@@ -281,6 +281,11 @@ final class HotkeyShortcutTests: XCTestCase {
 
         XCTAssertEqual(outcome, .hidden)
         XCTAssertFalse(NotchContentState.shared.isBottomOverlayPresented)
+    }
+
+    func testBottomOverlayGrowthUsesASpring() {
+        // A spring retargets smoothly when the text keeps growing.
+        XCTAssertEqual(BottomOverlayWindowController.growthAnimation, .spring(response: 0.32, dampingFraction: 0.86))
     }
 
     func testBottomOverlayExitUsesMinimalFadeDuration() {

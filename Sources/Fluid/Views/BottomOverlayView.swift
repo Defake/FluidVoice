@@ -619,6 +619,11 @@ final class BottomOverlayWindowController {
         trace.mark("position")
     }
 
+    /// The window jumps to its new size (its extra area is transparent) while
+    /// the pill's content springs into it, anchored at the bottom. A spring
+    /// retargets smoothly when the text keeps growing mid-motion.
+    static let growthAnimation: Animation = .spring(response: 0.32, dampingFraction: 0.86)
+
     private func createWindow() {
         let panel = BottomOverlayPanel(
             contentRect: .zero,
@@ -723,29 +728,20 @@ final class BottomOverlayWindowController {
         let screen = self.targetScreen ?? window.screen ?? OverlayScreenResolver.screenForCurrentPointer()
         guard let screen = screen else { return }
 
+        // Apply position directly to avoid implicit frame animations during hover-driven resizes.
+        window.setFrameOrigin(Self.origin(for: window.frame.size, on: screen))
+    }
+
+    private static func origin(for windowSize: CGSize, on screen: NSScreen) -> NSPoint {
         let fullFrame = screen.frame
         let visibleFrame = screen.visibleFrame
-        let windowSize = window.frame.size
-
-        // Horizontal centering
         let x = fullFrame.midX - windowSize.width / 2
-
-        // Vertical positioning with safety clamping
         let offset = SettingsStore.shared.overlayBottomOffset
-
-        // Calculate raw position
-        var y = visibleFrame.minY + CGFloat(offset)
-
-        // Safety Clamping:
-        // 1. Min: Ensure it's at least visibleFrame.minY (not below the dock/visible area)
-        // 2. Max: Ensure it doesn't cross the top of the visible frame minus its own height
-        let minY = visibleFrame.minY + 10 // Small buffer from absolute bottom
-        let maxY = visibleFrame.maxY - windowSize.height - 40 // Buffer from top
-
-        y = max(min(y, maxY), minY)
-
-        // Apply position directly to avoid implicit frame animations during hover-driven resizes.
-        window.setFrameOrigin(NSPoint(x: x, y: y))
+        // Keep it above the dock and below the top of the visible frame.
+        let minY = visibleFrame.minY + 10
+        let maxY = visibleFrame.maxY - windowSize.height - 40
+        let y = max(min(visibleFrame.minY + CGFloat(offset), maxY), minY)
+        return NSPoint(x: x, y: y)
     }
 
     private func parkWindowOffscreen() {
@@ -3477,6 +3473,10 @@ struct BottomOverlayView: View {
                             minHeight: self.effectiveDynamicPreviewMinHeight,
                             maxHeight: self.effectiveDynamicPreviewLockedHeight
                         )
+                        .animation(
+                            self.reduceMotion ? nil : BottomOverlayWindowController.growthAnimation,
+                            value: self.dynamicPreviewResizeBucket
+                        )
                     }
                 }
 
@@ -3598,7 +3598,9 @@ struct BottomOverlayView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .top)
+            // Bottom-anchored so a growing pill rises into the enlarged window
+            // instead of dropping its lower edge mid-animation.
+            .frame(maxWidth: .infinity, alignment: .bottom)
             .transaction { transaction in
                 if self.shouldSuppressPreviewDuringRelease {
                     transaction.animation = nil
