@@ -685,8 +685,20 @@ final class DirectAudioReliabilityTests: XCTestCase {
             menuBarSource.components(separatedBy: "func beginProcessingCompletionAndHideOverlay() {").last?
                 .components(separatedBy: "func finishProcessingAndHideOverlay() async {").first
         )
-        XCTAssertTrue(completionSection.contains("NotchOverlayManager.shared.hideImmediately()"))
-        XCTAssertFalse(completionSection.contains("NotchOverlayManager.shared.hide()"))
+        // Completion routes through hide(), which must fall back to an immediate
+        // hide unless the opt-in closing animation is enabled.
+        XCTAssertTrue(completionSection.contains("NotchOverlayManager.shared.hide()"))
+        let notchManagerSource = try String(
+            contentsOf: repositoryRoot
+                .appendingPathComponent("Sources/Fluid/Services/NotchOverlayManager.swift"),
+            encoding: .utf8
+        )
+        let hideSection = try XCTUnwrap(
+            notchManagerSource.components(separatedBy: "func hide() {").last?
+                .components(separatedBy: "func hideImmediately() {").first
+        )
+        XCTAssertTrue(hideSection.contains("guard SettingsStore.shared.overlayClosingAnimationEnabled else {"))
+        XCTAssertTrue(hideSection.contains("self.hideImmediately()"))
 
         let postStopSection = try XCTUnwrap(
             source.components(separatedBy: "let transcribedText = await asr.stop").last?
