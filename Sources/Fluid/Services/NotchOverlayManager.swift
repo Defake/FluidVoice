@@ -356,22 +356,24 @@ final class NotchOverlayManager {
         waiters.forEach { $0.resume(returning: .hidden) }
         Self.overlayBench("hide_immediate_complete elapsedMs=\(Self.elapsedMs(since: startedAt))")
 
-        Task { @MainActor [weak self] in
-            var cleanupTrace = OverlayCloseTrace("manager.deferredCleanup")
-            cleanupTrace.mark("scheduledDelay", since: startedAt)
-            defer { cleanupTrace.finish() }
-            await Task.yield()
-            cleanupTrace.mark("yield")
-            guard let self, self.generation == currentGeneration else { return }
-            ActiveAppMonitor.shared.stopMonitoring()
-            cleanupTrace.mark("stopMonitoring")
-            NotchContentState.shared.setProcessing(false)
-            cleanupTrace.mark("processingFalse")
-            NotchContentState.shared.updateTranscription("")
-            cleanupTrace.mark("clearTranscription")
-            NotchContentState.shared.setSpokenSendIndicatorState(.hidden)
-            cleanupTrace.mark("clearIndicator")
-            Self.overlayBench("hide_immediate_cleanup_complete")
+        // Runs after the hide transaction is committed so state churn cannot
+        // delay the panel leaving the screen.
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                var cleanupTrace = OverlayCloseTrace("manager.postCommitCleanup")
+                cleanupTrace.mark("commitDelay", since: startedAt)
+                defer { cleanupTrace.finish() }
+                guard let self, self.generation == currentGeneration else { return }
+                ActiveAppMonitor.shared.stopMonitoring()
+                cleanupTrace.mark("stopMonitoring")
+                NotchContentState.shared.setProcessing(false)
+                cleanupTrace.mark("processingFalse")
+                NotchContentState.shared.updateTranscription("")
+                cleanupTrace.mark("clearTranscription")
+                NotchContentState.shared.setSpokenSendIndicatorState(.hidden)
+                cleanupTrace.mark("clearIndicator")
+                Self.overlayBench("hide_immediate_cleanup_complete")
+            }
         }
     }
 

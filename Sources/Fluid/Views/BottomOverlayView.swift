@@ -208,6 +208,12 @@ final class BottomOverlayWindowController {
         self.window?.setAccessibilityElement(true)
         self.window?.ignoresMouseEvents = false
         self.window?.alphaValue = 1
+        CATransaction.setCompletionBlock {
+            DebugLogger.shared.info(
+                "SHOW_COMMIT elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
+                source: "StopTiming"
+            )
+        }
         self.window?.orderFrontRegardless()
         self.window?.contentView?.displayIfNeeded()
         self.window?.displayIfNeeded()
@@ -269,6 +275,24 @@ final class BottomOverlayWindowController {
         self.window?.alphaValue = 0
         self.window?.setAccessibilityChildren([])
         self.window?.setAccessibilityElement(false)
+        // Everything below runs after the transaction carrying alpha 0 has been
+        // committed to WindowServer, so SwiftUI state churn and the
+        // ignoresMouseEvents fence can never delay the visual removal.
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                DebugLogger.shared.info(
+                    "HIDE_COMMIT elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
+                    source: "StopTiming"
+                )
+                guard let self, self.presentationGeneration == currentGeneration else { return }
+                var cleanupTrace = OverlayCloseTrace("bottom.postCommitCleanup")
+                defer { cleanupTrace.finish() }
+                self.clearPresentationStateAfterImmediateHide()
+                cleanupTrace.mark("clearState")
+                self.window?.ignoresMouseEvents = true
+                cleanupTrace.mark("ignoreMouse")
+            }
+        }
         DebugLogger.shared.info(
             "HIDE_NOW hideUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000)) " +
                 "windowVisible=\(self.window?.isVisible == true)",
@@ -280,21 +304,6 @@ final class BottomOverlayWindowController {
         Self.overlayBench(
             "bottom_hide_immediate_complete elapsedMs=\(Self.elapsedMs(since: startedAt)) visible=\(self.window?.isVisible == true)"
         )
-
-        // State cleanup is not user-visible and must not hold up text insertion
-        // or the next shortcut. It never touches the window frame or ordering.
-        Task { @MainActor [weak self] in
-            var cleanupTrace = OverlayCloseTrace("bottom.deferredCleanup")
-            cleanupTrace.mark("scheduledDelay", since: startedAt)
-            await Task.yield()
-            cleanupTrace.mark("yield")
-            defer { cleanupTrace.finish() }
-            guard let self, self.presentationGeneration == currentGeneration else { return }
-            self.clearPresentationStateAfterImmediateHide()
-            cleanupTrace.mark("clearState")
-            self.window?.ignoresMouseEvents = true
-            cleanupTrace.mark("ignoreMouse")
-        }
     }
 
     private func clearPresentationStateAfterImmediateHide() {

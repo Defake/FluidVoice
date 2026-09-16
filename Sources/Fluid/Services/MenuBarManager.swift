@@ -452,7 +452,18 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.overlayBench("finish_hide_request closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled)")
         NotchOverlayManager.shared.hide()
         let windowHideReturnedAt = ProcessInfo.processInfo.systemUptime
-        self.flushDeferredStoppedRecordingState()
+        // The status item refresh is a WindowServer fence; keep it out of the
+        // transaction that removes the overlay.
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                let refreshStartedAt = ProcessInfo.processInfo.systemUptime
+                self?.flushDeferredStoppedRecordingState()
+                DebugLogger.shared.info(
+                    "HIDE_NOW postCommitMenuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - refreshStartedAt) * 1_000_000))",
+                    source: "StopTiming"
+                )
+            }
+        }
         DebugLogger.shared.info(
             "HIDE_NOW windowHideUs=\(Int((windowHideReturnedAt - startedAt) * 1_000_000)) " +
                 "menuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - windowHideReturnedAt) * 1_000_000))",
