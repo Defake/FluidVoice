@@ -541,16 +541,20 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     /// Ends processing without dismissing an actionable overlay, such as the
     /// AI fallback state that offers reprocessing and settings actions.
     func finishProcessingKeepingOverlayVisible() {
-        // The no-text-field failure uses the transient card instead of
-        // holding the dictation overlay open.
+        // A delivery failure must always be visible. The transient card is
+        // used when the dictation overlay is already gone (the no-AI fast
+        // path hides it before delivery), when the failure needs the
+        // Accessibility settings action, or for the no-text-field case.
         let state = NotchContentState.shared
         if state.isTextDeliveryFailureVisible,
-           state.textDeliveryFailureMessage == TextDeliveryFailure.noEditableTarget.userFacingMessage
+           let failure = state.textDeliveryFailure,
+           let kind = DeliveryFailureOverlayController.Kind(failure: failure),
+           Self.usesTransientFailureCard(kind: kind, overlayVisible: NotchOverlayManager.shared.isOverlayVisible)
         {
             let transcript = state.textDeliveryFailureTranscript
             state.clearTextDeliveryFailure()
             self.beginProcessingCompletionAndHideOverlay()
-            DeliveryFailureOverlayController.shared.show(kind: .noEditableTarget, transcript: transcript)
+            DeliveryFailureOverlayController.shared.show(kind: kind, transcript: transcript)
             return
         }
         self.cancelPendingProcessingCompletionOperations()
@@ -561,6 +565,10 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         NotchOverlayManager.shared.setProcessing(false)
         self.flushDeferredStoppedRecordingState()
         self.overlayBench("finish_keep_visible")
+    }
+
+    nonisolated static func usesTransientFailureCard(kind: DeliveryFailureOverlayController.Kind, overlayVisible: Bool) -> Bool {
+        kind == .noEditableTarget || kind.offersAccessibilitySettings || !overlayVisible
     }
 
     /// Recording-state observers rebuild AppKit/SwiftUI surfaces. Hold that work

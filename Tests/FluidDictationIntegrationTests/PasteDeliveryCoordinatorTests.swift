@@ -361,24 +361,41 @@ final class PasteDeliveryCoordinatorTests: XCTestCase {
         XCTAssertEqual(PasteDeliveryCoordinator.defaultSettlementDelayNanoseconds, 500_000_000)
     }
 
-    func testOnlyAccessibilityFailureHasUserFacingMessage() {
+    func testEveryDeliveryFailureExceptEmptyTextIsVisible() {
         XCTAssertEqual(TextDeliveryFailure.accessibilityNotTrusted.userFacingMessage, "Enable Accessibility to insert text")
-        let silentFailures: [TextDeliveryFailure] = [
-            .emptyText, .clipboardSnapshotFailed, .clipboardWriteFailed,
+        XCTAssertNil(TextDeliveryFailure.emptyText.userFacingMessage)
+        XCTAssertNil(DeliveryFailureOverlayController.Kind(failure: .emptyText))
+        let visibleFailures: [TextDeliveryFailure] = [
+            .accessibilityNotTrusted, .noEditableTarget, .pasteNotLanded,
+            .clipboardSnapshotFailed, .clipboardWriteFailed,
             .pasteCommandFailed, .targetUnavailable, .targetRestoreFailed,
         ]
-        for failure in silentFailures {
-            XCTAssertNil(failure.userFacingMessage, "Unexpected visible failure: \(failure)")
+        for failure in visibleFailures {
+            XCTAssertNotNil(failure.userFacingMessage, "Silent failure: \(failure)")
+            XCTAssertNotNil(DeliveryFailureOverlayController.Kind(failure: failure), "No card for: \(failure)")
         }
+        XCTAssertEqual(DeliveryFailureOverlayController.Kind(failure: .accessibilityNotTrusted)?.offersAccessibilitySettings, true)
+        XCTAssertEqual(DeliveryFailureOverlayController.Kind(failure: .pasteCommandFailed), .deliveryFailed)
     }
 
-    func testSilentFailureClearsPriorErrorAndRetainsTranscript() {
+    func testHiddenOverlayFailuresUseTheTransientCard() {
+        // The no-AI fast path hides the dictation overlay before delivery, so
+        // a failure found afterwards must surface on the transient card.
+        XCTAssertTrue(MenuBarManager.usesTransientFailureCard(kind: .deliveryFailed, overlayVisible: false))
+        XCTAssertTrue(MenuBarManager.usesTransientFailureCard(kind: .pasteNotLanded, overlayVisible: false))
+        XCTAssertTrue(MenuBarManager.usesTransientFailureCard(kind: .accessibilityNotTrusted, overlayVisible: true))
+        XCTAssertTrue(MenuBarManager.usesTransientFailureCard(kind: .noEditableTarget, overlayVisible: true))
+        XCTAssertFalse(MenuBarManager.usesTransientFailureCard(kind: .deliveryFailed, overlayVisible: true))
+    }
+
+    func testLaterFailureReplacesPriorErrorAndRetainsTranscript() {
         let state = NotchContentState.shared
         defer { state.clearTextDeliveryFailure() }
         state.recordTextDeliveryFailure(.accessibilityNotTrusted, transcript: "earlier")
         state.recordTextDeliveryFailure(.clipboardSnapshotFailed, transcript: "retained output")
-        XCTAssertFalse(state.isTextDeliveryFailureVisible)
-        XCTAssertEqual(state.textDeliveryFailureMessage, "")
+        XCTAssertTrue(state.isTextDeliveryFailureVisible)
+        XCTAssertEqual(state.textDeliveryFailure, .clipboardSnapshotFailed)
+        XCTAssertEqual(state.textDeliveryFailureMessage, "Oops, text wasn't inserted")
         XCTAssertEqual(state.textDeliveryFailureTranscript, "retained output")
     }
 

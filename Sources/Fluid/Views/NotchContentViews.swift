@@ -109,6 +109,7 @@ class NotchContentState: ObservableObject {
     @Published var isTextDeliveryFailureVisible: Bool = false
     @Published private(set) var textDeliveryFailureMessage: String = "Text could not be inserted"
     private(set) var textDeliveryFailureTranscript: String = ""
+    private(set) var textDeliveryFailure: TextDeliveryFailure?
     @Published var activeDictationShortcutSlot: SettingsStore.DictationShortcutSlot? = nil
     @Published var frozenDictationLabel: String?
     @Published var promptModeOverrideProfileName: String? = nil // Name shown in overlay when prompt mode hotkey is active
@@ -212,12 +213,14 @@ class NotchContentState: ObservableObject {
 
     func recordTextDeliveryFailure(_ failure: TextDeliveryFailure, transcript: String) {
         self.textDeliveryFailureTranscript = transcript
+        self.textDeliveryFailure = failure
         self.textDeliveryFailureMessage = failure.userFacingMessage ?? ""
         self.isTextDeliveryFailureVisible = failure.userFacingMessage != nil
     }
 
     func clearTextDeliveryFailure() {
         self.isTextDeliveryFailureVisible = false
+        self.textDeliveryFailure = nil
     }
 
     /// Update transcription and recompute cached lines

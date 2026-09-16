@@ -20,10 +20,10 @@ enum TextDeliveryFailure: String, Equatable {
             "Enable Accessibility to insert text"
         case .noEditableTarget:
             "No text field focused"
-        case .pasteNotLanded:
-            "Oops, text wasn't inserted"
-        case .emptyText, .clipboardSnapshotFailed, .clipboardWriteFailed,
+        case .pasteNotLanded, .clipboardSnapshotFailed, .clipboardWriteFailed,
              .pasteCommandFailed, .targetUnavailable, .targetRestoreFailed:
+            "Oops, text wasn't inserted"
+        case .emptyText:
             nil
         }
     }
@@ -31,11 +31,10 @@ enum TextDeliveryFailure: String, Equatable {
     /// Second line shown under the title in the overlay failure card.
     static func userFacingDetail(forMessage message: String) -> String? {
         switch message {
-        case TextDeliveryFailure.noEditableTarget.userFacingMessage,
-             TextDeliveryFailure.pasteNotLanded.userFacingMessage:
-            "Your transcript is saved. Copy it and paste it into a text field."
-        default:
+        case TextDeliveryFailure.accessibilityNotTrusted.userFacingMessage:
             nil
+        default:
+            "Your transcript is saved. Copy it and paste it into a text field."
         }
     }
 }

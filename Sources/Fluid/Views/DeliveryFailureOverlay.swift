@@ -9,17 +9,37 @@ import SwiftUI
 final class DeliveryFailureOverlayController {
     static let shared = DeliveryFailureOverlayController()
 
-    enum Kind {
+    enum Kind: Equatable {
         case noEditableTarget
         case pasteNotLanded
+        case accessibilityNotTrusted
+        case deliveryFailed
+
+        /// Every failure the user can act on maps to a card; only an empty
+        /// transcript has nothing to show.
+        init?(failure: TextDeliveryFailure) {
+            switch failure {
+            case .noEditableTarget: self = .noEditableTarget
+            case .pasteNotLanded: self = .pasteNotLanded
+            case .accessibilityNotTrusted: self = .accessibilityNotTrusted
+            case .clipboardSnapshotFailed, .clipboardWriteFailed, .pasteCommandFailed,
+                 .targetUnavailable, .targetRestoreFailed: self = .deliveryFailed
+            case .emptyText: return nil
+            }
+        }
 
         var title: String {
             switch self {
             case .noEditableTarget: "No text field focused"
-            case .pasteNotLanded: "Text wasn't inserted"
+            case .pasteNotLanded, .deliveryFailed: "Text wasn't inserted"
+            case .accessibilityNotTrusted: "Enable Accessibility to insert text"
             }
         }
+
+        var offersAccessibilitySettings: Bool { self == .accessibilityNotTrusted }
     }
+
+    static let accessibilitySettingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
 
     private static let displayDuration: TimeInterval = 10
     private var panel: NSPanel?
@@ -154,6 +174,7 @@ private struct DeliveryFailureOverlayView: View {
     @State private var didCopy = false
     @State private var isCloseHovered = false
     @State private var isCopyHovered = false
+    @State private var isSettingsHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -199,6 +220,19 @@ private struct DeliveryFailureOverlayView: View {
 
                 Spacer(minLength: 8)
 
+                if self.kind.offersAccessibilitySettings {
+                    Button(action: self.openAccessibilitySettings) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "gear")
+                                .font(.fluidSystem(size: 10, weight: .semibold))
+                            Text("Open Settings")
+                        }
+                    }
+                    .buttonStyle(TransientOverlaySettingsButtonStyle(isHovered: self.isSettingsHovered))
+                    .onHover { self.isSettingsHovered = $0 }
+                    .help("Open Accessibility settings")
+                }
+
                 Button(action: self.copy) {
                     HStack(spacing: 5) {
                         Image(systemName: self.didCopy ? "checkmark" : "doc.on.doc")
@@ -233,6 +267,12 @@ private struct DeliveryFailureOverlayView: View {
     private var transcriptPreview: String {
         let trimmed = self.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Nothing was captured" : "\u{201C}\(trimmed)\u{201D}"
+    }
+
+    private func openAccessibilitySettings() {
+        guard let url = DeliveryFailureOverlayController.accessibilitySettingsURL else { return }
+        NSWorkspace.shared.open(url)
+        self.onDismiss()
     }
 
     private func copy() {
