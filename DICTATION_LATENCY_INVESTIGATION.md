@@ -77,6 +77,69 @@ throttled to 30 Hz. Graph updates during recording: ~20 ms/s.
 | HIDE_COMMIT | 550-660 ms | 14-17 ms |
 | SHOW_COMMIT (start -> first frame committed) | n/a | 10-27 ms |
 
+### 7. Every CA commit blocks the main thread under WindowServer load (root, external)
+
+2 ms samples during silent recording: 50-95% of main-thread samples sit in
+`CA::Render::Message::send_message`, i.e. waiting for WindowServer to accept a
+commit. WindowServer runs at 42-60% CPU on this host with FluidVoice quit
+(macOS 27 beta, other apps). Any overlay frame committed while a stop is in
+flight delays the result hop back to the main actor by 90-190 ms, and the
+alpha 0 commit itself can wait 200-700 ms.
+
+A/B results (3 runs each, HIDE_COMMIT / mid-recording caSend fraction):
+
+| Variant | Effect |
+| --- | --- |
+| Material velvet / original / smokedGlass | no difference; blocking is per commit, not per material |
+| Waveform 30 Hz -> 10 Hz | fewer commits, but a single commit still blocks 80% of a second when the server is busy |
+| Transcription sounds off | no improvement (HIDE_COMMIT ~200 ms consistently) |
+| Explicit `CATransaction.flush()` after alpha 0 | regression: the flush itself blocked 300-550 ms. Reverted. |
+| Freeze waveform at stop begin (fcb54e49) | removes our own in-flight frames from the stop window |
+
+Warm stop with a quiet WindowServer: lock 54-77 ms, HIDE_COMMIT 13-18 ms,
+SHOW_COMMIT 8-17 ms, rapid restart accepted 120 ms after unlock. With a
+saturated WindowServer the same code shows HIDE_COMMIT 200-700 ms; nothing in
+our process is running then, the commit is queued at the server.
+
+### 8. Rapid restart (stop, start 150 ms later)
+
+Accepted every time after the fixes (no `shortcutRejected`). Show cost on a
+rapid restart was 136-250 ms (orderFront fence 40 ms + first-frame flush
+95 ms) versus 9-12 ms cold; the deferred mouse-events fence and the guarded
+state publishes reduce it, the remaining cost is the first-frame commit.
+
+## Status for the morning
+
+Committed on `B/overlay-smoked-glass` (all builds installed to /Applications):
+
+1. a1b9adfa feat(overlay): closing animation opt-in setting
+2. 974cad2b chore(diagnostics): stop path traces
+3. 094b8d0e perf(overlay): hide by alpha, no window transactions
+4. 238ff3f4 chore(hotkey): local debug toggle trigger
+5. 761f2c8c perf(asr): final transcription off the main actor
+6. ebcc71ab perf(overlay): commit hide before post-stop state work
+7. fea6d6c9 perf(menubar): stop redrawing the identical status icon
+8. 526c2aa2 perf(asr): Transcribing status delay 250 ms
+9. 6335acc4 perf(overlay): waveform level isolated and throttled
+10. 22270dcc perf(asr): cancel Transcribing status right after inference
+11. fcb54e49 perf(overlay): freeze waveform at stop, defer mouse fence
+
+Not done / open:
+
+- Real speech through the mic was not exercised by script (text-to-speech
+  through the speakers did not reach the input device). The text delivery
+  path (typing, history append, overlay observing TranscriptionHistoryStore)
+  was measured only on the older builds: typing 1.4-2 ms.
+- The overlay still observes SettingsStore, AppServices, ActiveAppMonitor and
+  TranscriptionHistoryStore as whole objects; any publish on those
+  re-evaluates the whole body (~3-4 ms) and commits a frame.
+- `FluidDebugRemoteToggleEnabled` is set in defaults on this machine so the
+  scripted trigger works. Remove with
+  `defaults delete com.FluidApp.app FluidDebugRemoteToggleEnabled`.
+- Diagnostics builds used `LOCAL_SIGNING_XCCONFIG` pointing at a scratch
+  xcconfig adding `FLUIDVOICE_DIAGNOSTICS`; the final installed build is a
+  plain Release build without it.
+
 ## Measurement caveats
 
 - `OverlayCloseRunLoopProbe` (`CLOSE_DETAIL runLoop occupiedMs`) over-reports on
