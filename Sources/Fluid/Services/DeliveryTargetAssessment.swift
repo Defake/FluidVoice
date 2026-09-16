@@ -22,16 +22,17 @@ enum DeliveryTargetAssessment: Equatable {
         }
     }
 
-    /// Roles that never accept typed text. Containers such as AXGroup and
-    /// AXWebArea are deliberately absent: web editors report those. Table
-    /// roles are absent too: a selected spreadsheet cell reports AXCell or
-    /// AXTable and does accept pasted text.
+    /// Roles that never accept typed text. Containers are deliberately absent:
+    /// AXGroup and AXWebArea are what web editors report, a selected spreadsheet
+    /// cell reports AXCell or AXTable, and apps that draw their own UI
+    /// (GPU terminals, remote desktops, VMs, games) report AXWindow, AXSheet or
+    /// AXApplication while still accepting Cmd+V.
     private static let nonEditableRoles: Set<String> = [
         "AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton",
         "AXMenuItem", "AXMenu", "AXMenuBar", "AXMenuBarItem",
         "AXStaticText", "AXImage", "AXLink", "AXDisclosureTriangle",
         "AXScrollBar", "AXSlider", "AXIncrementor", "AXTabGroup", "AXToolbar",
-        "AXSplitter", "AXWindow", "AXSheet", "AXDrawer", "AXApplication", "AXDockItem",
+        "AXSplitter", "AXDockItem",
     ]
 
     private static let editableRoles: Set<String> = [
@@ -56,12 +57,14 @@ enum DeliveryTargetAssessment: Equatable {
               let role = roleRef as? String
         else { return .unknown(reason: "role_unreadable") }
 
-        if self.editableRoles.contains(role) { return .editable(role: role) }
-
         var valueSettable = DarwinBoolean(false)
         let settableResult = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &valueSettable)
-        if settableResult == .success, valueSettable.boolValue { return .editable(role: role) }
+        return self.classify(role: role, valueSettable: settableResult == .success && valueSettable.boolValue)
+    }
 
+    /// Pure role decision, kept separate from the AX queries so it can be tested.
+    nonisolated static func classify(role: String, valueSettable: Bool) -> DeliveryTargetAssessment {
+        if self.editableRoles.contains(role) || valueSettable { return .editable(role: role) }
         guard self.nonEditableRoles.contains(role) else { return .unknown(reason: "role_\(role)") }
         return .notEditable(role: role)
     }
