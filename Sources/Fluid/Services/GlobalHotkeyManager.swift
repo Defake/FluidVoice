@@ -2269,7 +2269,7 @@ final class GlobalHotkeyManager: NSObject {
         return true
     }
 
-    private func triggerPasteLastTranscription(isAutorepeat: Bool) {
+    func triggerPasteLastTranscription(isAutorepeat: Bool) {
         Task { @MainActor [weak self] in
             guard let self = self else { return }
             // Holding the chord auto-repeats the key-down; act only on the initial press.

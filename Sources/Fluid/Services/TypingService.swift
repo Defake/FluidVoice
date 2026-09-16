@@ -524,6 +524,7 @@ final class TypingService {
             return result
         }
 
+        let verificationBefore = PasteVerifier.capture()
         let usesClipboard = mode == .reliablePaste ||
             self.ghosttyTargetPID(preferredTargetPID: preferredTargetPID) != nil
         let result: TextDeliveryResult
@@ -562,6 +563,9 @@ final class TypingService {
             toggleStopRequestedAt: toggleStopRequestedAt,
             completedAt: completedAt
         )
+        if result == .commandPosted, deliveryPath != .direct, let verificationBefore {
+            self.verifyPasteLanded(text, before: verificationBefore)
+        }
         // The caller starts correction tracking after completing delivery UI.
         return result
     }
@@ -683,6 +687,25 @@ final class TypingService {
         )
     }
 
+    /// Off-main read-back after a paste. Logs every verdict; only a certain
+    /// `notLanded` reaches the UI.
+    private func verifyPasteLanded(_ text: String, before: PasteVerifier.Snapshot) {
+        Task.detached(priority: .utility) {
+            let startedAt = ProcessInfo.processInfo.systemUptime
+            let verdict = await PasteVerifier.verify(before: before, pastedText: text)
+            let app = NSRunningApplication(processIdentifier: before.pid)?.bundleIdentifier ?? "pid\(before.pid)"
+            DebugLogger.shared.info(
+                "PASTE_VERIFY \(verdict.logDescription) app=\(app) before[\(before.summary)] " +
+                    "elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
+                source: "TypingService"
+            )
+            guard case .notLanded = verdict else { return }
+            await MainActor.run {
+                NotificationCenter.default.post(name: .fluidPasteNotLanded, object: nil, userInfo: ["transcript": text])
+            }
+        }
+    }
+
     private static func analyticsOutcome(for result: TextDeliveryResult) -> AnalyticsInsertionOutcome {
         switch result {
         case .commandPosted:
@@ -697,6 +720,7 @@ final class TypingService {
             case .targetUnavailable: .targetUnavailable
             case .targetRestoreFailed: .targetRestoreFailed
             case .noEditableTarget: .noEditableTarget
+            case .pasteNotLanded: .pasteNotLanded
             }
         }
     }

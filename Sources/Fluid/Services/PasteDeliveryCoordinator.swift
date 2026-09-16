@@ -12,6 +12,7 @@ enum TextDeliveryFailure: String, Equatable {
     case targetUnavailable = "target_unavailable"
     case targetRestoreFailed = "target_restore_failed"
     case noEditableTarget = "no_editable_target"
+    case pasteNotLanded = "paste_not_landed"
 
     var userFacingMessage: String? {
         switch self {
@@ -19,6 +20,8 @@ enum TextDeliveryFailure: String, Equatable {
             "Enable Accessibility to insert text"
         case .noEditableTarget:
             "Not in a text field"
+        case .pasteNotLanded:
+            "Text was not inserted"
         case .emptyText, .clipboardSnapshotFailed, .clipboardWriteFailed,
              .pasteCommandFailed, .targetUnavailable, .targetRestoreFailed:
             nil

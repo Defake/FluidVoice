@@ -103,6 +103,11 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             }
             .store(in: &self.cancellables)
 
+        NotificationCenter.default.addObserver(forName: .fluidPasteNotLanded, object: nil, queue: .main) { [weak self] note in
+            guard let transcript = note.userInfo?["transcript"] as? String else { return }
+            Task { @MainActor [weak self] in self?.showPasteNotLandedFailure(transcript: transcript) }
+        }
+
         // Subscribe to recording state changes
         asrService.$isRunning
             .receive(on: DispatchQueue.main)
@@ -289,6 +294,15 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             self.pendingHideOperation = hideItem
             DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(30), execute: hideItem)
         }
+    }
+
+    /// A verified non-landing paste re-presents the overlay in its failure
+    /// state so the transcript can be copied.
+    func showPasteNotLandedFailure(transcript: String) {
+        guard !self.overlayVisible, !self.isProcessingActive, self.asrService?.isRunning != true else { return }
+        self.showRecordingOverlayImmediately()
+        NotchContentState.shared.recordTextDeliveryFailure(.pasteNotLanded, transcript: transcript)
+        self.finishProcessingKeepingOverlayVisible()
     }
 
     func showRecordingOverlayImmediately() {

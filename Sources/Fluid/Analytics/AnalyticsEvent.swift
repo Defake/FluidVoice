@@ -87,6 +87,7 @@ enum AnalyticsInsertionOutcome: String {
     case targetUnavailable = "target_unavailable"
     case targetRestoreFailed = "target_restore_failed"
     case noEditableTarget = "no_editable_target"
+    case pasteNotLanded = "paste_not_landed"
 }
 
 struct AnalyticsModelDescriptor: Equatable {
