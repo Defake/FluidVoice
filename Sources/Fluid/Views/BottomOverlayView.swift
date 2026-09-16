@@ -149,7 +149,7 @@ final class BottomOverlayWindowController {
         }
         self.window?.alphaValue = 1
         CATransaction.setCompletionBlock {
-            DebugLogger.shared.info(
+            DebugLogger.shared.debug(
                 "SHOW_COMMIT elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
                 source: "StopTiming"
             )
@@ -184,7 +184,7 @@ final class BottomOverlayWindowController {
         self.activeHideGeneration = currentGeneration
         let visualStartedAt = ProcessInfo.processInfo.systemUptime
         self.beginDismissalVisualIfPresented(generation: currentGeneration)
-        DebugLogger.shared.info("HIDE_TRACE phase=dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
+        DebugLogger.shared.debug("HIDE_TRACE phase=dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
         Task { [weak self] in
             guard let self else { return }
             let outcome = await self.performHideAndWait(generation: currentGeneration)
@@ -209,7 +209,7 @@ final class BottomOverlayWindowController {
             MainActor.assumeIsolated {
                 guard let self, self.presentationGeneration == generation else { return }
                 self.window?.alphaValue = 0
-                DebugLogger.shared.info(
+                DebugLogger.shared.debug(
                     "EXIT_DONE elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
                     source: "StopTiming"
                 )
@@ -276,7 +276,7 @@ final class BottomOverlayWindowController {
         // ignoresMouseEvents fence can never delay the visual removal.
         CATransaction.setCompletionBlock { [weak self] in
             MainActor.assumeIsolated {
-                DebugLogger.shared.info(
+                DebugLogger.shared.debug(
                     "HIDE_COMMIT elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
                     source: "StopTiming"
                 )
@@ -288,7 +288,7 @@ final class BottomOverlayWindowController {
                 self.scheduleIgnoreMouseEventsAfterHide()
             }
         }
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "HIDE_NOW hideUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000)) " +
                 "windowVisible=\(self.window?.isVisible == true)",
             source: "StopTiming"
@@ -309,7 +309,7 @@ final class BottomOverlayWindowController {
             guard let self, self.window?.alphaValue == 0 else { return }
             let startedAt = ProcessInfo.processInfo.systemUptime
             self.window?.ignoresMouseEvents = true
-            DebugLogger.shared.info(
+            DebugLogger.shared.debug(
                 "HIDE_NOW deferredIgnoreMouseUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))",
                 source: "StopTiming"
             )
@@ -355,7 +355,7 @@ final class BottomOverlayWindowController {
         self.activeHideGeneration = currentGeneration
         let visualStartedAt = ProcessInfo.processInfo.systemUptime
         self.beginDismissalVisualIfPresented(generation: currentGeneration)
-        DebugLogger.shared.info("HIDE_TRACE phase=awaited_dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
+        DebugLogger.shared.debug("HIDE_TRACE phase=awaited_dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
         let outcome = await self.performHideAndWait(generation: currentGeneration)
         self.completeHideOperation(generation: currentGeneration, outcome: outcome)
         return outcome
@@ -385,7 +385,7 @@ final class BottomOverlayWindowController {
         var previousTraceTime = startedAt
         func traceHide(_ phase: String) {
             let now = ProcessInfo.processInfo.systemUptime
-            DebugLogger.shared.info("HIDE_TRACE phase=\(phase) deltaUs=\(Int((now - previousTraceTime) * 1_000_000)) totalUs=\(Int((now - startedAt) * 1_000_000))", source: "StopTiming")
+            DebugLogger.shared.debug("HIDE_TRACE phase=\(phase) deltaUs=\(Int((now - previousTraceTime) * 1_000_000)) totalUs=\(Int((now - startedAt) * 1_000_000))", source: "StopTiming")
             previousTraceTime = now
         }
         Self.overlayBench("bottom_hide_start windowExists=\(self.window != nil)")
@@ -761,7 +761,7 @@ final class BottomOverlayWindowController {
         )
         let originStartedAt = ProcessInfo.processInfo.systemUptime
         window.setFrameOrigin(edge)
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "HIDE_TRACE phase=parking_detail accessibilityUs=\(Int((accessibilityClearedAt - parkingStartedAt) * 1_000_000)) " +
                 "geometryUs=\(Int((originStartedAt - accessibilityClearedAt) * 1_000_000)) " +
                 "setOriginUs=\(Int((ProcessInfo.processInfo.systemUptime - originStartedAt) * 1_000_000))",

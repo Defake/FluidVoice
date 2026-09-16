@@ -18,9 +18,10 @@ struct OverlayCloseTrace {
     }
 
     mutating func finish() {
+        guard DebugLogger.diagnosticsEnabled else { return }
         let total = (ProcessInfo.processInfo.systemUptime - self.startedAt) * 1000
         let fields = self.checkpoints.map { "\($0.0)Ms=\(String(format: "%.3f", $0.1))" }.joined(separator: " ")
-        DebugLogger.shared.info("CLOSE_DETAIL scope=\(self.name) uptime=\(self.startedAt) totalMs=\(String(format: "%.3f", total)) \(fields)", source: "StopTiming")
+        DebugLogger.shared.debug("CLOSE_DETAIL scope=\(self.name) uptime=\(self.startedAt) totalMs=\(String(format: "%.3f", total)) \(fields)", source: "StopTiming")
     }
 }
 
@@ -31,13 +32,13 @@ enum OverlayCloseRunLoopProbe {
     private static var observer: CFRunLoopObserver?
 
     static func begin() {
-        guard self.observer == nil else { return }
+        guard DebugLogger.diagnosticsEnabled, self.observer == nil else { return }
         let state = ProbeState()
         guard let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.allActivities.rawValue, true, 0, { _, activity in
             let now = ProcessInfo.processInfo.systemUptime
             let elapsed = (now - state.previousAt) * 1000
             if state.previousPhase != CFRunLoopActivity.beforeWaiting.rawValue, elapsed > 8 {
-                DebugLogger.shared.info("CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)", source: "StopTiming")
+                DebugLogger.shared.debug("CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)", source: "StopTiming")
             }
             state.previousAt = now
             state.previousPhase = activity.rawValue

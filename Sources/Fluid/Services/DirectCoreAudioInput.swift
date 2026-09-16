@@ -503,7 +503,7 @@ private final nonisolated class DirectCoreAudioInput: DirectCoreAudioInputContro
         let hardwareStoppedAt = ProcessInfo.processInfo.systemUptime
         fv_core_audio_capture_wake(capture)
         self.workerGroup.wait()
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "STOP_TRACE backend=direct hardwareStopMs=\(Int((hardwareStoppedAt - stopStartedAt) * 1000)) workerDrainMs=\(Int((ProcessInfo.processInfo.systemUptime - hardwareStoppedAt) * 1000))",
             source: "StopTiming"
         )
@@ -1167,7 +1167,7 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                     level: .info
                 )
                 trace.mark("postStopState")
-                DebugLogger.shared.info("CLOSE_DETAIL audioContinuationResume uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
+                DebugLogger.shared.debug("CLOSE_DETAIL audioContinuationResume uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
                 return StopReport(
                     status: status,
                     droppedPackets: droppedPackets,

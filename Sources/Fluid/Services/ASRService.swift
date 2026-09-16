@@ -1511,7 +1511,7 @@ final class ASRService: ObservableObject {
                 reason: reason,
                 recoveringRoute: self.isRecoveringAudioRoute
             )
-            DebugLogger.shared.info("CLOSE_DETAIL audioCallerResumed uptime=\(ProcessInfo.processInfo.systemUptime) awaitMs=\((ProcessInfo.processInfo.systemUptime - captureAwaitStartedAt) * 1000)", source: "StopTiming")
+            DebugLogger.shared.debug("CLOSE_DETAIL audioCallerResumed uptime=\(ProcessInfo.processInfo.systemUptime) awaitMs=\((ProcessInfo.processInfo.systemUptime - captureAwaitStartedAt) * 1000)", source: "StopTiming")
             if report.status != noErr {
                 DebugLogger.shared.warning(
                     "Direct Core Audio stop returned OSStatus \(report.status)",
@@ -1531,7 +1531,7 @@ final class ASRService: ObservableObject {
             if let engine = self.engineStorage as? AVAudioEngine, engine.isRunning {
                 engine.stop()
             }
-            DebugLogger.shared.info(
+            DebugLogger.shared.debug(
                 "STOP_TRACE backend=audioEngine removeTapMs=\(Int((tapStopFinishedAt - tapStopStartedAt) * 1000)) engineStopMs=\(Int((ProcessInfo.processInfo.systemUptime - tapStopFinishedAt) * 1000))",
                 source: "StopTiming"
             )
@@ -2841,7 +2841,7 @@ final class ASRService: ObservableObject {
         var tracePreviousAt = traceStartedAt
         func traceStop(_ phase: String) {
             let now = ProcessInfo.processInfo.systemUptime
-            DebugLogger.shared.info(
+            DebugLogger.shared.debug(
                 "STOP_TRACE phase=\(phase) deltaMs=\(Int((now - tracePreviousAt) * 1000)) totalMs=\(Int((now - traceStartedAt) * 1000))",
                 source: "StopTiming"
             )

@@ -2348,7 +2348,7 @@ final class GlobalHotkeyManager: NSObject {
             return false
         }
         guard !self.isProcessingStop else {
-            DebugLogger.shared.info("CLOSE_DETAIL shortcutRejected stopLocked=true uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
+            DebugLogger.shared.debug("CLOSE_DETAIL shortcutRejected stopLocked=true uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
             return false
         }
         guard !self.asrService.isDictionaryTrainingCaptureActive else {
@@ -2542,6 +2542,6 @@ private extension GlobalHotkeyManager {
 
     func traceStopUnlocked(since startedAt: TimeInterval) {
         self.isProcessingStop = false
-        DebugLogger.shared.info("CLOSE_DETAIL shortcutUnlocked uptime=\(ProcessInfo.processInfo.systemUptime) heldMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)", source: "StopTiming")
+        DebugLogger.shared.debug("CLOSE_DETAIL shortcutUnlocked uptime=\(ProcessInfo.processInfo.systemUptime) heldMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)", source: "StopTiming")
     }
 }

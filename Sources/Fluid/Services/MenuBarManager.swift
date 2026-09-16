@@ -133,7 +133,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
                 if isRunning {
                     self.hasDeferredStoppedRecordingState = false
                     OverlayAudioLevelState.shared.isLive = true
-                    DebugLogger.shared.info("WAVEFORM_LIVE", source: "StopTiming")
+                    DebugLogger.shared.debug("WAVEFORM_LIVE", source: "StopTiming")
                 }
                 self.isRecording = isRunning
                 self.updateMenuBarIcon()
@@ -497,18 +497,18 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             MainActor.assumeIsolated {
                 let refreshStartedAt = ProcessInfo.processInfo.systemUptime
                 self?.flushDeferredStoppedRecordingState()
-                DebugLogger.shared.info(
+                DebugLogger.shared.debug(
                     "HIDE_NOW postCommitMenuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - refreshStartedAt) * 1_000_000))",
                     source: "StopTiming"
                 )
             }
         }
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "HIDE_NOW windowHideUs=\(Int((windowHideReturnedAt - startedAt) * 1_000_000)) " +
                 "menuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - windowHideReturnedAt) * 1_000_000))",
             source: "StopTiming"
         )
-        DebugLogger.shared.info("STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))", source: "StopTiming")
+        DebugLogger.shared.debug("STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))", source: "StopTiming")
         self.overlayBench(
             "finish_hide_dispatched elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )
@@ -523,15 +523,15 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.prepareForProcessingCompletion()
-        DebugLogger.shared.info("HIDE_TRACE phase=completion_prepared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
+        DebugLogger.shared.debug("HIDE_TRACE phase=completion_prepared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
 
         NotchOverlayManager.shared.setProcessing(false)
-        DebugLogger.shared.info("HIDE_TRACE phase=processing_cleared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
+        DebugLogger.shared.debug("HIDE_TRACE phase=processing_cleared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
         self.overlayBench("finish_hide_request mode=awaited")
         let hideOutcome = await NotchOverlayManager.shared.hideAndWait()
         let hiddenAt = ProcessInfo.processInfo.systemUptime
         self.flushDeferredStoppedRecordingState()
-        DebugLogger.shared.info(
+        DebugLogger.shared.debug(
             "STOP_TRACE phase=overlay_hidden hideMs=\(Int((hiddenAt - startedAt) * 1000)) menuRefreshMs=\(Int((ProcessInfo.processInfo.systemUptime - hiddenAt) * 1000))",
             source: "StopTiming"
         )

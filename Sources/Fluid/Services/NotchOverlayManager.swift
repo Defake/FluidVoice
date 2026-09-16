@@ -417,12 +417,12 @@ final class NotchOverlayManager {
 
         // Stop monitoring active app changes
         ActiveAppMonitor.shared.stopMonitoring()
-        DebugLogger.shared.info("HIDE_TRACE phase=monitor_stopped elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
+        DebugLogger.shared.debug("HIDE_TRACE phase=monitor_stopped elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
 
         // Hide bottom overlay if visible
         if self.isBottomOverlayVisible {
             let bottomOutcome = await BottomOverlayWindowController.shared.hideAndWait()
-            DebugLogger.shared.info("HIDE_TRACE phase=bottom_returned elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
+            DebugLogger.shared.debug("HIDE_TRACE phase=bottom_returned elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
             guard bottomOutcome == .hidden else {
                 Self.overlayBench("hide_return reason=bottom_superseded")
                 return .superseded
