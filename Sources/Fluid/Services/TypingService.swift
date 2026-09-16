@@ -816,15 +816,35 @@ final class TypingService {
         return false
     }
 
+    private static let physicalModifierKeys: [(name: String, code: CGKeyCode)] = [
+        ("cmd", CGKeyCode(kVK_Command)), ("rcmd", CGKeyCode(kVK_RightCommand)),
+        ("shift", CGKeyCode(kVK_Shift)), ("rshift", CGKeyCode(kVK_RightShift)),
+        ("opt", CGKeyCode(kVK_Option)), ("ropt", CGKeyCode(kVK_RightOption)),
+        ("ctrl", CGKeyCode(kVK_Control)), ("rctrl", CGKeyCode(kVK_RightControl)),
+        ("fn", CGKeyCode(kVK_Function)),
+    ]
+
+    private static func heldPhysicalModifiers() -> [String] {
+        self.physicalModifierKeys
+            .filter { CGEventSource.keyState(.hidSystemState, key: $0.code) }
+            .map(\.name)
+    }
+
+    /// Reads the modifier keys themselves. The session flag state is not
+    /// reliable here: the synthesized Cmd+V paste can leave Command reported
+    /// as held until the next real event, which used to time this wait out.
     private func waitForPhysicalModifiersToRelease(timeout: TimeInterval) async -> Bool {
-        let relevant: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift, .maskSecondaryFn]
         let startedAt = ProcessInfo.processInfo.systemUptime
         while ProcessInfo.processInfo.systemUptime - startedAt < timeout {
-            if CGEventSource.flagsState(.combinedSessionState).isDisjoint(with: relevant) {
+            if Self.heldPhysicalModifiers().isEmpty {
                 return true
             }
             try? await Task.sleep(nanoseconds: 15_000_000)
         }
+        DebugLogger.shared.warning(
+            "Post-insertion send suppressed: modifiers still held after \(Int(timeout * 1000))ms held=\(Self.heldPhysicalModifiers()) sessionFlags=\(CGEventSource.flagsState(.combinedSessionState).rawValue)",
+            source: "TypingService"
+        )
         return false
     }
 

@@ -551,33 +551,41 @@ final class SystemPasteboardManager: PasteboardManaging {
 @MainActor
 final class SystemPasteCommandPoster: PasteCommandPosting {
     func postGlobalPasteCommand() async -> Bool {
-        guard AXIsProcessTrusted() else { return false }
-
-        let pasteKeyCode = TypingService.pasteVirtualKeyCode
-        let source = CGEventSource(stateID: .combinedSessionState)
-        guard let vDown = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: pasteKeyCode,
-            keyDown: true
-        ), let vUp = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: pasteKeyCode,
-            keyDown: false
-        ) else {
-            return false
-        }
-
-        vDown.flags = .maskCommand
-        vUp.flags = .maskCommand
-        // Mark the paste as ours so the hotkey tap passes it through untouched.
-        vDown.setIntegerValueField(.eventSourceUserData, value: TypingService.synthesizedEventUserData)
-        vUp.setIntegerValueField(.eventSourceUserData, value: TypingService.synthesizedEventUserData)
+        guard AXIsProcessTrusted(), let events = Self.makePasteEvents() else { return false }
 
         // The coordinator verifies pasteboard ownership before reaching this point,
         // so the temporary item is ready to consume without an additional delay.
-        vDown.post(tap: .cghidEventTap)
-        vUp.post(tap: .cghidEventTap)
+        for event in events {
+            event.post(tap: .cghidEventTap)
+        }
         return true
+    }
+
+    /// Command down, V down, V up, Command up. Pressing and releasing Command
+    /// explicitly matters: setting the flag on V alone leaves the HID state
+    /// reporting Command as held, which later blocks the send key.
+    nonisolated static func makePasteEvents() -> [CGEvent]? {
+        let pasteKeyCode = TypingService.pasteVirtualKeyCode
+        let commandKeyCode = CGKeyCode(kVK_Command)
+        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: commandKeyCode, keyDown: true),
+              let vDown = CGEvent(keyboardEventSource: source, virtualKey: pasteKeyCode, keyDown: true),
+              let vUp = CGEvent(keyboardEventSource: source, virtualKey: pasteKeyCode, keyDown: false),
+              let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: commandKeyCode, keyDown: false)
+        else {
+            return nil
+        }
+
+        cmdDown.flags = .maskCommand
+        vDown.flags = .maskCommand
+        vUp.flags = .maskCommand
+        cmdUp.flags = []
+        // Mark the paste as ours so the hotkey tap passes it through untouched.
+        let events = [cmdDown, vDown, vUp, cmdUp]
+        for event in events {
+            event.setIntegerValueField(.eventSourceUserData, value: TypingService.synthesizedEventUserData)
+        }
+        return events
     }
 }
 

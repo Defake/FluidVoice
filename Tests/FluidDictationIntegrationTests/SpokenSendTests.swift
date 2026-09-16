@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import CoreGraphics
 @testable import FluidVoice_Debug
 import XCTest
@@ -334,6 +335,30 @@ final class SpokenSendTests: XCTestCase {
             SpokenSendParser.parseArmed("it", phrase: "send it", enabled: true, wasArmed: true),
             SpokenSendParseResult(text: "it", shouldSend: false)
         )
+    }
+
+    // MARK: - Adversarial: paste key sequence
+
+    func testPasteSequencePressesAndReleasesCommandExplicitly() throws {
+        let events = try XCTUnwrap(SystemPasteCommandPoster.makePasteEvents())
+        XCTAssertEqual(events.count, 4)
+        let keyCodes = events.map { CGKeyCode($0.getIntegerValueField(.keyboardEventKeycode)) }
+        XCTAssertEqual(keyCodes, [
+            CGKeyCode(kVK_Command), TypingService.pasteVirtualKeyCode, TypingService.pasteVirtualKeyCode, CGKeyCode(kVK_Command),
+        ])
+        // Modifier presses are flagsChanged events, exactly like a physical Command key.
+        XCTAssertEqual(events.map(\.type), [.flagsChanged, .keyDown, .keyUp, .flagsChanged])
+        XCTAssertTrue(events[0].flags.contains(.maskCommand))
+        XCTAssertTrue(events[1].flags.contains(.maskCommand))
+        XCTAssertTrue(events[2].flags.contains(.maskCommand))
+        XCTAssertFalse(events[3].flags.contains(.maskCommand), "the final event must release Command")
+    }
+
+    func testPasteSequenceIsInvisibleToTheHotkeyTap() throws {
+        let events = try XCTUnwrap(SystemPasteCommandPoster.makePasteEvents())
+        for event in events {
+            XCTAssertTrue(GlobalHotkeyManager.isSynthesizedTypingEvent(event))
+        }
     }
 
     func testImmediateStopCompletionRequiresTerminalPhraseAndSilence() {
