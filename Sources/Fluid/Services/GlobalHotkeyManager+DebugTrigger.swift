@@ -27,6 +27,17 @@ extension GlobalHotkeyManager {
                 self?.triggerPasteLastTranscription(isAutorepeat: false)
             }
         }
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.FluidApp.debug.showPasteFailure"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            NotificationCenter.default.post(
+                name: .fluidPasteNotLanded,
+                object: nil,
+                userInfo: ["transcript": "Sample transcript for the failure card"]
+            )
+        }
         DebugLogger.shared.info("Debug toggle trigger enabled", source: "GlobalHotkeyManager")
     }
 }

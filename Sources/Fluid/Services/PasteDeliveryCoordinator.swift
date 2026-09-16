@@ -21,7 +21,7 @@ enum TextDeliveryFailure: String, Equatable {
         case .noEditableTarget:
             "No text field focused"
         case .pasteNotLanded:
-            "Oops, the text didn't get inserted"
+            "Oops, text wasn't inserted"
         case .emptyText, .clipboardSnapshotFailed, .clipboardWriteFailed,
              .pasteCommandFailed, .targetUnavailable, .targetRestoreFailed:
             nil
