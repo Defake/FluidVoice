@@ -308,6 +308,32 @@ final class LLMClientRequestBodyTests: XCTestCase {
         }
     }
 
+    func testOverlayPickMadeInAnotherAppStillAppliesToTheStartingField() {
+        self.withPromptSettingsRestored {
+            let settings = SettingsStore.shared
+            self.resetPromptSettings(settings)
+            let session = DictationAppSession.shared
+            let previousApp = session.appID
+            defer { session.activate(previousApp ?? "test.finished") }
+            let profile = SettingsStore.DictationPromptProfile(name: "Casual", prompt: "Keep it casual.")
+            settings.dictationPromptProfiles = [profile]
+            // Recording started in Notes; the user switched to Slack and picked
+            // Casual there. Return-to-starting-field delivers into Notes.
+            session.activate("test.slack")
+            session.select(.profile(profile.id), slot: .primary, appID: "test.slack")
+            XCTAssertEqual(DictationStopSnapshot.promptResolutionAppID(slot: .primary, targetBundleID: "test.notes"), "test.slack")
+            let target = TypingService.RecordingTargetContext(id: UUID(), pid: 7, bundleIdentifier: "test.notes", window: nil, element: nil)
+            let info = (name: "Notes", bundleId: "test.notes", windowTitle: "")
+            let snapshot = DictationStopSnapshot.capture(target: target, appInfo: info, slot: .primary, precedingText: "")
+            XCTAssertEqual(snapshot.systemPrompt, "Keep it casual.")
+            XCTAssertEqual(snapshot.appInfo.bundleId, "test.notes")
+            // Without a pick, the delivery target's own rules apply.
+            session.select(.off, slot: .primary, appID: "test.slack")
+            session.activate("test.other")
+            XCTAssertEqual(DictationStopSnapshot.promptResolutionAppID(slot: .primary, targetBundleID: "test.notes"), "test.notes")
+        }
+    }
+
     func testStopSnapshotDefersWindowTitleAndPrecedingText() {
         let target = TypingService.RecordingTargetContext(id: UUID(), pid: 321, bundleIdentifier: "test.defer", window: nil, element: nil)
         let info = (name: "Defer app", bundleId: "test.defer", windowTitle: "")

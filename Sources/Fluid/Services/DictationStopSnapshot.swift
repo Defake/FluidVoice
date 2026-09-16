@@ -34,6 +34,18 @@ struct DictationStopSnapshot {
         returnToStartingField || ownOverlayFocused ? original : current
     }
 
+    /// A prompt picked in the overlay during this dictation is stored under
+    /// the app that was frontmost at the time. It must win even when the text
+    /// is delivered to the field the recording started in.
+    @MainActor
+    static func promptResolutionAppID(slot: SettingsStore.DictationShortcutSlot, targetBundleID: String) -> String {
+        let session = DictationAppSession.shared
+        guard let visitedAppID = session.appID, session.choice(for: slot, appID: visitedAppID) != nil else {
+            return targetBundleID
+        }
+        return visitedAppID
+    }
+
     @MainActor
     static func capture(
         target: TypingService.RecordingTargetContext?,
@@ -43,14 +55,15 @@ struct DictationStopSnapshot {
         readsContextFromFocusedField: Bool = false
     ) -> Self {
         let settings = SettingsStore.shared
-        let customPrompt = settings.resolvedDictationPromptProfile(for: slot, appBundleID: appInfo.bundleId)
+        let promptAppID = Self.promptResolutionAppID(slot: slot, targetBundleID: appInfo.bundleId)
+        let customPrompt = settings.resolvedDictationPromptProfile(for: slot, appBundleID: promptAppID)
             .flatMap { settings.shortcutOverrideSystemPrompt(for: $0) }
         return Self(
             target: target,
             appInfo: appInfo,
-            route: DictationProviderRoute.resolve(settings: settings, dictationSlot: slot, appBundleID: appInfo.bundleId),
-            usesAI: target != nil && DictationAIPostProcessingGate.isConfigured(for: slot, appBundleID: appInfo.bundleId),
-            systemPrompt: customPrompt ?? settings.effectiveDictationSystemPrompt(for: slot, appBundleID: appInfo.bundleId),
+            route: DictationProviderRoute.resolve(settings: settings, dictationSlot: slot, appBundleID: promptAppID),
+            usesAI: target != nil && DictationAIPostProcessingGate.isConfigured(for: slot, appBundleID: promptAppID),
+            systemPrompt: customPrompt ?? settings.effectiveDictationSystemPrompt(for: slot, appBundleID: promptAppID),
             hasCustomPrompt: customPrompt != nil,
             precedingText: precedingText,
             readsContextFromFocusedField: readsContextFromFocusedField
