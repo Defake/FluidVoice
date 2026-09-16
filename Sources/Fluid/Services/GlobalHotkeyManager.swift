@@ -2358,7 +2358,7 @@ final class GlobalHotkeyManager: NSObject {
         return true
     }
 
-    private func toggleRecording() {
+    func toggleRecording() {
         let toggleStopRequestedAt = ProcessInfo.processInfo.systemUptime
         if self.asrService.isRunningOrStarting {
             self.logStopInput(requestedAt: toggleStopRequestedAt, route: "toggle")
