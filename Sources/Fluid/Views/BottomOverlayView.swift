@@ -3320,45 +3320,17 @@ struct BottomOverlayView: View {
 
     private var textDeliveryFailureView: some View {
         let message = self.contentState.textDeliveryFailureMessage
-        let detail = TextDeliveryFailure.userFacingDetail(forMessage: message)
-        return HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "info.circle.fill")
-                .font(.fluidSystem(size: self.layout.transFontSize + 2, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(message)
-                    .font(.fluidSystem(size: self.layout.transFontSize, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if let detail {
-                    Text(detail)
-                        .font(.fluidSystem(size: max(self.layout.transFontSize - 2, 10), weight: .regular))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            self.failureIconButton(systemName: "doc.on.doc", help: "Copy transcript") {
-                _ = ClipboardService.copyToClipboard(self.contentState.textDeliveryFailureTranscript)
-            }
-            self.failureIconButton(systemName: "arrow.down.doc", help: "Paste last transcript") {
-                let transcript = self.contentState.textDeliveryFailureTranscript
-                self.contentState.clearTextDeliveryFailure()
-                self.contentState.onRetryTextDeliveryRequested?(transcript)
-            }
-            self.failureIconButton(systemName: "xmark", help: "Dismiss") {
-                self.contentState.clearTextDeliveryFailure()
-                NotchOverlayManager.shared.hide()
-            }
+        return DeliveryFailureCard(
+            title: message,
+            detail: TextDeliveryFailure.userFacingDetail(forMessage: message),
+            transcript: self.contentState.textDeliveryFailureTranscript,
+            fontSize: self.layout.transFontSize,
+            compact: self.layout.usesFixedCanvas,
+            maxWidth: self.previewMaxWidth
+        ) {
+            self.contentState.clearTextDeliveryFailure()
+            NotchOverlayManager.shared.hide()
         }
-        .frame(maxWidth: self.previewMaxWidth, alignment: .leading)
     }
 
     private func scrollablePreviewText(_ previewText: String) -> some View {
