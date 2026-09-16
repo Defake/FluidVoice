@@ -19,7 +19,7 @@ struct OverlayAppearanceEditor: View {
                         .font(.fluidSystem(size: 26, weight: .bold))
                     Text("A little personality for every thought.")
                         .font(.fluidSystem(size: 13))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(self.theme.palette.secondaryText)
                 }
                 Spacer()
                 Button {
@@ -61,7 +61,7 @@ struct OverlayAppearanceEditor: View {
                     } label: {
                         VStack(spacing: 8) {
                             Image(systemName: material.symbol)
-                                .font(.system(size: 18, weight: .medium))
+                                .font(.fluidSystem(size: 18, weight: .medium))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 48)
@@ -76,7 +76,7 @@ struct OverlayAppearanceEditor: View {
                                 )
                             HStack(spacing: 4) {
                                 Text(material.displayName)
-                                    .font(.caption)
+                                    .font(self.theme.typography.caption)
                                     .multilineTextAlignment(.center)
                                 if self.settings.overlayMaterial == material {
                                     Image(systemName: "checkmark.circle.fill")
@@ -103,7 +103,7 @@ struct OverlayAppearanceEditor: View {
 
             Text(self.settings.overlayMaterial.detail)
                 .font(self.theme.typography.bodySmall)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(self.theme.palette.secondaryText)
 
             if self.isGlass {
                 self.knob(
@@ -132,7 +132,7 @@ struct OverlayAppearanceEditor: View {
                                 .overlay {
                                     if self.settings.overlayTint == tint {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 11, weight: .bold))
+                                            .font(.fluidSystem(size: 11, weight: .bold))
                                             .foregroundStyle(.white)
                                     }
                                 }
@@ -157,7 +157,7 @@ struct OverlayAppearanceEditor: View {
             }
             if self.reduceTransparency {
                 Text("Reduce Transparency is on in macOS. Glass uses a solid finish.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(self.theme.typography.caption).foregroundStyle(self.theme.palette.secondaryText)
             }
         }
     }
@@ -193,7 +193,7 @@ struct OverlayAppearanceEditor: View {
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.fluidSystem(size: 12, weight: .semibold))
                     .foregroundStyle(selected ? (value == 1 ? Color.orange : Color.indigo) : self.theme.palette.secondaryText)
                 Text(title)
                     .font(.fluidSystem(size: 12, weight: .semibold))
@@ -221,12 +221,12 @@ struct OverlayAppearanceEditor: View {
                 Text(title).font(self.theme.typography.bodySmall)
                 Spacer()
                 Text("\(Int((value.wrappedValue * 100).rounded()))%")
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .font(self.theme.typography.caption.monospacedDigit()).foregroundStyle(self.theme.palette.secondaryText)
             }
             HStack {
-                Text(low).font(.caption).foregroundStyle(.secondary).frame(width: 48, alignment: .leading)
+                Text(low).font(self.theme.typography.caption).foregroundStyle(self.theme.palette.secondaryText).frame(width: 48, alignment: .leading)
                 Slider(value: value, in: range, step: 0.05).accessibilityLabel(title)
-                Text(high).font(.caption).foregroundStyle(.secondary).frame(width: 48, alignment: .trailing)
+                Text(high).font(self.theme.typography.caption).foregroundStyle(self.theme.palette.secondaryText).frame(width: 48, alignment: .trailing)
             }
         }
     }
@@ -273,7 +273,7 @@ private struct OverlayAppearanceSample: View {
                         .font(.fluidSystem(size: self.layout.modeFontSize, weight: .semibold))
                 }
                 if self.layout.showsTopControls {
-                    Image(systemName: "chevron.down").font(.system(size: 9))
+                    Image(systemName: "chevron.down").font(.fluidSystem(size: 9))
                     Image(systemName: "ellipsis").padding(.leading, 10)
                 }
             }
