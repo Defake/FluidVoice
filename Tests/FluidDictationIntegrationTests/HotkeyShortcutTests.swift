@@ -3,9 +3,57 @@ import Combine
 import CoreAudio
 @testable import FluidVoice_Debug
 import Foundation
+import SwiftUI
 import XCTest
 
 final class HotkeyShortcutTests: XCTestCase {
+    @MainActor
+    func testOverlayAppearanceRejectsNonfiniteTransparency() {
+        let defaults = UserDefaults.standard
+        let key = "OverlayGlassOpacity"
+        let previous = defaults.object(forKey: key)
+        defer {
+            if let previous { defaults.set(previous, forKey: key) }
+            else { defaults.removeObject(forKey: key) }
+        }
+        for invalid in [Double.nan, .infinity, -.infinity] {
+            SettingsStore.shared.overlayGlassOpacity = invalid
+            XCTAssertEqual(SettingsStore.shared.overlayGlassOpacity, SettingsStore.defaultOverlayGlassOpacity)
+        }
+        SettingsStore.shared.overlayGlassOpacity = -1
+        XCTAssertEqual(SettingsStore.shared.overlayGlassOpacity, 0.25)
+        SettingsStore.shared.overlayGlassOpacity = 2
+        XCTAssertEqual(SettingsStore.shared.overlayGlassOpacity, 1)
+    }
+
+    @MainActor
+    func testOverlayAppearanceFitsNarrowSettingsColumn() {
+        let defaults = UserDefaults.standard
+        let keys = ["OverlaySize", "OverlayMaterial"]
+        let previous = keys.map { defaults.object(forKey: $0) }
+        defer {
+            for (key, value) in zip(keys, previous) {
+                if let value { defaults.set(value, forKey: key) }
+                else { defaults.removeObject(forKey: key) }
+            }
+        }
+        // 800-point minimum window minus sidebar, settings insets, and card padding.
+        for width: CGFloat in [420, 520, 900] {
+            for scheme in [ColorScheme.light, .dark] {
+                for overlaySize in SettingsStore.OverlaySize.allCases {
+                    for material in SettingsStore.OverlayMaterial.allCases {
+                        defaults.set(overlaySize.rawValue, forKey: keys[0])
+                        defaults.set(material.rawValue, forKey: keys[1])
+                        let host = NSHostingController(rootView: OverlayAppearanceEditor().environment(\.colorScheme, scheme))
+                        let size = host.sizeThatFits(in: NSSize(width: width, height: 10000))
+                        XCTAssertLessThanOrEqual(size.width, width + 1, "\(overlaySize) / \(material) at \(width)")
+                        XCTAssertTrue(size.height.isFinite)
+                    }
+                }
+            }
+        }
+    }
+
     func testExplicitCustomPromptMigrationPreservesRulesAndIdentity() throws {
         var legacy = SettingsStore.DictationPromptProfile(name: "Brief", prompt: "Keep it short.")
         legacy.usesExplicitDictationPrompt = false
@@ -213,6 +261,9 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testBottomOverlayRapidStopStartStopDoesNotDropFinalHide() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = true
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
         let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
         let controller = BottomOverlayWindowController.shared
 
@@ -234,6 +285,9 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testBottomOverlayReportsWhenRapidRestartSupersedesHide() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = true
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
         let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
         let controller = BottomOverlayWindowController.shared
 
@@ -253,6 +307,29 @@ final class HotkeyShortcutTests: XCTestCase {
     }
 
     @MainActor
+    func testDisabledClosingAnimationHidesWithoutDismissalAndAllowsImmediateRestart() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = false
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
+        let controller = BottomOverlayWindowController.shared
+        let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+
+        let outcome = await controller.hideAndWait()
+        XCTAssertEqual(outcome, .hidden)
+        XCTAssertTrue(controller.isVisuallyHiddenForTests)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayDismissing)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayReleaseTransitioning)
+
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+        await Task.yield()
+        XCTAssertFalse(controller.isVisuallyHiddenForTests, "Old deferred cleanup must not hide the new recording")
+        controller.hide()
+        XCTAssertTrue(controller.isVisuallyHiddenForTests)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayDismissing)
+    }
+
+    @MainActor
     func testBottomOverlayImmediateHideCompletesBeforeReturningAndAllowsRestart() async {
         let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
         let controller = BottomOverlayWindowController.shared
@@ -268,6 +345,58 @@ final class HotkeyShortcutTests: XCTestCase {
         XCTAssertTrue(NotchContentState.shared.isBottomOverlayPresented)
         XCTAssertFalse(controller.isVisuallyHiddenForTests)
         XCTAssertFalse(NotchContentState.shared.isBottomOverlayDismissing)
+        _ = await controller.hideAndWait()
+    }
+
+    @MainActor
+    func testBottomOverlayReopenStartsAtEmptyHeightBeforeQueuedResize() async throws {
+        let defaults = UserDefaults.standard
+        let overlaySizeKey = "OverlaySize"
+        let streamingPreviewKey = "EnableStreamingPreview"
+        let previousOverlaySize = defaults.object(forKey: overlaySizeKey)
+        let previousStreamingPreview = defaults.object(forKey: streamingPreviewKey)
+        defer {
+            if let previousOverlaySize {
+                defaults.set(previousOverlaySize, forKey: overlaySizeKey)
+            } else {
+                defaults.removeObject(forKey: overlaySizeKey)
+            }
+            if let previousStreamingPreview {
+                defaults.set(previousStreamingPreview, forKey: streamingPreviewKey)
+            } else {
+                defaults.removeObject(forKey: streamingPreviewKey)
+            }
+            NotchContentState.shared.updateTranscription("")
+        }
+
+        SettingsStore.shared.overlaySize = .medium
+        SettingsStore.shared.enableStreamingPreview = true
+        let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
+        let controller = BottomOverlayWindowController.shared
+
+        controller.prepare()
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+        let emptySize = try XCTUnwrap(controller.windowSizeForTests)
+
+        NotchContentState.shared.updateTranscription(String(repeating: "multiline preview text ", count: 30))
+        controller.refreshSizeForContent()
+        try await Task.sleep(nanoseconds: 120_000_000)
+        let expandedSize = try XCTUnwrap(controller.windowSizeForTests)
+        XCTAssertGreaterThan(expandedSize.height, emptySize.height)
+
+        _ = await controller.hideAndWait()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+        let reopenedSize = try XCTUnwrap(controller.windowSizeForTests)
+        XCTAssertEqual(reopenedSize.height, emptySize.height, accuracy: 0.5)
+
+        // A resize queued by the previous presentation must not restore its frame.
+        controller.refreshSizeForContent()
+        controller.hide()
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+        try await Task.sleep(nanoseconds: 120_000_000)
+        let rapidReopenSize = try XCTUnwrap(controller.windowSizeForTests)
+        XCTAssertEqual(rapidReopenSize.height, emptySize.height, accuracy: 0.5)
         _ = await controller.hideAndWait()
     }
 

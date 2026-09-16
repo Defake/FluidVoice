@@ -2175,6 +2175,63 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    enum OverlayMaterial: String, CaseIterable, Codable {
+        case original
+        case smokedGlass
+        case clearGlass
+        case velvet
+        case aurora
+
+        var displayName: String {
+            switch self {
+            case .original: return "Original"
+            case .smokedGlass: return "Smoked Glass"
+            case .clearGlass: return "Clear Glass"
+            case .velvet: return "Velvet"
+            case .aurora: return "Aurora"
+            }
+        }
+    }
+
+    static let overlayGlassOpacityRange = 0.25...1.0
+    static let defaultOverlayGlassOpacity = 0.8
+
+    /// Keep cosmetic dismissal out of the stop path unless explicitly enabled.
+    var overlayClosingAnimationEnabled: Bool {
+        get { self.defaults.bool(forKey: "OverlayClosingAnimationEnabled") }
+        set {
+            guard newValue != self.overlayClosingAnimationEnabled else { return }
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: "OverlayClosingAnimationEnabled")
+        }
+    }
+
+    enum OverlayTint: String, CaseIterable, Codable {
+        case ocean, violet, rose, mint, amber
+    }
+
+    var overlayTint: OverlayTint {
+        get { OverlayTint(rawValue: self.defaults.string(forKey: "OverlayTint") ?? "") ?? .ocean }
+        set {
+            guard newValue != self.overlayTint else { return }
+            objectWillChange.send()
+            self.defaults.set(newValue.rawValue, forKey: "OverlayTint")
+        }
+    }
+
+    var overlayHighlight: Double {
+        get {
+            let value = (self.defaults.object(forKey: "OverlayHighlight") as? NSNumber)?.doubleValue ?? 0.5
+            return value.isFinite ? min(max(value, 0), 1) : 0.5
+        }
+        set {
+            let value = newValue.isFinite ? min(max(newValue, 0), 1) : 0.5
+            guard value != self.overlayHighlight else { return }
+            objectWillChange.send()
+            self.defaults.set(value, forKey: "OverlayHighlight")
+        }
+    }
+
     /// Position options for the recording overlay
     enum OverlayPosition: String, CaseIterable, Codable {
         case top // Top of screen (notch area or floating)
@@ -2272,6 +2329,42 @@ final class SettingsStore: ObservableObject {
             // Post notification for live update if overlay is visible
             NotificationCenter.default.post(name: NSNotification.Name("OverlaySizeChanged"), object: nil)
         }
+    }
+
+    var overlayMaterial: OverlayMaterial {
+        get {
+            guard let raw = self.defaults.string(forKey: Keys.overlayMaterial),
+                  let material = OverlayMaterial(rawValue: raw)
+            else {
+                return .smokedGlass
+            }
+            return material
+        }
+        set {
+            guard newValue != self.overlayMaterial else { return }
+            objectWillChange.send()
+            self.defaults.set(newValue.rawValue, forKey: Keys.overlayMaterial)
+        }
+    }
+
+    var overlayGlassOpacity: Double {
+        get {
+            guard self.defaults.object(forKey: Keys.overlayGlassOpacity) != nil else {
+                return Self.defaultOverlayGlassOpacity
+            }
+            return Self.normalizedOverlayGlassOpacity(self.defaults.double(forKey: Keys.overlayGlassOpacity))
+        }
+        set {
+            let normalized = Self.normalizedOverlayGlassOpacity(newValue)
+            guard normalized != self.overlayGlassOpacity else { return }
+            objectWillChange.send()
+            self.defaults.set(normalized, forKey: Keys.overlayGlassOpacity)
+        }
+    }
+
+    private static func normalizedOverlayGlassOpacity(_ value: Double) -> Double {
+        guard value.isFinite else { return self.defaultOverlayGlassOpacity }
+        return min(max(value, self.overlayGlassOpacityRange.lowerBound), self.overlayGlassOpacityRange.upperBound)
     }
 
     /// How many recent transcription characters show in overlays (default: 150)
@@ -3388,6 +3481,11 @@ final class SettingsStore: ObservableObject {
             overlayPosition: self.overlayPosition,
             overlayBottomOffset: self.overlayBottomOffset,
             overlaySize: self.overlaySize,
+            overlayMaterial: self.overlayMaterial,
+            overlayGlassOpacity: self.overlayGlassOpacity,
+            overlayTint: self.overlayTint,
+            overlayHighlight: self.overlayHighlight,
+            overlayClosingAnimationEnabled: self.overlayClosingAnimationEnabled,
             transcriptionPreviewCharLimit: self.transcriptionPreviewCharLimit,
             userTypingWPM: self.userTypingWPM,
             saveTranscriptionHistory: self.saveTranscriptionHistory,
@@ -3548,6 +3646,21 @@ final class SettingsStore: ObservableObject {
         self.overlayPosition = payload.overlayPosition
         self.overlayBottomOffset = payload.overlayBottomOffset
         self.overlaySize = payload.overlaySize
+        if let overlayMaterial = payload.overlayMaterial {
+            self.overlayMaterial = overlayMaterial
+        }
+        if let overlayGlassOpacity = payload.overlayGlassOpacity {
+            self.overlayGlassOpacity = overlayGlassOpacity
+        }
+        if let overlayTint = payload.overlayTint {
+            self.overlayTint = overlayTint
+        }
+        if let overlayHighlight = payload.overlayHighlight {
+            self.overlayHighlight = overlayHighlight
+        }
+        if let enabled = payload.overlayClosingAnimationEnabled {
+            self.overlayClosingAnimationEnabled = enabled
+        }
         self.transcriptionPreviewCharLimit = payload.transcriptionPreviewCharLimit
         self.userTypingWPM = payload.userTypingWPM
         self.saveTranscriptionHistory = payload.saveTranscriptionHistory
@@ -5660,6 +5773,8 @@ private extension SettingsStore {
         static let overlayBottomOffset = "OverlayBottomOffset"
         static let overlayBottomOffsetMigratedTo50 = "OverlayBottomOffsetMigratedTo50"
         static let overlaySize = "OverlaySize"
+        static let overlayMaterial = "OverlayMaterial"
+        static let overlayGlassOpacity = "OverlayGlassOpacity"
         static let transcriptionPreviewCharLimit = "TranscriptionPreviewCharLimit"
 
         /// Media Playback Control

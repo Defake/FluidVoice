@@ -1250,118 +1250,10 @@ struct SettingsView: View {
                 ThemedCard(style: .standard) {
                     VStack(alignment: .leading, spacing: 14) {
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Sensitivity")
-                                        .font(self.theme.typography.bodyStrong)
-                                        .foregroundStyle(self.settingsTitleText)
-                                    Text("Control how sensitive the audio visualizer is to sound input")
-                                        .font(self.theme.typography.bodySmall)
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                }
-
-                                Spacer()
-
-                                Button("Reset") {
-                                    self.visualizerNoiseThreshold = 0.4
-                                    SettingsStore.shared.visualizerNoiseThreshold = self.visualizerNoiseThreshold
-                                }
-                                .fluidOutlinedButton()
-                                .controlSize(.small)
+                            if self.settings.overlayPosition == .bottom {
+                                self.overlayMaterialSettings
+                                Divider().padding(.vertical, 8)
                             }
-                            .settingsSearchTarget(.overlaySensitivity)
-
-                            HStack(spacing: 10) {
-                                Text("More")
-                                    .font(.fluidSystem(.caption))
-                                    .foregroundStyle(self.settingsSecondaryText)
-                                    .frame(width: 36, alignment: .trailing)
-
-                                Slider(value: self.$visualizerNoiseThreshold, in: 0.01...0.8, step: 0.01)
-                                    .controlSize(.regular)
-
-                                Text("Less")
-                                    .font(.fluidSystem(.caption))
-                                    .foregroundStyle(self.settingsSecondaryText)
-                                    .frame(width: 36, alignment: .leading)
-
-                                Text(String(format: "%.2f", self.visualizerNoiseThreshold))
-                                    .font(.fluidSystem(.caption, design: .monospaced))
-                                    .foregroundStyle(self.settingsTertiaryText)
-                                    .frame(width: 36)
-                            }
-
-                            Divider().padding(.vertical, 8)
-
-                            // Overlay Position
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Overlay Position")
-                                        .font(self.theme.typography.bodyStrong)
-                                        .foregroundStyle(self.settingsTitleText)
-                                    Text("Where the recording indicator appears on screen")
-                                        .font(self.theme.typography.bodySmall)
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                }
-
-                                Spacer()
-
-                                Picker("", selection: self.$settings.overlayPosition) {
-                                    ForEach(SettingsStore.OverlayPosition.allCases, id: \.self) { position in
-                                        Text(position.displayName).tag(position)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .fluidDropdownStyle()
-                                .frame(width: 170, alignment: .trailing)
-                            }
-                            .settingsSearchTarget(.overlayPosition)
-
-                            Divider().padding(.vertical, 8)
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack(alignment: .top) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Transcription Preview Length")
-                                            .font(self.theme.typography.bodyStrong)
-                                            .foregroundStyle(self.settingsTitleText)
-                                        Text("How many recent characters appear in the notch/pill preview")
-                                            .font(self.theme.typography.bodySmall)
-                                            .foregroundStyle(self.settingsSecondaryText)
-                                    }
-
-                                    Spacer()
-
-                                    Text("\(self.settings.transcriptionPreviewCharLimit) chars")
-                                        .font(.fluidSystem(.caption, design: .monospaced))
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                }
-
-                                HStack(spacing: 10) {
-                                    Text("Less")
-                                        .font(.fluidSystem(.caption))
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                        .frame(width: 36, alignment: .trailing)
-
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(self.settings.transcriptionPreviewCharLimit) },
-                                            set: { self.settings.transcriptionPreviewCharLimit = Int($0.rounded()) }
-                                        ),
-                                        in: Double(SettingsStore.transcriptionPreviewCharLimitRange.lowerBound)...Double(SettingsStore.transcriptionPreviewCharLimitRange.upperBound),
-                                        step: Double(SettingsStore.transcriptionPreviewCharLimitStep)
-                                    )
-                                    .controlSize(.regular)
-
-                                    Text("More")
-                                        .font(.fluidSystem(.caption))
-                                        .foregroundStyle(self.settingsSecondaryText)
-                                        .frame(width: 36, alignment: .leading)
-                                }
-                            }
-                            .settingsSearchTarget(.transcriptionPreviewLength)
-
-                            Divider().padding(.vertical, 4)
 
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -1452,6 +1344,128 @@ struct SettingsView: View {
                                 }
                                 .settingsSearchTarget(.bottomOffset)
                             }
+
+                            Divider().padding(.vertical, 12)
+                            Text("Behavior & placement")
+                                .font(self.theme.typography.bodyStrong)
+                                .padding(.bottom, 4)
+
+                            self.overlayClosingAnimationSetting
+
+                            Divider().padding(.vertical, 8)
+
+                            // Overlay Position
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Overlay Position")
+                                        .font(self.theme.typography.bodyStrong)
+                                        .foregroundStyle(self.settingsTitleText)
+                                    Text("Where the recording indicator appears on screen")
+                                        .font(self.theme.typography.bodySmall)
+                                        .foregroundStyle(self.settingsSecondaryText)
+                                }
+
+                                Spacer()
+
+                                Picker("", selection: self.$settings.overlayPosition) {
+                                    ForEach(SettingsStore.OverlayPosition.allCases, id: \.self) { position in
+                                        Text(position.displayName).tag(position)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .fluidDropdownStyle()
+                                .frame(width: 170, alignment: .trailing)
+                            }
+                            .settingsSearchTarget(.overlayPosition)
+
+                            Divider().padding(.vertical, 8)
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Sensitivity")
+                                        .font(self.theme.typography.bodyStrong)
+                                        .foregroundStyle(self.settingsTitleText)
+                                    Text("Control how sensitive the audio visualizer is to sound input")
+                                        .font(self.theme.typography.bodySmall)
+                                        .foregroundStyle(self.settingsSecondaryText)
+                                }
+
+                                Spacer()
+
+                                Button("Reset") {
+                                    self.visualizerNoiseThreshold = 0.4
+                                    SettingsStore.shared.visualizerNoiseThreshold = self.visualizerNoiseThreshold
+                                }
+                                .fluidOutlinedButton()
+                                .controlSize(.small)
+                            }
+                            .settingsSearchTarget(.overlaySensitivity)
+
+                            HStack(spacing: 10) {
+                                Text("More")
+                                    .font(.fluidSystem(.caption))
+                                    .foregroundStyle(self.settingsSecondaryText)
+                                    .frame(width: 36, alignment: .trailing)
+
+                                Slider(value: self.$visualizerNoiseThreshold, in: 0.01...0.8, step: 0.01)
+                                    .controlSize(.regular)
+
+                                Text("Less")
+                                    .font(.fluidSystem(.caption))
+                                    .foregroundStyle(self.settingsSecondaryText)
+                                    .frame(width: 36, alignment: .leading)
+
+                                Text(String(format: "%.2f", self.visualizerNoiseThreshold))
+                                    .font(.fluidSystem(.caption, design: .monospaced))
+                                    .foregroundStyle(self.settingsTertiaryText)
+                                    .frame(width: 36)
+                            }
+
+                            Divider().padding(.vertical, 8)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Transcription Preview Length")
+                                            .font(self.theme.typography.bodyStrong)
+                                            .foregroundStyle(self.settingsTitleText)
+                                        Text("How many recent characters appear in the notch/pill preview")
+                                            .font(self.theme.typography.bodySmall)
+                                            .foregroundStyle(self.settingsSecondaryText)
+                                    }
+
+                                    Spacer()
+
+                                    Text("\(self.settings.transcriptionPreviewCharLimit) chars")
+                                        .font(.fluidSystem(.caption, design: .monospaced))
+                                        .foregroundStyle(self.settingsSecondaryText)
+                                }
+
+                                HStack(spacing: 10) {
+                                    Text("Less")
+                                        .font(.fluidSystem(.caption))
+                                        .foregroundStyle(self.settingsSecondaryText)
+                                        .frame(width: 36, alignment: .trailing)
+
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(self.settings.transcriptionPreviewCharLimit) },
+                                            set: { self.settings.transcriptionPreviewCharLimit = Int($0.rounded()) }
+                                        ),
+                                        in: Double(SettingsStore.transcriptionPreviewCharLimitRange.lowerBound)...Double(SettingsStore.transcriptionPreviewCharLimitRange.upperBound),
+                                        step: Double(SettingsStore.transcriptionPreviewCharLimitStep)
+                                    )
+                                    .controlSize(.regular)
+
+                                    Text("More")
+                                        .font(.fluidSystem(.caption))
+                                        .foregroundStyle(self.settingsSecondaryText)
+                                        .frame(width: 36, alignment: .leading)
+                                }
+                            }
+                            .settingsSearchTarget(.transcriptionPreviewLength)
+
+                            Divider().padding(.vertical, 4)
 
                             if self.asr.isRunning {
                                 Text("Settings are disabled during active recording")
@@ -2253,6 +2267,23 @@ struct SettingsView: View {
 }
 
 private extension SettingsView {
+    var overlayClosingAnimationSetting: some View {
+        Toggle(isOn: self.$settings.overlayClosingAnimationEnabled) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Animate overlay closing")
+                    .font(self.theme.typography.bodyStrong)
+                Text("Off closes immediately. Turn on to try the closing transition.")
+                    .font(self.theme.typography.bodySmall)
+                    .foregroundStyle(self.settingsSecondaryText)
+            }
+        }
+        .toggleStyle(.switch)
+    }
+
+    var overlayMaterialSettings: some View {
+        OverlayAppearanceEditor()
+    }
+
     private func shortcutGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 12, content: content)
     }

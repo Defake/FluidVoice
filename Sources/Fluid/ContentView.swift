@@ -4478,6 +4478,7 @@ struct ContentView: View {
                 self.isRecordingAnyShortcutCapture
             }
         )
+        self.hotkeyManager?.registerDebugToggleTriggerIfEnabled()
 
         self.hotkeyManagerInitialized = self.hotkeyManager?.validateEventTapHealth() ?? false
 

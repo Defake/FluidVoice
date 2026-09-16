@@ -498,9 +498,15 @@ private final nonisolated class DirectCoreAudioInput: DirectCoreAudioInputContro
             return poisonedStopStatus
         }
         guard let capture else { return noErr }
+        let stopStartedAt = ProcessInfo.processInfo.systemUptime
         let status = fv_core_audio_capture_stop(capture)
+        let hardwareStoppedAt = ProcessInfo.processInfo.systemUptime
         fv_core_audio_capture_wake(capture)
         self.workerGroup.wait()
+        DebugLogger.shared.info(
+            "STOP_TRACE backend=direct hardwareStopMs=\(Int((hardwareStoppedAt - stopStartedAt) * 1000)) workerDrainMs=\(Int((ProcessInfo.processInfo.systemUptime - hardwareStoppedAt) * 1000))",
+            source: "StopTiming"
+        )
         if status != noErr {
             self.poisonedStopStatus = status
         }
@@ -915,8 +921,12 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
     }
 
     func stop(retainPrepared: Bool, reason: String) async -> StopReport {
-        await withCheckedContinuation { continuation in
+        let requestedAt = ProcessInfo.processInfo.systemUptime
+        return await withCheckedContinuation { continuation in
             self.lifecycleQueue.async {
+                var trace = OverlayCloseTrace("audio.lifecycleQueue")
+                trace.mark("queueWait", since: requestedAt)
+                defer { trace.finish() }
                 guard let input = self.input else {
                     continuation.resume(
                         returning: StopReport(
@@ -940,6 +950,7 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                     level: .info
                 )
                 let status = input.stop()
+                trace.mark("snapshotAndHardwareStop")
                 let droppedPackets = input.droppedPacketCount
                 if status != noErr {
                     self.isPoisoned = true
@@ -965,6 +976,8 @@ final nonisolated class DirectCoreAudioLifecycleController: @unchecked Sendable 
                         "retained=\(retainPrepared && self.input != nil)",
                     level: .info
                 )
+                trace.mark("postStopState")
+                DebugLogger.shared.info("CLOSE_DETAIL audioContinuationResume uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
                 continuation.resume(
                     returning: StopReport(
                         status: status,

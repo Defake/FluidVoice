@@ -86,6 +86,11 @@ struct SettingsBackupPayload: Codable, Equatable {
     let overlayPosition: SettingsStore.OverlayPosition
     let overlayBottomOffset: Double
     let overlaySize: SettingsStore.OverlaySize
+    let overlayMaterial: SettingsStore.OverlayMaterial?
+    let overlayGlassOpacity: Double?
+    let overlayTint: SettingsStore.OverlayTint?
+    let overlayHighlight: Double?
+    let overlayClosingAnimationEnabled: Bool?
     let transcriptionPreviewCharLimit: Int
     let userTypingWPM: Int
     let saveTranscriptionHistory: Bool

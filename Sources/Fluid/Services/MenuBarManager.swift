@@ -103,6 +103,11 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             }
             .store(in: &self.cancellables)
 
+        NotificationCenter.default.addObserver(forName: .fluidPasteNotLanded, object: nil, queue: .main) { [weak self] note in
+            guard let transcript = note.userInfo?["transcript"] as? String else { return }
+            Task { @MainActor [weak self] in self?.showPasteNotLandedFailure(transcript: transcript) }
+        }
+
         // Subscribe to recording state changes
         asrService.$isRunning
             .receive(on: DispatchQueue.main)
@@ -116,6 +121,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
                 }
                 if isRunning {
                     self.hasDeferredStoppedRecordingState = false
+                    OverlayAudioLevelState.shared.isLive = true
+                    DebugLogger.shared.info("WAVEFORM_LIVE", source: "StopTiming")
                 }
                 self.isRecording = isRunning
                 self.updateMenuBarIcon()
@@ -291,6 +298,13 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
     }
 
+    /// A verified non-landing paste re-presents the overlay in its failure
+    /// state so the transcript can be copied.
+    func showPasteNotLandedFailure(transcript: String) {
+        guard !self.overlayVisible, !self.isProcessingActive, self.asrService?.isRunning != true else { return }
+        DeliveryFailureOverlayController.shared.show(kind: .pasteNotLanded, transcript: transcript)
+    }
+
     func showRecordingOverlayImmediately() {
         AutomaticDictionaryCorrectionTracker.shared.cancel()
 
@@ -310,6 +324,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
 
         self.overlayVisible = true
+        DeliveryFailureOverlayController.shared.hide()
         self.overlayBench("instant_show_request mode=\(self.currentOverlayMode.rawValue)")
 
         if NotchOverlayManager.shared.isCommandOutputExpanded {
@@ -384,6 +399,17 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             "reserve_processing overlayVisible=\(self.overlayVisible) active=\(self.isProcessingActive)"
         )
         self.isProcessingActive = true
+        NotchOverlayManager.shared.freezeForStop()
+        // Log-only: lets the focused-element assessment be audited on every
+        // stop, including runs whose transcript is empty and never reach typing.
+        let assessStartedAt = ProcessInfo.processInfo.systemUptime
+        let assessment = DeliveryTargetAssessment.assessFocusedElement()
+        DebugLogger.shared.info(
+            "FOCUS_ASSESS at=stop \(assessment.logDescription) " +
+                "frontApp=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil") " +
+                "elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - assessStartedAt) * 1_000_000))",
+            source: "TypingService"
+        )
         self.pendingProcessingShowOperation?.cancel()
         self.pendingProcessingShowOperation = nil
         self.pendingHideOperation?.cancel()
@@ -444,29 +470,58 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
     }
 
-    /// Removes the successful recording overlay after insertion completes. There
-    /// is intentionally no separate exit animation on this latency-critical path.
+    /// Removes the completed recording overlay immediately unless the optional
+    /// closing transition is enabled.
     func beginProcessingCompletionAndHideOverlay() {
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.prepareForProcessingCompletion()
-        self.overlayBench("finish_hide_request mode=immediate")
-        NotchOverlayManager.shared.hideImmediately()
-        self.flushDeferredStoppedRecordingState()
+        self.overlayBench("finish_hide_request closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled)")
+        NotchOverlayManager.shared.hide()
+        let windowHideReturnedAt = ProcessInfo.processInfo.systemUptime
+        // The status item refresh is a WindowServer fence; keep it out of the
+        // transaction that removes the overlay.
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                let refreshStartedAt = ProcessInfo.processInfo.systemUptime
+                self?.flushDeferredStoppedRecordingState()
+                DebugLogger.shared.info(
+                    "HIDE_NOW postCommitMenuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - refreshStartedAt) * 1_000_000))",
+                    source: "StopTiming"
+                )
+            }
+        }
+        DebugLogger.shared.info(
+            "HIDE_NOW windowHideUs=\(Int((windowHideReturnedAt - startedAt) * 1_000_000)) " +
+                "menuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - windowHideReturnedAt) * 1_000_000))",
+            source: "StopTiming"
+        )
+        DebugLogger.shared.info("STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))", source: "StopTiming")
         self.overlayBench(
-            "finish_hide_complete mode=immediate elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
+            "finish_hide_dispatched elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )
     }
 
     /// Ends processing and waits for the recording overlay's exit transition.
     /// Use only when the caller must know the overlay has fully disappeared.
     func finishProcessingAndHideOverlay() async {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.beginProcessingCompletionAndHideOverlay()
+            return
+        }
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.prepareForProcessingCompletion()
+        DebugLogger.shared.info("HIDE_TRACE phase=completion_prepared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
 
         NotchOverlayManager.shared.setProcessing(false)
+        DebugLogger.shared.info("HIDE_TRACE phase=processing_cleared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
         self.overlayBench("finish_hide_request mode=awaited")
         let hideOutcome = await NotchOverlayManager.shared.hideAndWait()
+        let hiddenAt = ProcessInfo.processInfo.systemUptime
         self.flushDeferredStoppedRecordingState()
+        DebugLogger.shared.info(
+            "STOP_TRACE phase=overlay_hidden hideMs=\(Int((hiddenAt - startedAt) * 1000)) menuRefreshMs=\(Int((ProcessInfo.processInfo.systemUptime - hiddenAt) * 1000))",
+            source: "StopTiming"
+        )
         self.overlayBench(
             "finish_hide_complete outcome=\(hideOutcome) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )
@@ -475,6 +530,18 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     /// Ends processing without dismissing an actionable overlay, such as the
     /// AI fallback state that offers reprocessing and settings actions.
     func finishProcessingKeepingOverlayVisible() {
+        // The no-text-field failure uses the transient card instead of
+        // holding the dictation overlay open.
+        let state = NotchContentState.shared
+        if state.isTextDeliveryFailureVisible,
+           state.textDeliveryFailureMessage == TextDeliveryFailure.noEditableTarget.userFacingMessage
+        {
+            let transcript = state.textDeliveryFailureTranscript
+            state.clearTextDeliveryFailure()
+            self.beginProcessingCompletionAndHideOverlay()
+            DeliveryFailureOverlayController.shared.show(kind: .noEditableTarget, transcript: transcript)
+            return
+        }
         self.cancelPendingProcessingCompletionOperations()
         self.isProcessingActive = false
         // Keep the physical overlay visible, but release recording/processing
@@ -557,11 +624,13 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     }
 
     private func updateMenuBarIcon() {
-        guard let statusItem = statusItem else { return }
+        guard let statusItem = statusItem, statusItem.button?.image == nil else { return }
 
-        // Use MenuBarIcon asset - vectorized from logo
+        // The template icon is identical in every state. Assigning a fresh
+        // NSImage on each recording change forced a status item redraw plus a
+        // WindowServer fence (about 200 ms measured) on every start and stop.
         if let image = NSImage(named: "MenuBarIcon") {
-            image.isTemplate = true // Adapts to light/dark mode and tints red when recording
+            image.isTemplate = true
             statusItem.button?.image = image
         }
     }
