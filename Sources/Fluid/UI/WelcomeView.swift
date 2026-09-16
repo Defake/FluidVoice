@@ -357,16 +357,7 @@ struct OnboardingFlowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
         .background {
-            ZStack {
-                self.theme.palette.windowBackground
-                    .opacity(0.98)
-                    .ignoresSafeArea()
-
-                Rectangle()
-                    .fill(self.theme.materials.window)
-                    .opacity(0.75)
-                    .ignoresSafeArea()
-            }
+            FluidOnboardingWindowTransparency()
         }
         .onAppear {
             self.isOnboardingFlowVisible = true
@@ -522,8 +513,8 @@ struct OnboardingFlowView: View {
                                 height: FluidOnboardingLandingPrimaryButton.size.height
                             )
                     }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, FluidOnboardingLayout.footerHorizontalInset)
+                    .padding(.bottom, FluidOnboardingLayout.footerBottomInset)
                 }
 
                 FluidOnboardingLandingHoverTracker(
@@ -917,8 +908,8 @@ struct OnboardingFlowView: View {
             }
             .keyboardShortcut(.defaultAction)
         }
-        .padding(.horizontal, 30)
-        .padding(.bottom, 24)
+        .padding(.horizontal, FluidOnboardingLayout.footerHorizontalInset)
+        .padding(.bottom, FluidOnboardingLayout.footerBottomInset)
     }
 
     private func cinematicFooterButton(

@@ -407,8 +407,9 @@ struct ContentView: View {
         let sized = nav.fluidWindowSizing(self.windowSizing)
 
         let observed = self.applyShortcutStateChanges(to: sized)
+        let withToolbar = self.applyMainWindowToolbar(to: observed)
 
-        return observed
+        return withToolbar
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 self.refreshAccessibilityPermissionState()
             }
@@ -427,25 +428,6 @@ struct ContentView: View {
             .onReceive(self.asr.$partialTranscription) { text in
                 self.handleSpokenSendPartialTranscription(text)
             }
-            .toolbar {
-                if !self.settings.shouldShowOnboarding {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        self.todayStatsButton
-                            .buttonStyle(.automatic)
-
-                        self.themePreferenceButton
-                            .buttonStyle(.automatic)
-
-                        Button(action: self.openIssueReportingPage) {
-                            Image(systemName: "ladybug.fill")
-                        }
-                        .buttonStyle(.automatic)
-                        .help("Report an issue")
-                        .accessibilityLabel("Report an issue")
-                    }
-                }
-            }
-            .toolbar(removing: .sidebarToggle)
             .overlay(alignment: .center) {}
             .alert(
                 self.asr.errorTitle,
@@ -1714,6 +1696,7 @@ struct ContentView: View {
             theme: self.theme
         )
         .environmentObject(self.appServices)
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     // MARK: - Welcome Guide
@@ -1767,6 +1750,32 @@ struct ContentView: View {
             return .minimum(width: window.onboardingMinWidth, height: window.onboardingMinHeight)
         }
         return .minimum(width: window.mainMinWidth, height: window.mainMinHeight)
+    }
+
+    @ViewBuilder
+    private func applyMainWindowToolbar<Content: View>(to content: Content) -> some View {
+        if self.settings.shouldShowOnboarding {
+            content
+        } else {
+            content
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        self.todayStatsButton
+                            .buttonStyle(.automatic)
+
+                        self.themePreferenceButton
+                            .buttonStyle(.automatic)
+
+                        Button(action: self.openIssueReportingPage) {
+                            Image(systemName: "ladybug.fill")
+                        }
+                        .buttonStyle(.automatic)
+                        .help("Report an issue")
+                        .accessibilityLabel("Report an issue")
+                    }
+                }
+                .toolbar(removing: .sidebarToggle)
+        }
     }
 
     private var microphoneActionButton: some View {

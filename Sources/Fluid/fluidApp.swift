@@ -30,6 +30,7 @@ struct FluidApp: App {
             }
         }
         .defaultSize(width: 1000, height: 700)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {

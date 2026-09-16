@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+enum FluidOnboardingLayout {
+    static let footerHorizontalInset: CGFloat = 56
+    static let footerBottomInset: CGFloat = 56
+}
+
 struct OnboardingModelInfoTooltip: View {
     let text: String
     let font: Font
@@ -108,7 +113,11 @@ struct FluidOnboardingLandingBackdrop: View {
 
     var body: some View {
         ZStack {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+
             Color(red: 0.012, green: 0.019, blue: 0.031)
+                .opacity(0.88)
 
             RadialGradient(
                 colors: [
@@ -131,7 +140,70 @@ struct FluidOnboardingLandingBackdrop: View {
                 endRadius: 520
             )
         }
+        .mask {
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .inset(by: 14)
+                .fill(.white)
+                .blur(radius: 20)
+        }
         .ignoresSafeArea()
+    }
+}
+
+struct FluidOnboardingWindowTransparency: NSViewRepresentable {
+    func makeNSView(context _: Context) -> NSView {
+        FluidOnboardingWindowTransparencyView()
+    }
+
+    func updateNSView(_: NSView, context _: Context) {}
+}
+
+private final class FluidOnboardingWindowTransparencyView: NSView {
+    private struct WindowSnapshot {
+        let isOpaque: Bool
+        let backgroundColor: NSColor
+        let hasShadow: Bool
+    }
+
+    private weak var observedWindow: NSWindow?
+    private var snapshot: WindowSnapshot?
+
+    deinit {
+        self.restoreWindow()
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if self.observedWindow !== newWindow {
+            self.restoreWindow()
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+
+        if self.observedWindow !== window {
+            self.observedWindow = window
+            self.snapshot = WindowSnapshot(
+                isOpaque: window.isOpaque,
+                backgroundColor: window.backgroundColor,
+                hasShadow: window.hasShadow
+            )
+        }
+
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+    }
+
+    private func restoreWindow() {
+        guard let window = self.observedWindow, let snapshot else { return }
+        window.isOpaque = snapshot.isOpaque
+        window.backgroundColor = snapshot.backgroundColor
+        window.hasShadow = snapshot.hasShadow
+        self.observedWindow = nil
+        self.snapshot = nil
     }
 }
 

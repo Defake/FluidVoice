@@ -118,8 +118,8 @@ struct OnboardingAIEnhancementStepView: View {
                             self.offerNavigation
                         }
                     }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, FluidOnboardingLayout.footerHorizontalInset)
+                    .padding(.bottom, FluidOnboardingLayout.footerBottomInset)
                     .padding(.top, 12)
                     .fixedSize(horizontal: false, vertical: true)
                 }
