@@ -3,12 +3,22 @@ import AppKit
 /// One immutable decision for a normal dictation, made before awaiting ASR finalization.
 struct DictationStopSnapshot {
     let target: TypingService.RecordingTargetContext?
-    let appInfo: (name: String, bundleId: String, windowTitle: String)
+    private(set) var appInfo: (name: String, bundleId: String, windowTitle: String)
     let route: DictationProviderRoute
     let usesAI: Bool
     let systemPrompt: String
     let hasCustomPrompt: Bool
-    let precedingText: String
+    private(set) var precedingText: String
+    /// True when the preceding text must be read from the field focused at
+    /// stop rather than reused from recording start.
+    let readsContextFromFocusedField: Bool
+
+    /// Fills the fields that need WindowServer or Accessibility round-trips.
+    /// Called after the microphone has stopped so they never delay it.
+    mutating func completeContext(windowTitle: String?, precedingText: String?) {
+        if let windowTitle { self.appInfo.windowTitle = windowTitle }
+        if let precedingText { self.precedingText = precedingText }
+    }
 
     var focusTarget: TypingService.CapturedFocusTarget? {
         guard let target, let element = target.element else { return nil }
@@ -29,7 +39,8 @@ struct DictationStopSnapshot {
         target: TypingService.RecordingTargetContext?,
         appInfo: (name: String, bundleId: String, windowTitle: String),
         slot: SettingsStore.DictationShortcutSlot,
-        precedingText: String
+        precedingText: String,
+        readsContextFromFocusedField: Bool = false
     ) -> Self {
         let settings = SettingsStore.shared
         let customPrompt = settings.resolvedDictationPromptProfile(for: slot, appBundleID: appInfo.bundleId)
@@ -41,7 +52,8 @@ struct DictationStopSnapshot {
             usesAI: target != nil && DictationAIPostProcessingGate.isConfigured(for: slot, appBundleID: appInfo.bundleId),
             systemPrompt: customPrompt ?? settings.effectiveDictationSystemPrompt(for: slot, appBundleID: appInfo.bundleId),
             hasCustomPrompt: customPrompt != nil,
-            precedingText: precedingText
+            precedingText: precedingText,
+            readsContextFromFocusedField: readsContextFromFocusedField
         )
     }
 

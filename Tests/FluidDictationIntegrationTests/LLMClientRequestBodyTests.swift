@@ -308,6 +308,21 @@ final class LLMClientRequestBodyTests: XCTestCase {
         }
     }
 
+    func testStopSnapshotDefersWindowTitleAndPrecedingText() {
+        let target = TypingService.RecordingTargetContext(id: UUID(), pid: 321, bundleIdentifier: "test.defer", window: nil, element: nil)
+        let info = (name: "Defer app", bundleId: "test.defer", windowTitle: "")
+        var snapshot = DictationStopSnapshot.capture(target: target, appInfo: info, slot: .primary, precedingText: "", readsContextFromFocusedField: true)
+        XCTAssertTrue(snapshot.readsContextFromFocusedField)
+        XCTAssertEqual(snapshot.appInfo.windowTitle, "")
+        snapshot.completeContext(windowTitle: "Draft", precedingText: "Hello ")
+        XCTAssertEqual(snapshot.appInfo.windowTitle, "Draft")
+        XCTAssertEqual(snapshot.precedingText, "Hello ")
+        // Missing reads keep the stop-time values instead of clearing them.
+        snapshot.completeContext(windowTitle: nil, precedingText: nil)
+        XCTAssertEqual(snapshot.appInfo.windowTitle, "Draft")
+        XCTAssertEqual(snapshot.precedingText, "Hello ")
+    }
+
     func testMainWindowEndsAppVisitButOverlayDoesNot() {
         let session = DictationAppSession.shared
         let previousApp = session.appID

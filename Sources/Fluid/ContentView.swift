@@ -2242,16 +2242,39 @@ struct ContentView: View {
             ownOverlayFocused: isOverlay
         )
         let app = target.flatMap { NSRunningApplication(processIdentifier: $0.pid) }
+        // Window title and preceding text need WindowServer and Accessibility
+        // round-trips; completeDictationStopSnapshot fills them after the
+        // microphone has stopped.
         let info = (
             name: app?.localizedName ?? "Unknown",
             bundleId: target?.bundleIdentifier ?? "unknown",
-            windowTitle: target.flatMap { self.getFrontmostWindowTitle(ownerPid: $0.pid) } ?? ""
+            windowTitle: ""
         )
         if !useOriginal { DictationAppSession.shared.activate(target?.bundleIdentifier) }
-        let precedingText = useOriginal ? self.recordingPrecedingText
-            : (self.settings.needsDictationFormattingContext ? TypingService.textBeforeCursorInFocusedField() : "")
-        NotchContentState.shared.frozenDictationLabel = self.settings.dictationOverlayLabel(for: slot, appBundleID: info.bundleId)
-        return .capture(target: target, appInfo: info, slot: slot, precedingText: precedingText)
+        let label = self.settings.dictationOverlayLabel(for: slot, appBundleID: info.bundleId)
+        if NotchContentState.shared.frozenDictationLabel != label {
+            NotchContentState.shared.frozenDictationLabel = label
+        }
+        return .capture(
+            target: target,
+            appInfo: info,
+            slot: slot,
+            precedingText: useOriginal ? self.recordingPrecedingText : "",
+            readsContextFromFocusedField: !useOriginal
+        )
+    }
+
+    private func completeDictationStopSnapshot(_ snapshot: inout DictationStopSnapshot) {
+        let windowTitle = snapshot.target.flatMap { self.getFrontmostWindowTitle(ownerPid: $0.pid) }
+        var precedingText: String?
+        if snapshot.readsContextFromFocusedField,
+           self.settings.needsDictationFormattingContext,
+           let target = snapshot.target,
+           TypingService.currentFocusedPID() == target.pid
+        {
+            precedingText = TypingService.textBeforeCursorInFocusedField()
+        }
+        snapshot.completeContext(windowTitle: windowTitle, precedingText: precedingText)
     }
 
     private func prepareStoppedDictationDelivery(_ text: String, keepBackup: Bool, snapshot: DictationStopSnapshot?, needsRestoration: Bool) async -> Bool {
@@ -2746,7 +2769,7 @@ struct ContentView: View {
         let activeDictationSlot = self.currentDictationShortcutSlot(for: modeAtStop)
         let promptOverride = self.promptModeOverrideText
         let promptTest = DictationPromptTestCoordinator.shared
-        let stopSnapshot = route == .normal && !wasRewriteMode && !wasCommandMode && !promptTest.isActive
+        var stopSnapshot = route == .normal && !wasRewriteMode && !wasCommandMode && !promptTest.isActive
             ? self.captureDictationStopSnapshot(slot: activeDictationSlot ?? .primary) : nil
         let shouldUseAIOnStop = stopSnapshot?.usesAI ?? activeDictationSlot.map {
             DictationAIPostProcessingGate.isConfigured(for: $0, appBundleID: self.recordingAppInfo?.bundleId)
@@ -2781,6 +2804,10 @@ struct ContentView: View {
             onFinalTranscriptionStarted: stopOverlay.onFinalTranscriptionStarted
         )
         self.appBench("asr_stop_return elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - asrStopStartedAt) * 1000).rounded()))")
+        if var snapshot = stopSnapshot {
+            self.completeDictationStopSnapshot(&snapshot)
+            stopSnapshot = snapshot
+        }
         let audioSnapshot = self.asr.consumeLastCompletedAudioSnapshot()
         let transcriptionDurationMilliseconds = self.asr.consumeLastFinalTranscriptionDurationMs()
         DebugLogger.shared.info(
