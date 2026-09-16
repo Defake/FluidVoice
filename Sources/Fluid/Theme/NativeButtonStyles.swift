@@ -283,6 +283,7 @@ struct SecondaryButtonStyle: ButtonStyle {
 // MARK: - Compact Button
 
 struct CompactButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
     var isReady: Bool = false
     var foreground: Color? = nil
     var borderColor: Color? = nil
@@ -290,8 +291,12 @@ struct CompactButtonStyle: ButtonStyle {
     var height: CGFloat = 34
 
     func makeBody(configuration: Configuration) -> some View {
-        FluidOutlinedButtonStyle(height: self.height, foreground: self.foreground, borderColor: self.borderColor)
-            .makeBody(configuration: configuration)
+        FluidOutlinedButtonStyle(
+            height: self.height,
+            foreground: self.foreground,
+            borderColor: self.borderColor ?? (self.isReady ? self.theme.palette.accent : nil)
+        )
+        .makeBody(configuration: configuration)
     }
 }
 
