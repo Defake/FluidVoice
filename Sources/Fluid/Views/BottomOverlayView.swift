@@ -60,6 +60,10 @@ final class BottomOverlayWindowController {
         self.window?.isVisible != true || self.window?.alphaValue == 0
     }
 
+    var windowSizeForTests: NSSize? {
+        self.window?.frame.size
+    }
+
     private init() {
         NotificationCenter.default.addObserver(forName: NSNotification.Name("OverlayOffsetChanged"), object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -121,11 +125,12 @@ final class BottomOverlayWindowController {
         if self.window == nil {
             self.createWindow()
         }
+        self.parkWindowOffscreen()
 
         // Prepare the complete first frame while the cached panel is still
         // offscreen. Revealing the neutral shell first causes a visible flash
         // that reads as the overlay appearing twice.
-        NotchContentState.shared.setBottomOverlayPresented(true)
+        NotchContentState.shared.setBottomOverlayPresented(false)
         NotchContentState.shared.setSpokenSendIndicatorState(.hidden)
         NotchContentState.shared.mode = mode
         switch mode {
@@ -139,7 +144,8 @@ final class BottomOverlayWindowController {
         NotchContentState.shared.setBottomOverlayDismissing(false)
 
         self.targetScreen = OverlayScreenResolver.screenForCurrentPointer()
-        self.positionWindow()
+        NotchContentState.shared.setBottomOverlayPresented(true)
+        self.prepareFirstFrameForNewPresentation()
 
         // Submit one complete frame to WindowServer.
         self.window?.setAccessibilityChildren(nil)
@@ -394,13 +400,37 @@ final class BottomOverlayWindowController {
         }
 
         self.pendingResizeWorkItem?.cancel()
+        let scheduledGeneration = self.presentationGeneration
 
         // Debounce rapid streaming updates to avoid resize thrash.
         let resizeWorkItem = DispatchWorkItem { [weak self] in
-            self?.updateSizeAndPosition()
+            guard let self, self.presentationGeneration == scheduledGeneration else {
+                Self.overlayBench("bottom_resize_drop reason=stale_generation")
+                return
+            }
+            self.updateSizeAndPosition()
         }
         self.pendingResizeWorkItem = resizeWorkItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: resizeWorkItem)
+    }
+
+    /// Reset presentation-local SwiftUI measurements and resolve the empty
+    /// session geometry before the warm panel moves onscreen. Otherwise the
+    /// panel can reveal its previous multiline frame until resize debounce.
+    private func prepareFirstFrameForNewPresentation() {
+        guard let window,
+              let hostingView = window.contentView as? NSHostingView<BottomOverlayView>
+        else { return }
+
+        hostingView.rootView = BottomOverlayView()
+        hostingView.invalidateIntrinsicContentSize()
+        hostingView.layoutSubtreeIfNeeded()
+        let firstFrameSize = hostingView.fittingSize
+        hostingView.frame = NSRect(origin: .zero, size: firstFrameSize)
+        window.setFrame(NSRect(origin: window.frame.origin, size: firstFrameSize), display: false)
+        self.positionWindow()
+        hostingView.layoutSubtreeIfNeeded()
+        hostingView.displayIfNeeded()
     }
 
     /// Update window size based on current SwiftUI content and re-position
@@ -1483,12 +1513,7 @@ private struct BottomOverlayModeMenuView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.black)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+        .bottomOverlaySurface(self.settings.bottomOverlayAppearance, cornerRadius: 8)
         .frame(maxWidth: self.maxWidth)
         .preferredColorScheme(.dark)
         .onHover { hovering in
@@ -1767,12 +1792,7 @@ private struct BottomOverlayPromptMenuView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.black)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+        .bottomOverlaySurface(self.settings.bottomOverlayAppearance, cornerRadius: 8)
         .frame(width: min(self.maxWidth, 250), alignment: .leading)
         .preferredColorScheme(.dark)
         .onHover { hovering in
@@ -1990,12 +2010,7 @@ private struct BottomOverlayActionsMenuView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.black)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
+        .bottomOverlaySurface(self.settings.bottomOverlayAppearance, cornerRadius: 8)
         .frame(maxWidth: self.maxWidth)
         .preferredColorScheme(.dark)
         .onHover { hovering in
@@ -2630,27 +2645,7 @@ struct BottomOverlayView: View {
 
     private func richPreviewText(_ previewText: String) -> Text {
         Text(previewText)
-            .foregroundColor(.white.opacity(0.9))
-    }
-
-    private var overlayBorderLineWidth: CGFloat {
-        self.settings.overlaySize == .large ? 0.8 : 1
-    }
-
-    private var overlayBorderTopOpacity: Double {
-        switch self.settings.overlaySize {
-        case .pill: return 0.22 // a touch crisper so the smaller pill reads clearly
-        case .large: return 0.10
-        default: return 0.15
-        }
-    }
-
-    private var overlayBorderBottomOpacity: Double {
-        switch self.settings.overlaySize {
-        case .pill: return 0.10
-        case .large: return 0.05
-        default: return 0.08
-        }
+            .foregroundColor(.white.opacity(0.96))
     }
 
     private var overlayAnimatedOffsetY: CGFloat {
@@ -3235,7 +3230,7 @@ struct BottomOverlayView: View {
                                         ScrollView(.vertical, showsIndicators: false) {
                                             Text(previewText)
                                                 .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
-                                                .foregroundStyle(.white.opacity(0.9))
+                                                .foregroundStyle(.white.opacity(0.96))
                                                 .multilineTextAlignment(.leading)
                                                 .lineLimit(nil)
                                                 .fixedSize(horizontal: false, vertical: true)
@@ -3284,7 +3279,7 @@ struct BottomOverlayView: View {
                                     if self.settings.overlaySize == .small {
                                         Text(previewText)
                                             .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
-                                            .foregroundStyle(.white.opacity(0.9))
+                                            .foregroundStyle(.white.opacity(0.96))
                                             .multilineTextAlignment(.leading)
                                             .lineLimit(1)
                                             .truncationMode(.head)
@@ -3293,7 +3288,7 @@ struct BottomOverlayView: View {
                                     } else {
                                         Text(previewText)
                                             .font(.fluidSystem(size: self.layout.transFontSize, weight: .medium))
-                                            .foregroundStyle(.white.opacity(0.9))
+                                            .foregroundStyle(.white.opacity(0.96))
                                             .multilineTextAlignment(.leading)
                                             .lineLimit(Int(self.previewMaxHeight / max(self.estimatedPreviewLineHeight, 1)))
                                             .truncationMode(.head)
@@ -3394,23 +3389,40 @@ struct BottomOverlayView: View {
             .padding(.horizontal, self.layout.hPadding)
             .padding(.vertical, self.layout.vPadding)
             .frame(maxWidth: .infinity, alignment: .center)
-            .background(
-                ZStack {
-                    // Solid pitch black background, with a soft drop shadow so the pill lifts
-                    // off whatever is behind it (pill size only; outer padding reserves room).
-                    RoundedRectangle(cornerRadius: self.layout.cornerRadius)
-                        .fill(Color.black)
-                        .shadow(
-                            color: Color.black.opacity(self.isPillSize ? 0.32 : 0),
-                            radius: self.isPillSize ? PillShadowMetrics.radius : 0,
-                            x: 0,
-                            y: self.isPillSize ? PillShadowMetrics.yOffset : 0
-                        )
-
-                    if self.isPillSize {
-                        // Glossy border: a bright highlight that slowly rotates around the edge.
-                        // Paused under reduce-motion to avoid continuous redraws on low-resource Macs.
-                        if self.reduceMotion || !self.contentState.isBottomOverlayPresented {
+            .bottomOverlaySurface(
+                self.settings.bottomOverlayAppearance,
+                cornerRadius: self.layout.cornerRadius,
+                castsShadow: self.isPillSize,
+                showsBorder: !self.isPillSize
+            )
+            .overlay {
+                if self.isPillSize {
+                    // Preserve the pill's existing state animation above the shared material.
+                    if self.reduceMotion || !self.contentState.isBottomOverlayPresented || (self.settings.overlayMaterial != .original && self.settings.overlayHighlight == 0) {
+                        RoundedRectangle(cornerRadius: self.layout.cornerRadius)
+                            .strokeBorder(
+                                AngularGradient(
+                                    gradient: Gradient(stops: [
+                                        .init(color: .white.opacity(0.06), location: 0.00),
+                                        .init(color: .white.opacity(0.55), location: 0.13),
+                                        .init(color: .white.opacity(0.10), location: 0.30),
+                                        .init(color: .white.opacity(0.03), location: 0.55),
+                                        .init(color: .white.opacity(0.22), location: 0.80),
+                                        .init(color: .white.opacity(0.06), location: 1.00),
+                                    ]),
+                                    center: .center,
+                                    angle: .degrees(0)
+                                ),
+                                lineWidth: 1.2
+                            )
+                            .opacity(self.settings.overlayMaterial == .original ? 1 : self.settings.overlayHighlight)
+                    } else {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                            let seconds = max(
+                                0,
+                                timeline.date.timeIntervalSince(self.borderAnimationStartedAt ?? timeline.date)
+                            )
+                            let angle = (seconds.truncatingRemainder(dividingBy: 6.0) / 6.0) * 360.0
                             RoundedRectangle(cornerRadius: self.layout.cornerRadius)
                                 .strokeBorder(
                                     AngularGradient(
@@ -3423,52 +3435,15 @@ struct BottomOverlayView: View {
                                             .init(color: .white.opacity(0.06), location: 1.00),
                                         ]),
                                         center: .center,
-                                        angle: .degrees(0)
+                                        angle: .degrees(angle)
                                     ),
                                     lineWidth: 1.2
                                 )
-                        } else {
-                            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                                let seconds = max(
-                                    0,
-                                    timeline.date.timeIntervalSince(self.borderAnimationStartedAt ?? timeline.date)
-                                )
-                                let angle = (seconds.truncatingRemainder(dividingBy: 6.0) / 6.0) * 360.0
-                                RoundedRectangle(cornerRadius: self.layout.cornerRadius)
-                                    .strokeBorder(
-                                        AngularGradient(
-                                            gradient: Gradient(stops: [
-                                                .init(color: .white.opacity(0.06), location: 0.00),
-                                                .init(color: .white.opacity(0.55), location: 0.13),
-                                                .init(color: .white.opacity(0.10), location: 0.30),
-                                                .init(color: .white.opacity(0.03), location: 0.55),
-                                                .init(color: .white.opacity(0.22), location: 0.80),
-                                                .init(color: .white.opacity(0.06), location: 1.00),
-                                            ]),
-                                            center: .center,
-                                            angle: .degrees(angle)
-                                        ),
-                                        lineWidth: 1.2
-                                    )
-                            }
+                                .opacity(self.settings.overlayMaterial == .original ? 1 : self.settings.overlayHighlight)
                         }
-                    } else {
-                        // Inner border
-                        RoundedRectangle(cornerRadius: self.layout.cornerRadius)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(self.overlayBorderTopOpacity),
-                                        Color.white.opacity(self.overlayBorderBottomOpacity),
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: self.overlayBorderLineWidth
-                            )
                     }
                 }
-            )
+            }
             .frame(maxWidth: .infinity, alignment: .top)
             .transaction { transaction in
                 if self.shouldSuppressPreviewDuringRelease {
