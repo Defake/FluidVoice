@@ -385,6 +385,16 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         )
         self.isProcessingActive = true
         NotchOverlayManager.shared.freezeForStop()
+        // Log-only: lets the focused-element assessment be audited on every
+        // stop, including runs whose transcript is empty and never reach typing.
+        let assessStartedAt = ProcessInfo.processInfo.systemUptime
+        let assessment = DeliveryTargetAssessment.assessFocusedElement()
+        DebugLogger.shared.info(
+            "FOCUS_ASSESS at=stop \(assessment.logDescription) " +
+                "frontApp=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil") " +
+                "elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - assessStartedAt) * 1_000_000))",
+            source: "TypingService"
+        )
         self.pendingProcessingShowOperation?.cancel()
         self.pendingProcessingShowOperation = nil
         self.pendingHideOperation?.cancel()

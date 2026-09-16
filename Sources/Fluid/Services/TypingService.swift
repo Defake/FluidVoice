@@ -507,6 +507,23 @@ final class TypingService {
             return result
         }
 
+        // Refuse only when the focused element certainly cannot take text.
+        let targetAssessment = DeliveryTargetAssessment.assessFocusedElement()
+        DebugLogger.shared.info("FOCUS_ASSESS \(targetAssessment.logDescription)", source: "TypingService")
+        if targetAssessment.isCertainlyNotEditable {
+            await PasteDeliveryCoordinator.shared.copyBackup(text, enabled: preserveTranscriptOnClipboard)
+            self.bench("request_return reason=no_editable_target")
+            let result = TextDeliveryResult.recoverableFailure(.noEditableTarget)
+            self.recordInsertionLatency(
+                path: .notAttempted,
+                result: result,
+                requestedAt: requestedAt,
+                textReadyAt: textReadyAt,
+                toggleStopRequestedAt: toggleStopRequestedAt
+            )
+            return result
+        }
+
         let usesClipboard = mode == .reliablePaste ||
             self.ghosttyTargetPID(preferredTargetPID: preferredTargetPID) != nil
         let result: TextDeliveryResult
@@ -679,6 +696,7 @@ final class TypingService {
             case .pasteCommandFailed: .pasteCommandFailed
             case .targetUnavailable: .targetUnavailable
             case .targetRestoreFailed: .targetRestoreFailed
+            case .noEditableTarget: .noEditableTarget
             }
         }
     }
