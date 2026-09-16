@@ -2977,6 +2977,9 @@ final class ASRService: ObservableObject {
                         let executionStartedAt = ProcessInfo.processInfo.systemUptime
                         DebugLogger.shared.debug("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
                         defer {
+                            // Cancel here, not after the main-actor hop: the status
+                            // would otherwise fire while the result waits for main.
+                            delayedFinalStatusTask.cancel()
                             DebugLogger.shared.debug("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
                         }
                         return try await provider.transcribeFinal(pcm)
