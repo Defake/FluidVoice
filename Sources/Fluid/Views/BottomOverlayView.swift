@@ -91,6 +91,14 @@ private final class BottomOverlayPanel: NSPanel {
     }
 }
 
+/// Audio level lives outside NotchContentState so ~94 Hz level ticks only
+/// invalidate the waveform, not every view observing the shared state.
+@MainActor
+final class OverlayAudioLevelState: ObservableObject {
+    static let shared = OverlayAudioLevelState()
+    @Published var level: CGFloat = 0
+}
+
 // MARK: - Bottom Overlay Window Controller
 
 @MainActor
@@ -196,6 +204,7 @@ final class BottomOverlayWindowController {
         }
         NotchContentState.shared.updateTranscription("")
         NotchContentState.shared.bottomOverlayAudioLevel = 0
+        OverlayAudioLevelState.shared.level = 0
         NotchContentState.shared.setBottomOverlayDismissOffsetY(8)
         NotchContentState.shared.setBottomOverlayDismissing(false)
 
@@ -223,9 +232,9 @@ final class BottomOverlayWindowController {
 
         self.audioSubscription?.cancel()
         self.audioSubscription = audioPublisher
-            .receive(on: DispatchQueue.main)
+            .throttle(for: .milliseconds(33), scheduler: DispatchQueue.main, latest: true)
             .sink { level in
-                NotchContentState.shared.bottomOverlayAudioLevel = level
+                OverlayAudioLevelState.shared.level = level
             }
     }
 
@@ -455,6 +464,7 @@ final class BottomOverlayWindowController {
         NotchContentState.shared.setProcessing(false)
         trace.mark("processingFalse")
         NotchContentState.shared.bottomOverlayAudioLevel = 0
+        OverlayAudioLevelState.shared.level = 0
         trace.mark("audioZero")
     }
 
@@ -488,6 +498,7 @@ final class BottomOverlayWindowController {
         self.audioSubscription?.cancel()
         self.audioSubscription = nil
         NotchContentState.shared.bottomOverlayAudioLevel = 0
+        OverlayAudioLevelState.shared.level = 0
         NotchContentState.shared.setBottomOverlayReleaseTransitioning(true)
     }
 
@@ -3706,6 +3717,7 @@ struct BottomWaveformView: View {
     let visibleBarCount: Int?
 
     @ObservedObject private var contentState = NotchContentState.shared
+    @ObservedObject private var audioLevel = OverlayAudioLevelState.shared
     // Initialize with max possible bar count (11 for large) to prevent index-out-of-range before onAppear
     @State private var barHeights: [CGFloat] = Array(repeating: 6, count: 11)
     @State private var noiseThreshold: CGFloat = .init(SettingsStore.shared.visualizerNoiseThreshold)
@@ -3784,7 +3796,7 @@ struct BottomWaveformView: View {
                     .shadow(color: .white.opacity(0.28), radius: 2.5, x: 0, y: 0)
             }
         }
-        .onChange(of: self.contentState.bottomOverlayAudioLevel) { _, level in
+        .onChange(of: self.audioLevel.level) { _, level in
             guard !self.isReleaseAnimationActive else { return }
             if !self.contentState.isProcessing {
                 self.updateBars(level: level)
