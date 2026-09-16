@@ -524,9 +524,11 @@ final class TypingService {
             return result
         }
 
-        let verificationBefore = PasteVerifier.capture()
         let usesClipboard = mode == .reliablePaste ||
             self.ghosttyTargetPID(preferredTargetPID: preferredTargetPID) != nil
+        // The read-back baseline costs an AX value read; only the clipboard
+        // paths verify, so the direct path skips it.
+        var verificationBefore = usesClipboard ? PasteVerifier.capture() : nil
         let result: TextDeliveryResult
         let deliveryPath: AnalyticsInsertionPath
         var dispatchedAt: TimeInterval?
@@ -543,6 +545,7 @@ final class TypingService {
             result = .commandPosted
         } else {
             deliveryPath = .clipboardFallback
+            verificationBefore = PasteVerifier.capture()
             self.log("[TypingService] Direct insertion failed; using non-blocking clipboard fallback")
             result = await PasteDeliveryCoordinator.shared.deliver(
                 text,
