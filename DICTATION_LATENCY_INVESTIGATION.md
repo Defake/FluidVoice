@@ -140,6 +140,28 @@ Not done / open:
   xcconfig adding `FLUIDVOICE_DIAGNOSTICS`; the final installed build is a
   plain Release build without it.
 
+### 9. No-text-field detection (51e62364)
+
+`DeliveryTargetAssessment.assessFocusedElement()` runs inside
+`TypingService.typeTextInstantly`, so every delivery path and the retry
+button go through it. Rule, in order:
+
+1. Accessibility not trusted, focused element unreadable, role unreadable ->
+   unknown, paste as before.
+2. Role in {AXTextField, AXTextArea, AXComboBox, AXSecureTextField} or
+   AXValue settable -> editable, paste.
+3. Role in the never-text set (buttons, menus, static text, images, links,
+   sliders, toolbars, windows, sheets, application) -> notEditable: transcript
+   stays on the clipboard, overlay shows "Not in a text field" with Copy.
+4. Any other role (AXGroup, AXWebArea, AXList, AXTable, AXCell, AXScrollArea...)
+   -> unknown, paste as before. Table roles are deliberately here: a selected
+   spreadsheet cell accepts pasted text. No per-app rules.
+
+Verified via the `FOCUS_ASSESS at=stop` log line (0.3-1.2 ms per stop):
+Finder desktop -> unknown (AXList), Stickies and TextEdit -> editable
+(AXTextArea), FluidVoice's own window -> unknown (AXScrollArea). The refuse
+branch was not exercised with real speech; a button or menu focus at stop
+would trigger it.
 ## Measurement caveats
 
 - `OverlayCloseRunLoopProbe` (`CLOSE_DETAIL runLoop occupiedMs`) over-reports on
