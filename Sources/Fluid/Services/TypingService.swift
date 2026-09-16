@@ -461,7 +461,8 @@ final class TypingService {
         textReadyAt: TimeInterval?,
         toggleStopRequestedAt: TimeInterval? = nil,
         tracksDictionaryCorrections: Bool = false,
-        preserveTranscriptOnClipboard: Bool = false
+        preserveTranscriptOnClipboard: Bool = false,
+        verifiesLanding: Bool = true
     ) async -> TextDeliveryResult {
         let requestedAt = ProcessInfo.processInfo.systemUptime
         var closeTrace = OverlayCloseTrace("typing.delivery")
@@ -566,7 +567,7 @@ final class TypingService {
             toggleStopRequestedAt: toggleStopRequestedAt,
             completedAt: completedAt
         )
-        if result == .commandPosted, deliveryPath != .direct, let verificationBefore {
+        if verifiesLanding, result == .commandPosted, deliveryPath != .direct, let verificationBefore {
             self.verifyPasteLanded(text, before: verificationBefore)
         }
         // The caller starts correction tracking after completing delivery UI.
@@ -614,7 +615,9 @@ final class TypingService {
                     textReadyAt: textReadyAt,
                     toggleStopRequestedAt: toggleStopRequestedAt,
                     tracksDictionaryCorrections: tracksDictionaryCorrections,
-                    preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
+                    preserveTranscriptOnClipboard: preserveTranscriptOnClipboard,
+                    // A send key empties the field right after the paste, so the read-back would report a false miss.
+                    verifiesLanding: postInsertionKey == nil
                 )
                 guard result.wasDispatched else {
                     completion?(.insertionFailed)
