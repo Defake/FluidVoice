@@ -3319,12 +3319,29 @@ struct BottomOverlayView: View {
     }
 
     private var textDeliveryFailureView: some View {
-        HStack(spacing: 8) {
-            Text(self.contentState.textDeliveryFailureMessage)
-                .font(.fluidSystem(size: self.layout.transFontSize, weight: .semibold))
-                .foregroundStyle(Color.orange.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.tail)
+        let message = self.contentState.textDeliveryFailureMessage
+        let detail = TextDeliveryFailure.userFacingDetail(forMessage: message)
+        return HStack(alignment: .center, spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .font(.fluidSystem(size: self.layout.transFontSize + 2, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message)
+                    .font(.fluidSystem(size: self.layout.transFontSize, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let detail {
+                    Text(detail)
+                        .font(.fluidSystem(size: max(self.layout.transFontSize - 2, 10), weight: .regular))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             Spacer(minLength: 4)
 
