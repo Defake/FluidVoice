@@ -261,6 +261,9 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testBottomOverlayRapidStopStartStopDoesNotDropFinalHide() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = true
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
         let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
         let controller = BottomOverlayWindowController.shared
 
@@ -282,6 +285,9 @@ final class HotkeyShortcutTests: XCTestCase {
 
     @MainActor
     func testBottomOverlayReportsWhenRapidRestartSupersedesHide() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = true
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
         let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
         let controller = BottomOverlayWindowController.shared
 
@@ -298,6 +304,29 @@ final class HotkeyShortcutTests: XCTestCase {
         XCTAssertEqual(hideOutcome, .superseded)
         XCTAssertTrue(NotchContentState.shared.isBottomOverlayPresented)
         _ = await controller.hideAndWait()
+    }
+
+    @MainActor
+    func testDisabledClosingAnimationHidesWithoutDismissalAndAllowsImmediateRestart() async {
+        let previous = SettingsStore.shared.overlayClosingAnimationEnabled
+        SettingsStore.shared.overlayClosingAnimationEnabled = false
+        defer { SettingsStore.shared.overlayClosingAnimationEnabled = previous }
+        let controller = BottomOverlayWindowController.shared
+        let audioPublisher = Just(CGFloat.zero).eraseToAnyPublisher()
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+
+        let outcome = await controller.hideAndWait()
+        XCTAssertEqual(outcome, .hidden)
+        XCTAssertTrue(controller.isVisuallyHiddenForTests)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayDismissing)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayReleaseTransitioning)
+
+        controller.show(audioPublisher: audioPublisher, mode: .dictation)
+        await Task.yield()
+        XCTAssertFalse(controller.isVisuallyHiddenForTests, "Old deferred cleanup must not hide the new recording")
+        controller.hide()
+        XCTAssertTrue(controller.isVisuallyHiddenForTests)
+        XCTAssertFalse(NotchContentState.shared.isBottomOverlayDismissing)
     }
 
     @MainActor

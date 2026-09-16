@@ -310,6 +310,10 @@ final class NotchOverlayManager {
     }
 
     func hide() {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.hideImmediately()
+            return
+        }
         guard !self.isHideInProgress else { return }
         self.isHideInProgress = true
         self.generation &+= 1
@@ -328,6 +332,8 @@ final class NotchOverlayManager {
     /// Removes a successfully completed recording overlay synchronously so it
     /// cannot outlive the text insertion that follows.
     func hideImmediately() {
+        var trace = OverlayCloseTrace("manager.hide")
+        defer { trace.finish() }
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.generation &+= 1
         let currentGeneration = self.generation
@@ -345,17 +351,26 @@ final class NotchOverlayManager {
         if self.notch != nil || self.state != .idle {
             self.retireCurrentNotchImmediately(reason: "completed_output")
         }
+        trace.mark("bottomAndNotchRemoved")
 
         waiters.forEach { $0.resume(returning: .hidden) }
         Self.overlayBench("hide_immediate_complete elapsedMs=\(Self.elapsedMs(since: startedAt))")
 
         Task { @MainActor [weak self] in
+            var cleanupTrace = OverlayCloseTrace("manager.deferredCleanup")
+            cleanupTrace.mark("scheduledDelay", since: startedAt)
+            defer { cleanupTrace.finish() }
             await Task.yield()
+            cleanupTrace.mark("yield")
             guard let self, self.generation == currentGeneration else { return }
             ActiveAppMonitor.shared.stopMonitoring()
+            cleanupTrace.mark("stopMonitoring")
             NotchContentState.shared.setProcessing(false)
+            cleanupTrace.mark("processingFalse")
             NotchContentState.shared.updateTranscription("")
+            cleanupTrace.mark("clearTranscription")
             NotchContentState.shared.setSpokenSendIndicatorState(.hidden)
+            cleanupTrace.mark("clearIndicator")
             Self.overlayBench("hide_immediate_cleanup_complete")
         }
     }
@@ -363,6 +378,10 @@ final class NotchOverlayManager {
     /// Reports whether the active overlay finished hiding or a newer
     /// presentation superseded this request.
     func hideAndWait() async -> RecordingOverlayHideOutcome {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.hideImmediately()
+            return .hidden
+        }
         if self.isHideInProgress {
             return await withCheckedContinuation { continuation in
                 self.hideWaiters.append(continuation)
@@ -388,10 +407,12 @@ final class NotchOverlayManager {
 
         // Stop monitoring active app changes
         ActiveAppMonitor.shared.stopMonitoring()
+        DebugLogger.shared.info("HIDE_TRACE phase=monitor_stopped elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
 
         // Hide bottom overlay if visible
         if self.isBottomOverlayVisible {
             let bottomOutcome = await BottomOverlayWindowController.shared.hideAndWait()
+            DebugLogger.shared.info("HIDE_TRACE phase=bottom_returned elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
             guard bottomOutcome == .hidden else {
                 Self.overlayBench("hide_return reason=bottom_superseded")
                 return .superseded

@@ -444,29 +444,47 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
     }
 
-    /// Removes the successful recording overlay after insertion completes. There
-    /// is intentionally no separate exit animation on this latency-critical path.
+    /// Removes the completed recording overlay immediately unless the optional
+    /// closing transition is enabled.
     func beginProcessingCompletionAndHideOverlay() {
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.prepareForProcessingCompletion()
-        self.overlayBench("finish_hide_request mode=immediate")
-        NotchOverlayManager.shared.hideImmediately()
+        self.overlayBench("finish_hide_request closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled)")
+        NotchOverlayManager.shared.hide()
+        let windowHideReturnedAt = ProcessInfo.processInfo.systemUptime
         self.flushDeferredStoppedRecordingState()
+        DebugLogger.shared.info(
+            "HIDE_NOW windowHideUs=\(Int((windowHideReturnedAt - startedAt) * 1_000_000)) " +
+                "menuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - windowHideReturnedAt) * 1_000_000))",
+            source: "StopTiming"
+        )
+        DebugLogger.shared.info("STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))", source: "StopTiming")
         self.overlayBench(
-            "finish_hide_complete mode=immediate elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
+            "finish_hide_dispatched elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )
     }
 
     /// Ends processing and waits for the recording overlay's exit transition.
     /// Use only when the caller must know the overlay has fully disappeared.
     func finishProcessingAndHideOverlay() async {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.beginProcessingCompletionAndHideOverlay()
+            return
+        }
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.prepareForProcessingCompletion()
+        DebugLogger.shared.info("HIDE_TRACE phase=completion_prepared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
 
         NotchOverlayManager.shared.setProcessing(false)
+        DebugLogger.shared.info("HIDE_TRACE phase=processing_cleared elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))", source: "StopTiming")
         self.overlayBench("finish_hide_request mode=awaited")
         let hideOutcome = await NotchOverlayManager.shared.hideAndWait()
+        let hiddenAt = ProcessInfo.processInfo.systemUptime
         self.flushDeferredStoppedRecordingState()
+        DebugLogger.shared.info(
+            "STOP_TRACE phase=overlay_hidden hideMs=\(Int((hiddenAt - startedAt) * 1000)) menuRefreshMs=\(Int((ProcessInfo.processInfo.systemUptime - hiddenAt) * 1000))",
+            source: "StopTiming"
+        )
         self.overlayBench(
             "finish_hide_complete outcome=\(hideOutcome) elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )

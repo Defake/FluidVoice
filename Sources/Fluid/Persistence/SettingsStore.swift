@@ -2196,6 +2196,16 @@ final class SettingsStore: ObservableObject {
     static let overlayGlassOpacityRange = 0.25...1.0
     static let defaultOverlayGlassOpacity = 0.8
 
+    /// Keep cosmetic dismissal out of the stop path unless explicitly enabled.
+    var overlayClosingAnimationEnabled: Bool {
+        get { self.defaults.bool(forKey: "OverlayClosingAnimationEnabled") }
+        set {
+            guard newValue != self.overlayClosingAnimationEnabled else { return }
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: "OverlayClosingAnimationEnabled")
+        }
+    }
+
     enum OverlayTint: String, CaseIterable, Codable {
         case ocean, violet, rose, mint, amber
     }
@@ -3475,6 +3485,7 @@ final class SettingsStore: ObservableObject {
             overlayGlassOpacity: self.overlayGlassOpacity,
             overlayTint: self.overlayTint,
             overlayHighlight: self.overlayHighlight,
+            overlayClosingAnimationEnabled: self.overlayClosingAnimationEnabled,
             transcriptionPreviewCharLimit: self.transcriptionPreviewCharLimit,
             userTypingWPM: self.userTypingWPM,
             saveTranscriptionHistory: self.saveTranscriptionHistory,
@@ -3646,6 +3657,9 @@ final class SettingsStore: ObservableObject {
         }
         if let overlayHighlight = payload.overlayHighlight {
             self.overlayHighlight = overlayHighlight
+        }
+        if let enabled = payload.overlayClosingAnimationEnabled {
+            self.overlayClosingAnimationEnabled = enabled
         }
         self.transcriptionPreviewCharLimit = payload.transcriptionPreviewCharLimit
         self.userTypingWPM = payload.userTypingWPM
