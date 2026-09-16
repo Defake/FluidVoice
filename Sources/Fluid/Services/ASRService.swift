@@ -2968,12 +2968,17 @@ final class ASRService: ObservableObject {
                 }
                 defer { delayedFinalStatusTask.cancel() }
                 result = try await self.transcriptionExecutor.run(benchmarkSessionID: self.benchmarkSessionID) { [provider] in
-                    let executionStartedAt = ProcessInfo.processInfo.systemUptime
-                    DebugLogger.shared.debug("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
-                    defer {
-                        DebugLogger.shared.debug("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
-                    }
-                    return try await provider.transcribeFinal(pcm)
+                    // The executor closure inherits main-actor isolation, so inference
+                    // and every await hop would otherwise run on or wait for the main
+                    // thread. Detach so the UI stays responsive during final ASR.
+                    try await Task.detached(priority: .userInitiated) {
+                        let executionStartedAt = ProcessInfo.processInfo.systemUptime
+                        DebugLogger.shared.debug("ASR_BENCH t=\(executionStartedAt) final_executor_begin mainThread=\(Thread.isMainThread)", source: "ASRBenchmark")
+                        defer {
+                            DebugLogger.shared.debug("ASR_BENCH t=\(ProcessInfo.processInfo.systemUptime) final_executor_end", source: "ASRBenchmark")
+                        }
+                        return try await provider.transcribeFinal(pcm)
+                    }.value
                 }
                 delayedFinalStatusTask.cancel()
                 self.publishStoppedState(for: stoppingSessionID)
