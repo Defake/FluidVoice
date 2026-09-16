@@ -32,11 +32,12 @@ extension GlobalHotkeyManager {
             object: nil,
             queue: .main
         ) { _ in
-            NotificationCenter.default.post(
-                name: .fluidPasteNotLanded,
-                object: nil,
-                userInfo: ["transcript": "Sample transcript for the failure card"]
-            )
+            Task { @MainActor in
+                DeliveryFailureOverlayController.shared.show(
+                    kind: .noEditableTarget,
+                    transcript: "The quick brown fox jumps over the lazy dog and keeps going for a while"
+                )
+            }
         }
         DebugLogger.shared.info("Debug toggle trigger enabled", source: "GlobalHotkeyManager")
     }

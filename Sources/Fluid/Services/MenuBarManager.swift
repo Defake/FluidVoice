@@ -300,9 +300,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     /// state so the transcript can be copied.
     func showPasteNotLandedFailure(transcript: String) {
         guard !self.overlayVisible, !self.isProcessingActive, self.asrService?.isRunning != true else { return }
-        self.showRecordingOverlayImmediately()
-        NotchContentState.shared.recordTextDeliveryFailure(.pasteNotLanded, transcript: transcript)
-        self.finishProcessingKeepingOverlayVisible()
+        DeliveryFailureOverlayController.shared.show(kind: .pasteNotLanded, transcript: transcript)
     }
 
     func showRecordingOverlayImmediately() {
@@ -324,6 +322,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         }
 
         self.overlayVisible = true
+        DeliveryFailureOverlayController.shared.hide()
         self.overlayBench("instant_show_request mode=\(self.currentOverlayMode.rawValue)")
 
         if NotchOverlayManager.shared.isCommandOutputExpanded {
@@ -529,6 +528,18 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     /// Ends processing without dismissing an actionable overlay, such as the
     /// AI fallback state that offers reprocessing and settings actions.
     func finishProcessingKeepingOverlayVisible() {
+        // The no-text-field failure uses the transient card instead of
+        // holding the dictation overlay open.
+        let state = NotchContentState.shared
+        if state.isTextDeliveryFailureVisible,
+           state.textDeliveryFailureMessage == TextDeliveryFailure.noEditableTarget.userFacingMessage
+        {
+            let transcript = state.textDeliveryFailureTranscript
+            state.clearTextDeliveryFailure()
+            self.beginProcessingCompletionAndHideOverlay()
+            DeliveryFailureOverlayController.shared.show(kind: .noEditableTarget, transcript: transcript)
+            return
+        }
         self.cancelPendingProcessingCompletionOperations()
         self.isProcessingActive = false
         // Keep the physical overlay visible, but release recording/processing

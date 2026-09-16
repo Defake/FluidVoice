@@ -538,7 +538,7 @@ private struct MicrophoneChangeOverlayView: View {
     }
 }
 
-private struct TransientOverlaySettingsButtonStyle: ButtonStyle {
+struct TransientOverlaySettingsButtonStyle: ButtonStyle {
     let isHovered: Bool
 
     func makeBody(configuration: Configuration) -> some View {
@@ -563,7 +563,7 @@ private struct TransientOverlaySettingsButtonStyle: ButtonStyle {
     }
 }
 
-private struct TransientOverlayCountdownBar: View {
+struct TransientOverlayCountdownBar: View {
     let startedAt: Date
     let duration: TimeInterval
     let reduceMotion: Bool
@@ -592,7 +592,7 @@ private struct TransientOverlayCountdownBar: View {
     }
 }
 
-private struct TransientOverlayBackground: View {
+struct TransientOverlayBackground: View {
     var body: some View {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
             .fill(Color.black)
