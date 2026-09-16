@@ -391,7 +391,9 @@ enum ASRStopOutcome: Equatable {
 /// Models are cached locally to avoid repeated downloads.
 @MainActor
 final class ASRService: ObservableObject {
-    private static let finalTranscriptionStatusDelayNanoseconds: UInt64 = 100_000_000
+    // Below this the Transcribing status only adds a main-thread overlay re-render
+    // that delays the result it is announcing; final ASR on short audio is ~40 ms.
+    private static let finalTranscriptionStatusDelayNanoseconds: UInt64 = 250_000_000
     private static let streamingDrainTimeoutNanoseconds: UInt64 = 30_000_000_000
 
     nonisolated static func shouldAssessShortAudioSilence(
