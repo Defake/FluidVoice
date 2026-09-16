@@ -119,6 +119,7 @@ final class BottomOverlayWindowController {
     private var isHideInProgress = false
     private var activeHideGeneration: UInt64?
     private var hideWaiters: [CheckedContinuation<RecordingOverlayHideOutcome, Never>] = []
+    private var pendingIgnoreMouseWorkItem: DispatchWorkItem?
     var isVisuallyHiddenForTests: Bool {
         self.window?.isVisible != true || self.window?.alphaValue == 0
     }
@@ -170,6 +171,8 @@ final class BottomOverlayWindowController {
 
     func show(audioPublisher: AnyPublisher<CGFloat, Never>, mode: OverlayMode) {
         let startedAt = ProcessInfo.processInfo.systemUptime
+        var showTrace = OverlayCloseTrace("bottom.show")
+        defer { showTrace.finish() }
         Self.overlayBench("bottom_show_start mode=\(mode.rawValue) windowExists=\(self.window != nil)")
         self.cancelInFlightHideForNewPresentation()
         self.presentationGeneration &+= 1
@@ -210,12 +213,17 @@ final class BottomOverlayWindowController {
 
         self.targetScreen = OverlayScreenResolver.screenForCurrentPointer()
         NotchContentState.shared.setBottomOverlayPresented(true)
-        self.prepareFirstFrameForNewPresentation()
+        showTrace.mark("state")
+        self.prepareFirstFrameForNewPresentation(trace: &showTrace)
 
         // Submit one complete frame to WindowServer.
         self.window?.setAccessibilityChildren(nil)
         self.window?.setAccessibilityElement(true)
-        self.window?.ignoresMouseEvents = false
+        self.pendingIgnoreMouseWorkItem?.cancel()
+        self.pendingIgnoreMouseWorkItem = nil
+        if self.window?.ignoresMouseEvents == true {
+            self.window?.ignoresMouseEvents = false
+        }
         self.window?.alphaValue = 1
         CATransaction.setCompletionBlock {
             DebugLogger.shared.info(
@@ -224,15 +232,18 @@ final class BottomOverlayWindowController {
             )
         }
         self.window?.orderFrontRegardless()
+        showTrace.mark("orderFront")
         self.window?.contentView?.displayIfNeeded()
         self.window?.displayIfNeeded()
+        showTrace.mark("display")
         CATransaction.flush()
+        showTrace.mark("flush")
         Self.overlayBench("bottom_order_front elapsedMs=\(Self.elapsedMs(since: startedAt))")
         Self.overlayBench("bottom_visible elapsedMs=\(Self.elapsedMs(since: startedAt))")
 
         self.audioSubscription?.cancel()
         self.audioSubscription = audioPublisher
-            .throttle(for: .milliseconds(33), scheduler: DispatchQueue.main, latest: true)
+            .throttle(for: .milliseconds(50), scheduler: DispatchQueue.main, latest: true)
             .sink { level in
                 OverlayAudioLevelState.shared.level = level
             }
@@ -256,6 +267,20 @@ final class BottomOverlayWindowController {
             let outcome = await self.performHideAndWait(generation: currentGeneration)
             self.completeHideOperation(generation: currentGeneration, outcome: outcome)
         }
+    }
+
+    /// Stops waveform updates the moment a stop begins so no overlay frame is
+    /// committed while final transcription runs. Each commit blocks the main
+    /// thread on WindowServer and delays the result hop back to the main actor.
+    func freezeForStop() {
+        self.audioSubscription?.cancel()
+        self.audioSubscription = nil
+        self.pendingResizeWorkItem?.cancel()
+        self.pendingResizeWorkItem = nil
+        if OverlayAudioLevelState.shared.level != 0 {
+            OverlayAudioLevelState.shared.level = 0
+        }
+        Self.overlayBench("bottom_freeze_for_stop")
     }
 
     /// Removes the completed-dictation overlay before returning. The panel is
@@ -298,8 +323,7 @@ final class BottomOverlayWindowController {
                 defer { cleanupTrace.finish() }
                 self.clearPresentationStateAfterImmediateHide()
                 cleanupTrace.mark("clearState")
-                self.window?.ignoresMouseEvents = true
-                cleanupTrace.mark("ignoreMouse")
+                self.scheduleIgnoreMouseEventsAfterHide()
             }
         }
         DebugLogger.shared.info(
@@ -315,6 +339,23 @@ final class BottomOverlayWindowController {
         )
     }
 
+    /// ignoresMouseEvents is a WindowServer fence (70-90 ms). Apply it only if
+    /// the panel stays hidden, so a rapid restart never pays for it twice.
+    private func scheduleIgnoreMouseEventsAfterHide() {
+        self.pendingIgnoreMouseWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.window?.alphaValue == 0 else { return }
+            let startedAt = ProcessInfo.processInfo.systemUptime
+            self.window?.ignoresMouseEvents = true
+            DebugLogger.shared.info(
+                "HIDE_NOW deferredIgnoreMouseUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000))",
+                source: "StopTiming"
+            )
+        }
+        self.pendingIgnoreMouseWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+    }
+
     private func clearPresentationStateAfterImmediateHide() {
         var trace = OverlayCloseTrace("bottom.clearState")
         defer { trace.finish() }
@@ -324,7 +365,9 @@ final class BottomOverlayWindowController {
         trace.mark("releaseTransition")
         NotchContentState.shared.setBottomOverlayDismissing(false)
         trace.mark("dismissingFalse")
-        NotchContentState.shared.targetAppIcon = nil
+        if NotchContentState.shared.targetAppIcon != nil {
+            NotchContentState.shared.targetAppIcon = nil
+        }
         trace.mark("iconClear")
         self.clearPresentationResources()
         trace.mark("resources")
@@ -461,10 +504,16 @@ final class BottomOverlayWindowController {
         trace.mark("modeMenu")
         BottomOverlayActionsMenuController.shared.hide()
         trace.mark("actionsMenu")
-        NotchContentState.shared.setProcessing(false)
+        if NotchContentState.shared.isProcessing {
+            NotchContentState.shared.setProcessing(false)
+        }
         trace.mark("processingFalse")
-        NotchContentState.shared.bottomOverlayAudioLevel = 0
-        OverlayAudioLevelState.shared.level = 0
+        if NotchContentState.shared.bottomOverlayAudioLevel != 0 {
+            NotchContentState.shared.bottomOverlayAudioLevel = 0
+        }
+        if OverlayAudioLevelState.shared.level != 0 {
+            OverlayAudioLevelState.shared.level = 0
+        }
         trace.mark("audioZero")
     }
 
@@ -548,7 +597,7 @@ final class BottomOverlayWindowController {
     /// Reset presentation-local SwiftUI measurements and resolve the empty
     /// session geometry before the warm panel moves onscreen. Otherwise the
     /// panel can reveal its previous multiline frame until resize debounce.
-    private func prepareFirstFrameForNewPresentation() {
+    private func prepareFirstFrameForNewPresentation(trace: inout OverlayCloseTrace) {
         guard let window,
               let hostingView = window.contentView as? NSHostingView<BottomOverlayView>
         else { return }
@@ -556,12 +605,17 @@ final class BottomOverlayWindowController {
         hostingView.rootView = BottomOverlayView()
         hostingView.invalidateIntrinsicContentSize()
         hostingView.layoutSubtreeIfNeeded()
+        trace.mark("layout1")
         let firstFrameSize = hostingView.fittingSize
+        trace.mark("fittingSize")
         hostingView.frame = NSRect(origin: .zero, size: firstFrameSize)
         window.setFrame(NSRect(origin: window.frame.origin, size: firstFrameSize), display: false)
+        trace.mark("setFrame")
         self.positionWindow()
+        trace.mark("position")
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
+        trace.mark("layout2")
     }
 
     /// Update window size based on current SwiftUI content and re-position

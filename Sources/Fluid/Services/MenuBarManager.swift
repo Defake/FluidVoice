@@ -384,6 +384,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             "reserve_processing overlayVisible=\(self.overlayVisible) active=\(self.isProcessingActive)"
         )
         self.isProcessingActive = true
+        NotchOverlayManager.shared.freezeForStop()
         self.pendingProcessingShowOperation?.cancel()
         self.pendingProcessingShowOperation = nil
         self.pendingHideOperation?.cancel()

@@ -329,6 +329,12 @@ final class NotchOverlayManager {
         }
     }
 
+    /// Freezes overlay animation for the latency-critical stop path.
+    func freezeForStop() {
+        guard self.isBottomOverlayVisible else { return }
+        BottomOverlayWindowController.shared.freezeForStop()
+    }
+
     /// Removes a successfully completed recording overlay synchronously so it
     /// cannot outlive the text insertion that follows.
     func hideImmediately() {
@@ -366,7 +372,9 @@ final class NotchOverlayManager {
                 guard let self, self.generation == currentGeneration else { return }
                 ActiveAppMonitor.shared.stopMonitoring()
                 cleanupTrace.mark("stopMonitoring")
-                NotchContentState.shared.setProcessing(false)
+                if NotchContentState.shared.isProcessing {
+                    NotchContentState.shared.setProcessing(false)
+                }
                 cleanupTrace.mark("processingFalse")
                 NotchContentState.shared.updateTranscription("")
                 cleanupTrace.mark("clearTranscription")
