@@ -120,6 +120,15 @@ final class SystemPasteboardManager: PasteboardManaging {
         ClipboardAudit.record(event, pasteboard: self.pasteboard, detail: detail)
     }
 
+    /// A representation larger than this is left out of the snapshot: the
+    /// paste must never wait on copying it, and the small ones (strings, file
+    /// URLs) still restore. A missing snapshot would block the paste, so an
+    /// oversized clipboard yields a smaller snapshot rather than none.
+    static let maximumRepresentationBytes = 32 * 1024 * 1024
+    /// Decoding and re-encoding an image to PNG costs time proportional to its
+    /// pixels; skip it for large sources and keep their original bytes only.
+    static let maximumPortableImageSourceBytes = 16 * 1024 * 1024
+
     func captureSnapshot() -> PasteboardSnapshot? {
         let startedAt = ProcessInfo.processInfo.systemUptime
         for attempt in 1...2 {
@@ -146,6 +155,8 @@ final class SystemPasteboardManager: PasteboardManaging {
             var totalBytes = 0
             var totalPortableImageBytes = 0
             var totalRepresentations = 0
+            var skippedBytes = 0
+            var skippedTypes: [String] = []
             var failure: (reason: String, itemIndex: Int, type: NSPasteboard.PasteboardType?)?
 
             itemLoop: for (itemIndex, sourceItem) in sourceItems.enumerated() {
@@ -162,10 +173,16 @@ final class SystemPasteboardManager: PasteboardManaging {
                         failure = ("unavailable_representation", itemIndex, type)
                         break itemLoop
                     }
+                    guard data.count <= Self.maximumRepresentationBytes else {
+                        skippedBytes += data.count
+                        skippedTypes.append(type.rawValue)
+                        continue
+                    }
                     representations.append(.init(type: type, data: data))
                     totalBytes += data.count
                     totalRepresentations += 1
                 }
+                guard !representations.isEmpty else { continue }
                 let item = PasteboardSnapshot.Item(representations: representations)
                 let portableImage = Self.portableImageRepresentation(for: item)
                 totalPortableImageBytes += portableImage?.data.count ?? 0
@@ -201,6 +218,7 @@ final class SystemPasteboardManager: PasteboardManaging {
             self.log(
                 "clipboard_snapshot_complete items=\(items.count) representations=\(totalRepresentations) " +
                     "bytes=\(totalBytes) portableImageBytes=\(totalPortableImageBytes) " +
+                    "skippedBytes=\(skippedBytes) skippedTypes=\(skippedTypes.joined(separator: ",")) " +
                     "elapsedMs=\(Self.elapsedMs(since: startedAt)) firstItem=\(Self.representationSummary(items.first))"
             )
             return PasteboardSnapshot(items: items)
@@ -269,6 +287,12 @@ final class SystemPasteboardManager: PasteboardManaging {
     }
 
     private func restore(_ snapshot: PasteboardSnapshot, ifUnchangedSince changeCount: Int?) -> Bool {
+        guard !snapshot.items.isEmpty else {
+            // Every representation was too large to keep; leave the transcript
+            // on the clipboard rather than clearing it.
+            self.log("clipboard_restore_skipped reason=nothing_captured")
+            return true
+        }
         var items: [NSPasteboardItem] = []
         for snapshotItem in snapshot.items {
             let item = NSPasteboardItem()
@@ -406,6 +430,7 @@ final class SystemPasteboardManager: PasteboardManaging {
 
         for representation in item.representations {
             guard UTType(representation.type.rawValue)?.conforms(to: .image) == true,
+                  representation.data.count <= Self.maximumPortableImageSourceBytes,
                   let pngData = Self.pngData(from: representation.data)
             else {
                 continue

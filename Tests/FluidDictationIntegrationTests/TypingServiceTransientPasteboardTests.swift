@@ -147,6 +147,42 @@ final class TypingServiceTransientPasteboardTests: XCTestCase {
         XCTAssertFalse(types.contains { $0.hasSuffix(".PasteSession") })
     }
 
+    func testSnapshotSkipsOversizedRepresentationsButKeepsTheRest() throws {
+        let pasteboard = self.makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let hugeType = NSPasteboard.PasteboardType("com.fluidvoice.tests.huge")
+        let item = NSPasteboardItem()
+        XCTAssertTrue(item.setData(Data(count: SystemPasteboardManager.maximumRepresentationBytes + 1), forType: hugeType))
+        XCTAssertTrue(item.setString("keep me", forType: .string))
+        XCTAssertTrue(pasteboard.writeObjects([item]))
+
+        let manager = SystemPasteboardManager(pasteboard: pasteboard)
+        let snapshot = try XCTUnwrap(manager.captureSnapshot())
+        XCTAssertEqual(snapshot.items.count, 1)
+        XCTAssertEqual(snapshot.items.first?.representations.map(\.type), [.string])
+        XCTAssertTrue(manager.writeTemporaryText("temporary", sessionID: "session"))
+        XCTAssertTrue(manager.restore(snapshot))
+        XCTAssertEqual(pasteboard.string(forType: .string), "keep me")
+        XCTAssertNil(pasteboard.data(forType: hugeType))
+    }
+
+    func testSnapshotWithNothingSmallEnoughStillLetsThePasteProceed() throws {
+        let pasteboard = self.makePasteboard()
+        defer { pasteboard.releaseGlobally() }
+        let hugeType = NSPasteboard.PasteboardType("com.fluidvoice.tests.huge")
+        let item = NSPasteboardItem()
+        XCTAssertTrue(item.setData(Data(count: SystemPasteboardManager.maximumRepresentationBytes + 1), forType: hugeType))
+        XCTAssertTrue(pasteboard.writeObjects([item]))
+
+        let manager = SystemPasteboardManager(pasteboard: pasteboard)
+        // A nil snapshot would refuse the paste; an empty one must not.
+        let snapshot = try XCTUnwrap(manager.captureSnapshot())
+        XCTAssertTrue(snapshot.items.isEmpty)
+        XCTAssertTrue(manager.writeTemporaryText("temporary", sessionID: "session"))
+        XCTAssertTrue(manager.restore(snapshot))
+        XCTAssertEqual(pasteboard.string(forType: .string), "temporary")
+    }
+
     func testSnapshotRestoresEveryRepresentation() throws {
         let pasteboard = self.makePasteboard()
         defer { pasteboard.releaseGlobally() }
