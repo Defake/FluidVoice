@@ -162,6 +162,27 @@ Finder desktop -> unknown (AXList), Stickies and TextEdit -> editable
 (AXTextArea), FluidVoice's own window -> unknown (AXScrollArea). The refuse
 branch was not exercised with real speech; a button or menu focus at stop
 would trigger it.
+### 10. Paste read-back verification
+
+`PasteVerifier` (TypingService, off-main after the paste command):
+
+- Snapshot before: focused element, role, AXValue (skipped above 60k chars),
+  AXNumberOfCharacters, AXSelectedTextRange.
+- Read back at 150 ms and again at 500 ms. Same element required.
+- confirmed when the text appears in the value, or the character count or
+  caret advanced by the text length.
+- notLanded only when value, count and caret were all readable and all
+  unchanged on both reads. Then the overlay comes back with "Text was not
+  inserted" and Copy.
+- everything else unknown and silent (Finder, most containers, apps that
+  expose no value).
+
+Verified with the paste-last debug trigger: Stickies -> confirmed by value in
+165 ms; Finder desktop -> unknown (nothing readable); Claude Desktop with a
+button focused -> refused before pasting by rule 9. The Claude Desktop
+"nothing focused" case reports AXGroup and needs a real dictation to see what
+the read-back returns; check `rg PASTE_VERIFY ~/Library/Logs/Fluid/Fluid.log`.
+
 ## Measurement caveats
 
 - `OverlayCloseRunLoopProbe` (`CLOSE_DETAIL runLoop occupiedMs`) over-reports on
