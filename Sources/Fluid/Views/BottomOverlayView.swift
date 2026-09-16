@@ -36,7 +36,7 @@ final class BottomOverlayWindowController {
     private var releaseTransitionActiveUntil: Date?
     private var deferredResizePending = false
     private var presentationGeneration: UInt64 = 0
-    private let dismissalDuration: TimeInterval = 0.02
+    static let exitDuration: TimeInterval = 0.08
     private var isHideInProgress = false
     private var activeHideGeneration: UInt64?
     private var hideWaiters: [CheckedContinuation<RecordingOverlayHideOutcome, Never>] = []
@@ -192,12 +192,8 @@ final class BottomOverlayWindowController {
         }
     }
 
-    private static let exitDuration: TimeInterval = 0.14
-    private static let exitSlide: CGFloat = 8
-
-    /// Fade plus a small downward slide on the content layer, compositor
-    /// driven: one commit, then WindowServer runs the animation. The window
-    /// alpha drops to 0 when the animation's transaction completes.
+    /// Minimal compositor-driven fade: one commit, then WindowServer runs the
+    /// animation. The window alpha drops to 0 when it completes.
     private func beginExitAnimation() {
         guard let window else { return }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = window.contentView?.layer else {
@@ -222,24 +218,17 @@ final class BottomOverlayWindowController {
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1
         fade.toValue = 0
-        let slide = CABasicAnimation(keyPath: "transform.translation.y")
-        slide.fromValue = 0
-        slide.toValue = -Self.exitSlide
-        for animation in [fade, slide] {
-            animation.duration = Self.exitDuration
-            animation.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            animation.fillMode = .forwards
-            animation.isRemovedOnCompletion = false
-        }
+        fade.duration = Self.exitDuration
+        fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fade.fillMode = .forwards
+        fade.isRemovedOnCompletion = false
         layer.add(fade, forKey: "overlayExitFade")
-        layer.add(slide, forKey: "overlayExitSlide")
         CATransaction.commit()
     }
 
     private func cancelExitAnimation() {
         guard let layer = self.window?.contentView?.layer else { return }
         layer.removeAnimation(forKey: "overlayExitFade")
-        layer.removeAnimation(forKey: "overlayExitSlide")
     }
 
     /// Stops waveform updates the moment a stop begins so no overlay frame is
@@ -279,10 +268,10 @@ final class BottomOverlayWindowController {
         // in at alpha 0 so its surface remains warm for the next presentation.
         // ignoresMouseEvents is a window-management transaction (40-80 ms
         // fence); it is applied in the deferred cleanup instead.
+        self.window?.alphaValue = 0
         self.window?.setAccessibilityChildren([])
         self.window?.setAccessibilityElement(false)
-        self.beginExitAnimation()
-        // Everything below runs after the transaction carrying the exit has been
+        // Everything below runs after the transaction carrying alpha 0 has been
         // committed to WindowServer, so SwiftUI state churn and the
         // ignoresMouseEvents fence can never delay the visual removal.
         CATransaction.setCompletionBlock { [weak self] in
@@ -414,9 +403,11 @@ final class BottomOverlayWindowController {
             return .hidden
         }
 
-        // SwiftUI owns the dismissal animation. Keeping AppKit alpha at 1
-        // prevents an old implicit window animation from hiding a rapid restart.
+        // The content layer owns the fade. Keeping AppKit alpha at 1 until its
+        // completion prevents an old implicit window animation from hiding a
+        // rapid restart.
         Self.overlayBench("bottom_hide_animation_start")
+        self.beginExitAnimation()
         traceHide("before_yield")
         await Task.yield()
         traceHide("after_yield")
@@ -424,10 +415,8 @@ final class BottomOverlayWindowController {
             Self.overlayBench("bottom_hide_return reason=stale_generation")
             return .superseded
         }
-        self.clearPresentationResources()
-        traceHide("resources_cleared")
-
-        try? await Task.sleep(nanoseconds: UInt64(self.dismissalDuration * 1_000_000_000))
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : Self.exitDuration
+        try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
         traceHide("sleep_resumed")
 
         guard self.presentationGeneration == currentGeneration else {
@@ -435,13 +424,14 @@ final class BottomOverlayWindowController {
             return .superseded
         }
 
-        self.parkWindowOffscreen()
-        traceHide("window_parked")
-        window.alphaValue = 1
+        window.alphaValue = 0
         NotchContentState.shared.setBottomOverlayPresented(false)
         self.endReleaseTransition(flushDeferredUpdate: false)
         NotchContentState.shared.setBottomOverlayDismissing(false)
         NotchContentState.shared.targetAppIcon = nil
+        self.clearPresentationResources()
+        self.scheduleIgnoreMouseEventsAfterHide()
+        traceHide("resources_cleared")
         traceHide("state_cleared")
         Self.overlayBench("bottom_hide_complete elapsedMs=\(Self.elapsedMs(since: startedAt))")
         return .hidden

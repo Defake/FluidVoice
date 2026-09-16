@@ -283,6 +283,10 @@ final class HotkeyShortcutTests: XCTestCase {
         XCTAssertFalse(NotchContentState.shared.isBottomOverlayPresented)
     }
 
+    func testBottomOverlayExitUsesMinimalFadeDuration() {
+        XCTAssertEqual(BottomOverlayWindowController.exitDuration, 0.08, accuracy: 0.001)
+    }
+
     @MainActor
     func testBottomOverlayReportsWhenRapidRestartSupersedesHide() async {
         let previous = SettingsStore.shared.overlayClosingAnimationEnabled

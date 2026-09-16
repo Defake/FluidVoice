@@ -2617,6 +2617,8 @@ struct ContentView: View {
     // MARK: - Stop and Process Transcription
 
     private func stopAndProcessTranscription(route: DictationOutputRoute = .normal, toggleStopRequestedAt: TimeInterval? = nil) async {
+        var closeTrace = OverlayCloseTrace("content.stopCallback")
+        defer { closeTrace.finish() }
         let lifecycle = self.overlayLifecycleID
         defer {
             if self.overlayLifecycleID == lifecycle { NotchContentState.shared.frozenDictationLabel = nil }
@@ -4778,6 +4780,7 @@ extension ContentView {
         startMethod: AnalyticsOnboardingTryoutStartMethod = .hotkey
     ) {
         DebugLogger.shared.debug("Begin dictation recording for slot \(slot.rawValue)", source: "ContentView")
+        DebugLogger.shared.info("CLOSE_DETAIL nextStartRequested uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
         self.appBench("begin_recording slot=\(slot.rawValue) mode=\(mode.rawValue)")
         if self.isOnboardingVoicePlaygroundStepActive {
             self.asr.finalText = ""
