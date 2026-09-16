@@ -399,6 +399,13 @@ final class PasteDeliveryCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.textDeliveryFailureTranscript, "retained output")
     }
 
+    func testAccessibilityMessagingTimeoutIsBounded() {
+        // Well under the ~6 s system default so a hung target app cannot
+        // stall the main thread and the keyboard tap for that long.
+        XCTAssertEqual(AccessibilityMessagingTimeout.seconds, 2)
+        XCTAssertLessThan(AccessibilityMessagingTimeout.seconds, 6)
+    }
+
     func testRecoveryActivationNeverRequestsAllWindows() {
         XCTAssertTrue(TypingService.recoveryActivationOptions.contains(.activateIgnoringOtherApps))
         XCTAssertFalse(TypingService.recoveryActivationOptions.contains(.activateAllWindows))

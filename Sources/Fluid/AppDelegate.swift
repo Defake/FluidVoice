@@ -46,6 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AccessibilityMessagingTimeout.configure()
         // Bring up file logging + crash handlers immediately during launch.
         _ = FileLogger.shared
         TypingService.startKeyboardLayoutTracking()
