@@ -586,11 +586,13 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
     }
 
     private func updateMenuBarIcon() {
-        guard let statusItem = statusItem else { return }
+        guard let statusItem = statusItem, statusItem.button?.image == nil else { return }
 
-        // Use MenuBarIcon asset - vectorized from logo
+        // The template icon is identical in every state. Assigning a fresh
+        // NSImage on each recording change forced a status item redraw plus a
+        // WindowServer fence (about 200 ms measured) on every start and stop.
         if let image = NSImage(named: "MenuBarIcon") {
-            image.isTemplate = true // Adapts to light/dark mode and tints red when recording
+            image.isTemplate = true
             statusItem.button?.image = image
         }
     }
