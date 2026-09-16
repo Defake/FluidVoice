@@ -121,6 +121,8 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
                 }
                 if isRunning {
                     self.hasDeferredStoppedRecordingState = false
+                    OverlayAudioLevelState.shared.isLive = true
+                    DebugLogger.shared.info("WAVEFORM_LIVE", source: "StopTiming")
                 }
                 self.isRecording = isRunning
                 self.updateMenuBarIcon()

@@ -10,93 +10,14 @@ import Combine
 import QuartzCore
 import SwiftUI
 
-// Temporary close-path diagnostics. Store checkpoints before emitting one line;
-// never include transcript, application identity, or audio in these records.
-struct OverlayCloseTrace {
-    private let name: String
-    private let startedAt = ProcessInfo.processInfo.systemUptime
-    private var previous = ProcessInfo.processInfo.systemUptime
-    private var checkpoints: [(String, Double)] = []
-
-    init(_ name: String) { self.name = name }
-
-    mutating func mark(_ phase: String, since: TimeInterval? = nil) {
-        let now = ProcessInfo.processInfo.systemUptime
-        self.checkpoints.append((phase, (now - (since ?? self.previous)) * 1000))
-        self.previous = now
-    }
-
-    mutating func finish() {
-        let total = (ProcessInfo.processInfo.systemUptime - self.startedAt) * 1000
-        let fields = self.checkpoints.map { "\($0.0)Ms=\(String(format: "%.3f", $0.1))" }.joined(separator: " ")
-        DebugLogger.shared.info("CLOSE_DETAIL scope=\(self.name) uptime=\(self.startedAt) totalMs=\(String(format: "%.3f", total)) \(fields)", source: "StopTiming")
-    }
-}
-
-// Temporary, bounded main-run-loop probe. Both observer and removal run only
-// on the main thread. Ignore sleep intervals; report occupied intervals >8ms.
-@MainActor
-enum OverlayCloseRunLoopProbe {
-    private static var observer: CFRunLoopObserver?
-
-    static func begin() {
-        guard self.observer == nil else { return }
-        let state = ProbeState()
-        guard let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.allActivities.rawValue, true, 0, { _, activity in
-            let now = ProcessInfo.processInfo.systemUptime
-            let elapsed = (now - state.previousAt) * 1000
-            if state.previousPhase != CFRunLoopActivity.beforeWaiting.rawValue, elapsed > 8 {
-                DebugLogger.shared.info("CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)", source: "StopTiming")
-            }
-            state.previousAt = now
-            state.previousPhase = activity.rawValue
-        }) else { return }
-        self.observer = observer
-        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
-            self.observer = nil
-        }
-    }
-
-    private final class ProbeState: @unchecked Sendable {
-        var previousAt = ProcessInfo.processInfo.systemUptime
-        var previousPhase: CFOptionFlags = 0
-    }
-}
-
-private enum OverlayShortcutResolver {
-    static func shortcutDisplay(for mode: OverlayMode, settings: SettingsStore = .shared) -> String {
-        switch mode {
-        case .dictation:
-            return settings.primaryDictationShortcutDisplayString
-        case .edit, .write, .rewrite:
-            return settings.rewriteModeHotkeyShortcut.displayString
-        case .command:
-            return settings.commandModeHotkeyShortcut?.displayString ?? "Not set"
-        }
-    }
-}
-
-enum RecordingOverlayHideOutcome: Equatable {
-    case hidden
-    case superseded
-}
-
-private final class BottomOverlayPanel: NSPanel {
-    var allowsOffscreenParking = false
-
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        self.allowsOffscreenParking ? frameRect : super.constrainFrameRect(frameRect, to: screen)
-    }
-}
-
 /// Audio level lives outside NotchContentState so ~94 Hz level ticks only
 /// invalidate the waveform, not every view observing the shared state.
 @MainActor
 final class OverlayAudioLevelState: ObservableObject {
     static let shared = OverlayAudioLevelState()
     @Published var level: CGFloat = 0
+    /// False from show until the microphone delivers its first buffer.
+    @Published var isLive = false
 }
 
 // MARK: - Bottom Overlay Window Controller
@@ -189,6 +110,8 @@ final class BottomOverlayWindowController {
         if self.window == nil {
             self.createWindow()
         }
+        self.cancelExitAnimation()
+        OverlayAudioLevelState.shared.isLive = false
         // Keep the previous content invisible while state changes. Parking
         // offscreen instead costs two WindowServer fences (the frame change
         // and the window-moved echo event).
@@ -269,6 +192,56 @@ final class BottomOverlayWindowController {
         }
     }
 
+    private static let exitDuration: TimeInterval = 0.14
+    private static let exitSlide: CGFloat = 8
+
+    /// Fade plus a small downward slide on the content layer, compositor
+    /// driven: one commit, then WindowServer runs the animation. The window
+    /// alpha drops to 0 when the animation's transaction completes.
+    private func beginExitAnimation() {
+        guard let window else { return }
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer = window.contentView?.layer else {
+            window.alphaValue = 0
+            return
+        }
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        let generation = self.presentationGeneration
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Self.exitDuration)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeIn))
+        CATransaction.setCompletionBlock { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.presentationGeneration == generation else { return }
+                self.window?.alphaValue = 0
+                DebugLogger.shared.info(
+                    "EXIT_DONE elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))",
+                    source: "StopTiming"
+                )
+            }
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        let slide = CABasicAnimation(keyPath: "transform.translation.y")
+        slide.fromValue = 0
+        slide.toValue = -Self.exitSlide
+        for animation in [fade, slide] {
+            animation.duration = Self.exitDuration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            animation.fillMode = .forwards
+            animation.isRemovedOnCompletion = false
+        }
+        layer.add(fade, forKey: "overlayExitFade")
+        layer.add(slide, forKey: "overlayExitSlide")
+        CATransaction.commit()
+    }
+
+    private func cancelExitAnimation() {
+        guard let layer = self.window?.contentView?.layer else { return }
+        layer.removeAnimation(forKey: "overlayExitFade")
+        layer.removeAnimation(forKey: "overlayExitSlide")
+    }
+
     /// Stops waveform updates the moment a stop begins so no overlay frame is
     /// committed while final transcription runs. Each commit blocks the main
     /// thread on WindowServer and delays the result hop back to the main actor.
@@ -306,10 +279,10 @@ final class BottomOverlayWindowController {
         // in at alpha 0 so its surface remains warm for the next presentation.
         // ignoresMouseEvents is a window-management transaction (40-80 ms
         // fence); it is applied in the deferred cleanup instead.
-        self.window?.alphaValue = 0
         self.window?.setAccessibilityChildren([])
         self.window?.setAccessibilityElement(false)
-        // Everything below runs after the transaction carrying alpha 0 has been
+        self.beginExitAnimation()
+        // Everything below runs after the transaction carrying the exit has been
         // committed to WindowServer, so SwiftUI state churn and the
         // ignoresMouseEvents fence can never delay the visual removal.
         CATransaction.setCompletionBlock { [weak self] in
@@ -3761,6 +3734,10 @@ struct BottomWaveformView: View {
 
     @ObservedObject private var contentState = NotchContentState.shared
     @ObservedObject private var audioLevel = OverlayAudioLevelState.shared
+    private var isWaitingForMicrophone: Bool {
+        !self.audioLevel.isLive && !self.contentState.isProcessing && !self.isReleaseAnimationActive
+    }
+
     // Initialize with max possible bar count (11 for large) to prevent index-out-of-range before onAppear
     @State private var barHeights: [CGFloat] = Array(repeating: 6, count: 11)
     @State private var noiseThreshold: CGFloat = .init(SettingsStore.shared.visualizerNoiseThreshold)
@@ -3839,6 +3816,8 @@ struct BottomWaveformView: View {
                     .shadow(color: .white.opacity(0.28), radius: 2.5, x: 0, y: 0)
             }
         }
+        .opacity(self.isWaitingForMicrophone ? 0.45 : 1)
+        .animation(.easeOut(duration: 0.22), value: self.isWaitingForMicrophone)
         .onChange(of: self.audioLevel.level) { _, level in
             guard !self.isReleaseAnimationActive else { return }
             if !self.contentState.isProcessing {
