@@ -10,6 +10,61 @@ import Combine
 import QuartzCore
 import SwiftUI
 
+// Temporary close-path diagnostics. Store checkpoints before emitting one line;
+// never include transcript, application identity, or audio in these records.
+struct OverlayCloseTrace {
+    private let name: String
+    private let startedAt = ProcessInfo.processInfo.systemUptime
+    private var previous = ProcessInfo.processInfo.systemUptime
+    private var checkpoints: [(String, Double)] = []
+
+    init(_ name: String) { self.name = name }
+
+    mutating func mark(_ phase: String, since: TimeInterval? = nil) {
+        let now = ProcessInfo.processInfo.systemUptime
+        self.checkpoints.append((phase, (now - (since ?? self.previous)) * 1000))
+        self.previous = now
+    }
+
+    mutating func finish() {
+        let total = (ProcessInfo.processInfo.systemUptime - self.startedAt) * 1000
+        let fields = self.checkpoints.map { "\($0.0)Ms=\(String(format: "%.3f", $0.1))" }.joined(separator: " ")
+        DebugLogger.shared.info("CLOSE_DETAIL scope=\(self.name) uptime=\(self.startedAt) totalMs=\(String(format: "%.3f", total)) \(fields)", source: "StopTiming")
+    }
+}
+
+// Temporary, bounded main-run-loop probe. Both observer and removal run only
+// on the main thread. Ignore sleep intervals; report occupied intervals >8ms.
+@MainActor
+enum OverlayCloseRunLoopProbe {
+    private static var observer: CFRunLoopObserver?
+
+    static func begin() {
+        guard self.observer == nil else { return }
+        let state = ProbeState()
+        guard let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.allActivities.rawValue, true, 0, { _, activity in
+            let now = ProcessInfo.processInfo.systemUptime
+            let elapsed = (now - state.previousAt) * 1000
+            if state.previousPhase != CFRunLoopActivity.beforeWaiting.rawValue, elapsed > 8 {
+                DebugLogger.shared.info("CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)", source: "StopTiming")
+            }
+            state.previousAt = now
+            state.previousPhase = activity.rawValue
+        }) else { return }
+        self.observer = observer
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+            self.observer = nil
+        }
+    }
+
+    private final class ProbeState: @unchecked Sendable {
+        var previousAt = ProcessInfo.processInfo.systemUptime
+        var previousPhase: CFOptionFlags = 0
+    }
+}
+
 private enum OverlayShortcutResolver {
     static func shortcutDisplay(for mode: OverlayMode, settings: SettingsStore = .shared) -> String {
         switch mode {
@@ -85,8 +140,6 @@ final class BottomOverlayWindowController {
                 self.targetScreen = OverlayScreenResolver.screenForCurrentPointer()
                 if NotchContentState.shared.isBottomOverlayPresented {
                     self.positionWindow()
-                } else {
-                    self.parkWindowOffscreen()
                 }
             }
         }
@@ -125,7 +178,10 @@ final class BottomOverlayWindowController {
         if self.window == nil {
             self.createWindow()
         }
-        self.parkWindowOffscreen()
+        // Keep the previous content invisible while state changes. Parking
+        // offscreen instead costs two WindowServer fences (the frame change
+        // and the window-moved echo event).
+        self.window?.alphaValue = 0
 
         // Prepare the complete first frame while the cached panel is still
         // offscreen. Revealing the neutral shell first causes a visible flash
@@ -150,6 +206,7 @@ final class BottomOverlayWindowController {
         // Submit one complete frame to WindowServer.
         self.window?.setAccessibilityChildren(nil)
         self.window?.setAccessibilityElement(true)
+        self.window?.ignoresMouseEvents = false
         self.window?.alphaValue = 1
         self.window?.orderFrontRegardless()
         self.window?.contentView?.displayIfNeeded()
@@ -167,12 +224,18 @@ final class BottomOverlayWindowController {
     }
 
     func hide() {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.hideImmediately()
+            return
+        }
         guard !self.isHideInProgress else { return }
         self.isHideInProgress = true
         self.presentationGeneration &+= 1
         let currentGeneration = self.presentationGeneration
         self.activeHideGeneration = currentGeneration
+        let visualStartedAt = ProcessInfo.processInfo.systemUptime
         self.beginDismissalVisualIfPresented(generation: currentGeneration)
+        DebugLogger.shared.info("HIDE_TRACE phase=dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
         Task { [weak self] in
             guard let self else { return }
             let outcome = await self.performHideAndWait(generation: currentGeneration)
@@ -184,6 +247,8 @@ final class BottomOverlayWindowController {
     /// parked rather than destroyed so the next presentation keeps its warm
     /// SwiftUI and WindowServer surface.
     func hideImmediately() {
+        var trace = OverlayCloseTrace("bottom.hide")
+        defer { trace.finish() }
         let startedAt = ProcessInfo.processInfo.systemUptime
         self.presentationGeneration &+= 1
         let currentGeneration = self.presentationGeneration
@@ -193,45 +258,68 @@ final class BottomOverlayWindowController {
         let waiters = self.hideWaiters
         self.hideWaiters.removeAll(keepingCapacity: true)
 
-        // Remove the panel from WindowServer before any SwiftUI state update can
-        // delay paste. Opacity alone is not committed until the next frame.
+        // Window alpha is a plain WindowServer property: it needs no
+        // window-management transaction and therefore no fence round trip.
+        // orderOut, setFrameOrigin and an explicit CATransaction.flush each
+        // block the main thread on a WindowServer fence (70-300 ms on a busy
+        // host) while the shortcut is still locked. The panel stays ordered
+        // in at alpha 0 so its surface remains warm for the next presentation.
+        // ignoresMouseEvents is a window-management transaction (40-80 ms
+        // fence); it is applied in the deferred cleanup instead.
         self.window?.alphaValue = 0
+        self.window?.setAccessibilityChildren([])
+        self.window?.setAccessibilityElement(false)
+        DebugLogger.shared.info(
+            "HIDE_NOW hideUs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000_000)) " +
+                "windowVisible=\(self.window?.isVisible == true)",
+            source: "StopTiming"
+        )
         Self.overlayBench("bottom_hide_alpha_return elapsedMs=\(Self.elapsedMs(since: startedAt))")
-        self.window?.orderOut(nil)
-        // Ordering changes ride the current CA transaction. Commit now so the panel
-        // leaves the screen with the paste instead of when main next goes idle.
-        CATransaction.flush()
-        Self.overlayBench("bottom_hide_order_out_return elapsedMs=\(Self.elapsedMs(since: startedAt))")
         waiters.forEach { $0.resume(returning: .hidden) }
 
         Self.overlayBench(
             "bottom_hide_immediate_complete elapsedMs=\(Self.elapsedMs(since: startedAt)) visible=\(self.window?.isVisible == true)"
         )
 
-        // Cleanup is not user-visible and must not hold up text insertion.
+        // State cleanup is not user-visible and must not hold up text insertion
+        // or the next shortcut. It never touches the window frame or ordering.
         Task { @MainActor [weak self] in
+            var cleanupTrace = OverlayCloseTrace("bottom.deferredCleanup")
+            cleanupTrace.mark("scheduledDelay", since: startedAt)
             await Task.yield()
+            cleanupTrace.mark("yield")
+            defer { cleanupTrace.finish() }
             guard let self, self.presentationGeneration == currentGeneration else { return }
             self.clearPresentationStateAfterImmediateHide()
-            self.parkWindowOffscreen()
-            self.window?.alphaValue = 1
-            self.window?.orderFrontRegardless()
-            CATransaction.flush()
+            cleanupTrace.mark("clearState")
+            self.window?.ignoresMouseEvents = true
+            cleanupTrace.mark("ignoreMouse")
         }
     }
 
     private func clearPresentationStateAfterImmediateHide() {
+        var trace = OverlayCloseTrace("bottom.clearState")
+        defer { trace.finish() }
         NotchContentState.shared.setBottomOverlayPresented(false)
+        trace.mark("presentedFalse")
         self.endReleaseTransition(flushDeferredUpdate: false)
+        trace.mark("releaseTransition")
         NotchContentState.shared.setBottomOverlayDismissing(false)
+        trace.mark("dismissingFalse")
         NotchContentState.shared.targetAppIcon = nil
+        trace.mark("iconClear")
         self.clearPresentationResources()
+        trace.mark("resources")
         Self.overlayBench("bottom_hide_immediate_cleanup_complete")
     }
 
     /// Returns whether the panel finished hiding or a newer presentation
     /// superseded this request.
     func hideAndWait() async -> RecordingOverlayHideOutcome {
+        guard SettingsStore.shared.overlayClosingAnimationEnabled else {
+            self.hideImmediately()
+            return .hidden
+        }
         if self.isHideInProgress {
             return await withCheckedContinuation { continuation in
                 self.hideWaiters.append(continuation)
@@ -242,7 +330,9 @@ final class BottomOverlayWindowController {
         self.presentationGeneration &+= 1
         let currentGeneration = self.presentationGeneration
         self.activeHideGeneration = currentGeneration
+        let visualStartedAt = ProcessInfo.processInfo.systemUptime
         self.beginDismissalVisualIfPresented(generation: currentGeneration)
+        DebugLogger.shared.info("HIDE_TRACE phase=awaited_dismissal_state elapsedUs=\(Int((ProcessInfo.processInfo.systemUptime - visualStartedAt) * 1_000_000))", source: "StopTiming")
         let outcome = await self.performHideAndWait(generation: currentGeneration)
         self.completeHideOperation(generation: currentGeneration, outcome: outcome)
         return outcome
@@ -269,6 +359,12 @@ final class BottomOverlayWindowController {
 
     private func performHideAndWait(generation currentGeneration: UInt64) async -> RecordingOverlayHideOutcome {
         let startedAt = ProcessInfo.processInfo.systemUptime
+        var previousTraceTime = startedAt
+        func traceHide(_ phase: String) {
+            let now = ProcessInfo.processInfo.systemUptime
+            DebugLogger.shared.info("HIDE_TRACE phase=\(phase) deltaUs=\(Int((now - previousTraceTime) * 1_000_000)) totalUs=\(Int((now - startedAt) * 1_000_000))", source: "StopTiming")
+            previousTraceTime = now
+        }
         Self.overlayBench("bottom_hide_start windowExists=\(self.window != nil)")
         guard self.presentationGeneration == currentGeneration else {
             Self.overlayBench("bottom_hide_return reason=stale_generation")
@@ -287,14 +383,18 @@ final class BottomOverlayWindowController {
         // SwiftUI owns the dismissal animation. Keeping AppKit alpha at 1
         // prevents an old implicit window animation from hiding a rapid restart.
         Self.overlayBench("bottom_hide_animation_start")
+        traceHide("before_yield")
         await Task.yield()
+        traceHide("after_yield")
         guard self.presentationGeneration == currentGeneration else {
             Self.overlayBench("bottom_hide_return reason=stale_generation")
             return .superseded
         }
         self.clearPresentationResources()
+        traceHide("resources_cleared")
 
         try? await Task.sleep(nanoseconds: UInt64(self.dismissalDuration * 1_000_000_000))
+        traceHide("sleep_resumed")
 
         guard self.presentationGeneration == currentGeneration else {
             Self.overlayBench("bottom_hide_return reason=stale_generation")
@@ -302,11 +402,13 @@ final class BottomOverlayWindowController {
         }
 
         self.parkWindowOffscreen()
+        traceHide("window_parked")
         window.alphaValue = 1
         NotchContentState.shared.setBottomOverlayPresented(false)
         self.endReleaseTransition(flushDeferredUpdate: false)
         NotchContentState.shared.setBottomOverlayDismissing(false)
         NotchContentState.shared.targetAppIcon = nil
+        traceHide("state_cleared")
         Self.overlayBench("bottom_hide_complete elapsedMs=\(Self.elapsedMs(since: startedAt))")
         return .hidden
     }
@@ -324,18 +426,27 @@ final class BottomOverlayWindowController {
     }
 
     private func clearPresentationResources() {
+        var trace = OverlayCloseTrace("bottom.resources")
+        defer { trace.finish() }
         self.audioSubscription?.cancel()
+        trace.mark("audioCancel")
         self.audioSubscription = nil
         self.pendingResizeWorkItem?.cancel()
         self.pendingResizeWorkItem = nil
         self.pendingReleaseTransitionResetWorkItem?.cancel()
         self.targetScreen = nil
         self.removeMouseDownMonitors()
+        trace.mark("cancelWorkAndMonitors")
         BottomOverlayPromptMenuController.shared.hide()
+        trace.mark("promptMenu")
         BottomOverlayModeMenuController.shared.hide()
+        trace.mark("modeMenu")
         BottomOverlayActionsMenuController.shared.hide()
+        trace.mark("actionsMenu")
         NotchContentState.shared.setProcessing(false)
+        trace.mark("processingFalse")
         NotchContentState.shared.bottomOverlayAudioLevel = 0
+        trace.mark("audioZero")
     }
 
     func setProcessing(_ processing: Bool) {
@@ -435,6 +546,8 @@ final class BottomOverlayWindowController {
 
     /// Update window size based on current SwiftUI content and re-position
     private func updateSizeAndPosition() {
+        var trace = OverlayCloseTrace("bottom.layout")
+        defer { trace.finish() }
         if self.isReleaseTransitionActive {
             self.deferredResizePending = true
             return
@@ -444,6 +557,7 @@ final class BottomOverlayWindowController {
 
         // Re-calculate fitting size for the new layout constants
         let newSize = hostingView.fittingSize
+        trace.mark("fittingSize")
 
         // Avoid redundant content-size updates while AppKit is already resolving constraints.
         // Re-applying the same size can trigger unnecessary update-constraints churn.
@@ -460,7 +574,9 @@ final class BottomOverlayWindowController {
         }
 
         // Re-position
+        trace.mark("setFrame")
         self.positionWindow()
+        trace.mark("position")
     }
 
     private func createWindow() {
@@ -559,10 +675,9 @@ final class BottomOverlayWindowController {
     private func positionWindow() {
         // Safe check for window and screen availability
         guard let window = window else { return }
-        guard NotchContentState.shared.isBottomOverlayPresented else {
-            self.parkWindowOffscreen()
-            return
-        }
+        // A hidden panel sits at alpha 0 where it is. Parking it offscreen
+        // here would cost WindowServer fences right after a hide.
+        guard NotchContentState.shared.isBottomOverlayPresented else { return }
         (window as? BottomOverlayPanel)?.allowsOffscreenParking = false
 
         let screen = self.targetScreen ?? window.screen ?? OverlayScreenResolver.screenForCurrentPointer()
@@ -595,8 +710,10 @@ final class BottomOverlayWindowController {
 
     private func parkWindowOffscreen() {
         guard let window else { return }
+        let parkingStartedAt = ProcessInfo.processInfo.systemUptime
         window.setAccessibilityChildren([])
         window.setAccessibilityElement(false)
+        let accessibilityClearedAt = ProcessInfo.processInfo.systemUptime
         (window as? BottomOverlayPanel)?.allowsOffscreenParking = true
         let desktopFrame = NSScreen.screens.reduce(NSRect.null) { partial, screen in
             partial.union(screen.frame)
@@ -605,7 +722,14 @@ final class BottomOverlayWindowController {
             x: desktopFrame.maxX + window.frame.width + 1024,
             y: desktopFrame.maxY + window.frame.height + 1024
         )
+        let originStartedAt = ProcessInfo.processInfo.systemUptime
         window.setFrameOrigin(edge)
+        DebugLogger.shared.info(
+            "HIDE_TRACE phase=parking_detail accessibilityUs=\(Int((accessibilityClearedAt - parkingStartedAt) * 1_000_000)) " +
+                "geometryUs=\(Int((originStartedAt - accessibilityClearedAt) * 1_000_000)) " +
+                "setOriginUs=\(Int((ProcessInfo.processInfo.systemUptime - originStartedAt) * 1_000_000))",
+            source: "StopTiming"
+        )
     }
 }
 
@@ -2423,6 +2547,7 @@ struct BottomOverlayView: View {
     private var selectedPromptLabel: String {
         guard let activePromptMode else { return "N/A" }
         if activePromptMode.normalized == .dictate {
+            if let label = self.contentState.frozenDictationLabel { return label }
             return self.settings.dictationOverlayLabel(
                 for: self.activeDictationShortcutSlot,
                 appBundleID: self.promptResolutionBundleID
