@@ -962,6 +962,44 @@ nonisolated struct MeetingSession: Codable, Identifiable, Equatable, Sendable {
         self.updatedAt = Date()
     }
 
+    /// Gives one unresolved segment its own manual speaker identity. The identity is intentionally
+    /// scoped to this segment: naming one unknown must never rename or relabel another unknown.
+    @discardableResult
+    mutating func nameUnknownSegment(
+        id: MeetingTranscriptSegmentID,
+        displayName: String
+    ) throws -> SessionSpeakerID {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw MeetingDomainError.emptySpeakerName }
+        guard let segmentIndex = self.transcriptSegments.firstIndex(where: { $0.id == id }) else {
+            throw MeetingDomainError.segmentNotFound
+        }
+        guard self.transcriptSegments[segmentIndex].speakerID == nil else {
+            throw MeetingDomainError.segmentAlreadyAssigned
+        }
+        guard let trackKind = self.audioTracks.first(where: {
+            $0.id == self.transcriptSegments[segmentIndex].sourceTrackID
+        })?.kind else {
+            throw MeetingDomainError.segmentTrackNotFound
+        }
+
+        let speakerID = UUID()
+        self.speakers.append(MeetingSessionSpeaker(
+            id: speakerID,
+            displayName: trimmed,
+            diarizationClusterID: nil,
+            trackKind: trackKind,
+            isLocalUser: false,
+            identityCandidates: []
+        ))
+        self.transcriptSegments[segmentIndex].speakerID = speakerID
+        self.transcriptSegments[segmentIndex].overlap = .none
+        self.transcriptSegments[segmentIndex].attributionState = .assigned
+        self.transcriptSegments[segmentIndex].revision += 1
+        self.updatedAt = Date()
+        return speakerID
+    }
+
     mutating func mergeSpeakers(_ sourceID: SessionSpeakerID, into targetID: SessionSpeakerID) throws {
         guard sourceID != targetID else { throw MeetingDomainError.cannotMergeSpeakerWithItself }
         guard let sourceIndex = self.speakers.firstIndex(where: { $0.id == sourceID }),
@@ -1130,6 +1168,8 @@ nonisolated enum MeetingDomainError: LocalizedError, Equatable {
     case emptySpeakerName
     case speakerNotFound
     case segmentNotFound
+    case segmentAlreadyAssigned
+    case segmentTrackNotFound
     case cannotMergeSpeakerWithItself
     case cannotMergeSpeakers
     case emptyMeetingTitle
@@ -1142,6 +1182,10 @@ nonisolated enum MeetingDomainError: LocalizedError, Equatable {
             return "The speaker is no longer part of this meeting."
         case .segmentNotFound:
             return "This transcript line is no longer part of the meeting."
+        case .segmentAlreadyAssigned:
+            return "This transcript line already has a speaker."
+        case .segmentTrackNotFound:
+            return "The transcript line's audio track is no longer available."
         case .cannotMergeSpeakerWithItself:
             return "A speaker can't be merged into itself."
         case .cannotMergeSpeakers:

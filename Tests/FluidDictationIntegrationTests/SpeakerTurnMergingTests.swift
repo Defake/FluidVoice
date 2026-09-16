@@ -610,13 +610,13 @@ extension MeetingSessionModelTests {
 
         XCTAssertEqual(lines, [
             "[00:04] Speaker 1: Initial provisional text",
-            "[01:05] Unassigned: No speaker text",
+            "[01:05] Unknown speaker: No speaker text",
         ])
     }
 
     /// Legacy fallback (no `attributionState`): a nil speaker with ambiguous overlap reads as
     /// "Overlapping speakers" rather than plain "Unassigned".
-    func testLegacyNilAttributionStateWithAmbiguousOverlapFallsBackToOverlappingSpeakers() {
+    func testLegacyNilAttributionStateWithAmbiguousOverlapFallsBackToUnknownSpeaker() {
         var session = MeetingModelFixture.makeSession()
         var segment = session.transcriptSegments[0]
         segment.id = UUID()
@@ -626,7 +626,7 @@ extension MeetingSessionModelTests {
         segment.text = "Crosstalk"
         session.transcriptSegments = [segment]
 
-        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Overlapping speakers: Crosstalk"))
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unknown speaker: Crosstalk"))
     }
 
     /// Legacy fallback still prefers a resolvable speaker name over any overlap-derived label.
@@ -648,7 +648,7 @@ extension MeetingSessionModelTests {
         XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Speaker 1: Initial provisional text"))
     }
 
-    func testOverlappingSpeakersAttributionStateLabel() {
+    func testOverlappingEvidenceUsesUnknownSpeakerLabel() {
         var session = MeetingModelFixture.makeSession()
         var segment = session.transcriptSegments[0]
         segment.speakerID = nil
@@ -656,7 +656,7 @@ extension MeetingSessionModelTests {
         segment.text = "Crosstalk"
         session.transcriptSegments = [segment]
 
-        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Overlapping speakers: Crosstalk"))
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unknown speaker: Crosstalk"))
     }
 
     func testUnassignedAttributionStateLabel() {
@@ -667,7 +667,7 @@ extension MeetingSessionModelTests {
         segment.text = "No evidence"
         session.transcriptSegments = [segment]
 
-        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unassigned: No evidence"))
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unknown speaker: No evidence"))
     }
 
     func testTimingUncertainAttributionStateLabel() {
@@ -678,7 +678,7 @@ extension MeetingSessionModelTests {
         segment.text = "Late text"
         session.transcriptSegments = [segment]
 
-        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Timing uncertain: Late text"))
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session).contains("Unknown speaker: Late text"))
     }
 
     /// The `assigned` state still walks the alias chain, so a renamed/merged speaker resolves the
@@ -1553,6 +1553,28 @@ final class MeetingSessionModelTests: XCTestCase {
         XCTAssertEqual(session.transcriptSegments[0].speakerID, targetID)
         XCTAssertEqual(session.transcriptSegments[0].overlap, .none)
         XCTAssertEqual(session.transcriptSegments[0].attributionState, .assigned)
+    }
+
+    func testNamingOneUnknownCreatesAnIndependentSpeakerForOnlyThatSegment() throws {
+        var session = MeetingModelFixture.makeSession()
+        var firstUnknown = session.transcriptSegments[0]
+        firstUnknown.speakerID = nil
+        firstUnknown.overlap = .ambiguous
+        firstUnknown.attributionState = .overlappingSpeakers
+        var secondUnknown = firstUnknown
+        secondUnknown.id = UUID()
+        secondUnknown.start = MeetingModelFixture.mediaTime(10)
+        secondUnknown.end = MeetingModelFixture.mediaTime(11)
+        session.transcriptSegments = [firstUnknown, secondUnknown]
+
+        let createdID = try session.nameUnknownSegment(id: firstUnknown.id, displayName: "Guest")
+
+        XCTAssertEqual(session.transcriptSegments[0].speakerID, createdID)
+        XCTAssertEqual(session.transcriptSegments[0].attributionState, .assigned)
+        XCTAssertEqual(session.transcriptSegments[0].overlap, .none)
+        XCTAssertNil(session.transcriptSegments[1].speakerID)
+        XCTAssertEqual(session.transcriptSegments[1].attributionState, .overlappingSpeakers)
+        XCTAssertEqual(session.speakers.first(where: { $0.id == createdID })?.displayName, "Guest")
     }
 
     func testReassignSegmentToSameSpeakerIsNoOp() throws {

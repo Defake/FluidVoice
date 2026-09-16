@@ -656,8 +656,8 @@ private final class MeetingProviderLanguagePin {
 final class MeetingProcessingPipeline: MeetingProcessingControlling {
     /// Bump whenever classification rules change so a resumed run can't mix rules mid-session.
     /// Era-awareness did NOT bump this: the mic pass re-runs every time, and multi-era tracks cannot predate this build.
-    /// Version 12: Parakeet+Nemotron backend moved to coverage-union overlap dominance (plan §4).
-    static let pipelineVersion = 12
+    /// Version 13: short ambiguous words receive the opted-in turn-handoff second pass.
+    static let pipelineVersion = 13
     /// Per-turn engines starve on short turns, and an all-empty chunk collapses to unlabeled.
     static let perTurnTurnMergeGapSeconds = 5.0
 

@@ -1545,6 +1545,38 @@ final class MeetingRecoveryTests: XCTestCase {
         XCTAssertFalse(coordinator.canUndoCorrection(sessionID: session.id))
     }
 
+    func testUndoNamingUnknownRestoresOnlyThatUnknownSegment() async throws {
+        let dir = self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = MeetingSessionStore(rootDirectory: dir)
+        let fixture = self.makeCorrectionSession(state: .completed)
+        var session = fixture.0
+        let segmentID = fixture.3
+        session.transcriptSegments[0].speakerID = nil
+        session.transcriptSegments[0].overlap = .ambiguous
+        session.transcriptSegments[0].attributionState = .overlappingSpeakers
+        let original = session.transcriptSegments[0]
+        try await store.create(session)
+        let coordinator = MeetingSessionCoordinator(
+            store: store,
+            capture: StubCaptureController(),
+            processing: StubProcessingController(),
+            audioArbiter: StubArbiter()
+        )
+
+        let named = try await coordinator.nameUnknownSegment(
+            sessionID: session.id,
+            segmentID: segmentID,
+            displayName: "Guest"
+        )
+        XCTAssertEqual(named.speakers.count, session.speakers.count + 1)
+        XCTAssertEqual(named.transcriptSegments[0].attributionState, .assigned)
+
+        let undone = try await coordinator.undoTranscriptCorrection(sessionID: session.id)
+        XCTAssertEqual(undone.transcriptSegments[0], original)
+        XCTAssertEqual(undone.speakers, session.speakers)
+    }
+
     func testFailedCorrectionSaveLeavesNoUndoEntryAndDiskUnchanged() async throws {
         let dir = self.makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }

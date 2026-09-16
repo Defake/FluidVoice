@@ -164,6 +164,7 @@ struct MeetingTranscriptionView: View {
                     onCopyTranscript: self.copyTranscript,
                     onExportTranscript: self.exportTranscript,
                     onReassignSegment: self.reassignSegment,
+                    onNameUnknownSegment: self.nameUnknownSegment,
                     onRenameSpeaker: self.renameSpeaker,
                     onMergeSpeakers: self.mergeSpeakers,
                     onUndoCorrection: self.undoTranscriptCorrection,
@@ -636,6 +637,26 @@ struct MeetingTranscriptionView: View {
         Task {
             do {
                 _ = try await self.coordinator.reassignSegment(sessionID: sessionID, segmentID: segmentID, to: speakerID)
+            } catch {
+                self.actionErrorMessage = error.localizedDescription
+            }
+            await self.loadMeetingHistory()
+        }
+    }
+
+    private func nameUnknownSegment(
+        sessionID: MeetingSessionID,
+        segmentID: MeetingTranscriptSegmentID,
+        displayName: String
+    ) {
+        self.actionErrorMessage = nil
+        Task {
+            do {
+                _ = try await self.coordinator.nameUnknownSegment(
+                    sessionID: sessionID,
+                    segmentID: segmentID,
+                    displayName: displayName
+                )
             } catch {
                 self.actionErrorMessage = error.localizedDescription
             }
@@ -1125,6 +1146,7 @@ struct MeetingTranscriptionCanvas: View {
     let onCopyTranscript: (MeetingSession, Bool) -> Void
     let onExportTranscript: (MeetingSession, MeetingTranscriptExportFormat, Bool) -> Void
     let onReassignSegment: (MeetingSessionID, MeetingTranscriptSegmentID, SessionSpeakerID) -> Void
+    let onNameUnknownSegment: (MeetingSessionID, MeetingTranscriptSegmentID, String) -> Void
     let onRenameSpeaker: (MeetingSessionID, SessionSpeakerID, String) -> Void
     let onMergeSpeakers: (MeetingSessionID, SessionSpeakerID, SessionSpeakerID) -> Void
     let onUndoCorrection: (MeetingSessionID) -> Void
@@ -1211,6 +1233,9 @@ struct MeetingTranscriptionCanvas: View {
                         onExportTranscript: self.onExportTranscript,
                         onReassignSegment: { segmentID, speakerID in
                             self.onReassignSegment(session.id, segmentID, speakerID)
+                        },
+                        onNameUnknownSegment: { segmentID, name in
+                            self.onNameUnknownSegment(session.id, segmentID, name)
                         },
                         onRenameSpeaker: { speakerID, name in
                             self.onRenameSpeaker(session.id, speakerID, name)
@@ -2519,6 +2544,7 @@ private struct MeetingResultCanvas: View {
     let onCopyTranscript: (MeetingSession, Bool) -> Void
     let onExportTranscript: (MeetingSession, MeetingTranscriptExportFormat, Bool) -> Void
     let onReassignSegment: (MeetingTranscriptSegmentID, SessionSpeakerID) -> Void
+    let onNameUnknownSegment: (MeetingTranscriptSegmentID, String) -> Void
     let onRenameSpeaker: (SessionSpeakerID, String) -> Void
     let onMergeSpeakers: (SessionSpeakerID, SessionSpeakerID) -> Void
     let onUndo: () -> Void
@@ -2529,6 +2555,8 @@ private struct MeetingResultCanvas: View {
     @Environment(\.theme) private var theme
     @State private var pendingRenameSpeaker: MeetingSessionSpeaker?
     @State private var pendingRenameText = ""
+    @State private var pendingNameUnknownSegmentID: MeetingTranscriptSegmentID?
+    @State private var pendingUnknownSpeakerName = ""
     @State private var isRenamingSession = false
     @State private var pendingRenameSessionText = ""
     @State private var isShowingAssignSpeakers = false
@@ -2660,8 +2688,13 @@ private struct MeetingResultCanvas: View {
                                 speakerNames: speakerNames
                             ),
                             speakerTint: row.segment.speakerID.flatMap { speakerTints[$0] },
-                            onRenameSpeakerTapped: row.segment.speakerID.map { speakerID in
-                                { self.presentAssignSpeakers(focusing: speakerID) }
+                            onRenameSpeakerTapped: {
+                                if let speakerID = row.segment.speakerID {
+                                    self.presentAssignSpeakers(focusing: speakerID)
+                                } else {
+                                    self.pendingNameUnknownSegmentID = row.segment.id
+                                    self.pendingUnknownSpeakerName = ""
+                                }
                             },
                             isLocalUser: row.isLocal,
                             showsSpeakerLabel: row.showsLabel,
@@ -2716,6 +2749,24 @@ private struct MeetingResultCanvas: View {
         } message: {
             Text("Enter a new name for this speaker.")
         }
+        .alert(
+            "Name Unknown Speaker",
+            isPresented: Binding(
+                get: { self.pendingNameUnknownSegmentID != nil },
+                set: { if !$0 { self.pendingNameUnknownSegmentID = nil } }
+            )
+        ) {
+            TextField("Speaker name", text: self.$pendingUnknownSpeakerName)
+            Button("Cancel", role: .cancel) { self.pendingNameUnknownSegmentID = nil }
+            Button("Save") {
+                if let segmentID = self.pendingNameUnknownSegmentID {
+                    self.onNameUnknownSegment(segmentID, self.pendingUnknownSpeakerName)
+                }
+                self.pendingNameUnknownSegmentID = nil
+            }
+        } message: {
+            Text("This name applies only to this transcript turn.")
+        }
         .alert("Rename Meeting", isPresented: self.$isRenamingSession) {
             TextField("Meeting title", text: self.$pendingRenameSessionText)
             Button("Cancel", role: .cancel) {}
@@ -2727,6 +2778,7 @@ private struct MeetingResultCanvas: View {
         .onChange(of: self.session.id) { _, _ in
             self.showsProbableEchoes = false
             self.isShowingAssignSpeakers = false
+            self.pendingNameUnknownSegmentID = nil
         }
         .sheet(isPresented: self.$isShowingAssignSpeakers) {
             MeetingAssignSpeakersSheet(

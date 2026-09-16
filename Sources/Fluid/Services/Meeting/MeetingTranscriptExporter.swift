@@ -26,17 +26,14 @@ nonisolated enum MeetingTranscriptExporter {
             if let name = Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) {
                 return name
             }
-            return segment.overlap == .ambiguous ? "Overlapping speakers" : "Unassigned"
+            return "Unknown speaker"
         }
         switch state {
         case .assigned:
-            return Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) ?? "Unassigned"
-        case .overlappingSpeakers:
-            return "Overlapping speakers"
-        case .unassigned:
-            return "Unassigned"
-        case .timingUncertain:
-            return "Timing uncertain"
+            return Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames)
+                ?? "Unknown speaker"
+        case .overlappingSpeakers, .unassigned, .timingUncertain:
+            return "Unknown speaker"
         }
     }
 
