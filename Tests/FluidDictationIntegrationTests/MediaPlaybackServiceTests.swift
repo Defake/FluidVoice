@@ -531,6 +531,11 @@ final class MediaPlaybackServiceTests: XCTestCase {
         XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 2.0)
     }
 
+    func testQueryTimeoutHonorsAdapterDeadlineWithoutExtendingCommands() {
+        XCTAssertEqual(MediaPlaybackProcessTransport.queryTimeoutSeconds, 2.5)
+        XCTAssertEqual(MediaPlaybackProcessTransport.commandTimeoutSeconds, 1.0)
+    }
+
     func testProcessTimeoutTerminatesHelper() async {
         let result = await Task.detached {
             MediaHelperProcess.run(arguments: ["-e", "sleep 10;"], timeout: 0.1)

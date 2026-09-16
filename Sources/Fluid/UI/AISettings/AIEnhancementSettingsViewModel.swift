@@ -478,19 +478,29 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         self.persistsSelectedProvider = false
         self.selectProviderForUse(self.settings.selectedProviderID)
         self.persistsSelectedProvider = true
+        self.managedOriginalKey = nil
     }
 
     /// Commit a managed provider's key before dismissing, but never save a removed provider
     /// or the default selected by the removal cleanup in its place.
     func saveManagedProviderBeforeClosing(_ providerID: String) -> Bool {
         guard !self.isFetchingModels, !self.isTestingConnection else { return false }
-        guard self.selectedProviderID == providerID else { return true }
-        if let original = self.managedOriginalKey,
-           original.trimmingCharacters(in: .whitespacesAndNewlines) == self.providerAPIKey(for: providerID).trimmingCharacters(in: .whitespacesAndNewlines)
-        { return true }
+        return self.saveManagedProviderAPIKeyIfNeeded(providerID)
+    }
+
+    /// Persist only an API-key edit made in the active provider manager. Selecting an
+    /// already-configured or keyless provider must not depend on Keychain write access.
+    func saveManagedProviderAPIKeyIfNeeded(_ providerID: String) -> Bool {
+        guard self.selectedProviderID == providerID,
+              let original = self.managedOriginalKey
+        else { return true }
+        let current = self.providerAPIKey(for: providerID)
+        guard original.trimmingCharacters(in: .whitespacesAndNewlines)
+            != current.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return true }
         guard self.hasProviderAPIKeyDraft(for: providerID) else { return true }
         guard self.saveProviderAPIKeys(invalidating: providerID) else { return false }
-        self.managedOriginalKey = self.providerAPIKey(for: providerID)
+        self.managedOriginalKey = current
         return true
     }
 
@@ -1175,8 +1185,13 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
         let deletedDefaultProvider = self.settings.selectedProviderID == deletedProviderID
         let key = self.providerKey(for: deletedProviderID)
         let previousKeys = self.providerAPIKeys
+        let persistedKey = self.managedOriginalKey ?? self.providerAPIKey(for: deletedProviderID)
+        let hadPersistedKey = !persistedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         self.providerAPIKeys.removeValue(forKey: key)
-        guard self.saveProviderAPIKeys(invalidating: deletedProviderID) else {
+        if key != deletedProviderID {
+            self.providerAPIKeys.removeValue(forKey: deletedProviderID)
+        }
+        if hadPersistedKey, !self.saveProviderAPIKeys(invalidating: deletedProviderID) {
             self.providerAPIKeys = previousKeys
             return false
         }

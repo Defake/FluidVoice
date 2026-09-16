@@ -42,16 +42,21 @@ nonisolated protocol MediaPlaybackTransport: Sendable {
 /// A serial queue plus a hard process deadline prevents overlapping commands,
 /// unbounded helpers, and the adapter's exit-versus-output callback race.
 final nonisolated class MediaPlaybackProcessTransport: MediaPlaybackTransport, @unchecked Sendable {
+    // The adapter owns a two-second metadata deadline and can complete slightly
+    // after it. Commands stay shorter so quit recovery remains within its budget.
+    static let queryTimeoutSeconds: TimeInterval = 2.5
+    static let commandTimeoutSeconds: TimeInterval = 1.0
+
     private let queue = DispatchQueue(label: "media.playback.transport", qos: .utility)
 
     func query() async -> MediaPlaybackQueryResult {
-        let result = await self.invoke("get")
+        let result = await self.invoke("get", timeout: Self.queryTimeoutSeconds)
         guard result.failure == nil else { return .unavailable(result.failure ?? "helper_failed") }
         return Self.decode(result.output)
     }
 
     func send(_ command: MediaPlaybackCommand) async -> MediaPlaybackCommandResult {
-        let result = await self.invoke(command.rawValue)
+        let result = await self.invoke(command.rawValue, timeout: Self.commandTimeoutSeconds)
         if let failure = result.failure { return .failed(failure) }
         return .helperCompleted
     }
@@ -91,15 +96,15 @@ final nonisolated class MediaPlaybackProcessTransport: MediaPlaybackTransport, @
         ))
     }
 
-    private func invoke(_ command: String) async -> MediaHelperResult {
+    private func invoke(_ command: String, timeout: TimeInterval) async -> MediaHelperResult {
         await withCheckedContinuation { continuation in
             self.queue.async {
-                continuation.resume(returning: self.run(command))
+                continuation.resume(returning: self.run(command, timeout: timeout))
             }
         }
     }
 
-    private func run(_ command: String) -> MediaHelperResult {
+    private func run(_ command: String, timeout: TimeInterval) -> MediaHelperResult {
         #if arch(arm64)
         let framework = Bundle(for: MediaController.self)
         guard let library = framework.executablePath,
@@ -120,7 +125,10 @@ final nonisolated class MediaPlaybackProcessTransport: MediaPlaybackTransport, @
         die $@ if $@;
         main::get() if $command eq 'pause' || $command eq 'play';
         """
-        return MediaHelperProcess.run(arguments: ["-e", wrapper, script, library, command])
+        return MediaHelperProcess.run(
+            arguments: ["-e", wrapper, script, library, command],
+            timeout: timeout
+        )
         #else
         return MediaHelperResult(output: Data(), failure: "unsupported_architecture")
         #endif

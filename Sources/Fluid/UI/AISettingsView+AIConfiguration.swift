@@ -1846,7 +1846,7 @@ extension AIEnhancementSettingsView {
         }
 
         guard self.viewModel.canUseProviderWithoutVerification(providerID),
-              self.viewModel.saveProviderAPIKeys(invalidating: providerID) else { return }
+              self.viewModel.saveManagedProviderAPIKeyIfNeeded(providerID) else { return }
         self.activateProvider(providerID)
 
         var defaultConfiguration = self.settings.dictationPromptConfiguration(for: .default)

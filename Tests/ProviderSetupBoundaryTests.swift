@@ -132,6 +132,10 @@ final class AIEnhancementSettingsViewModel {
         check(source.contains(".onSubmit {") && source.contains("self.viewModel.addNewModel()"), "Manual model input retains Enter-to-add behavior")
         check(source.contains(".accessibilityLabel(\"Add model\")"), "Model add button remains accessible")
         check(source.contains("if isCustom || managementLayout"), "Built-in management exposes removal")
+        let makeDefault = source.components(separatedBy: "private func makePrimaryDefaultProvider")[1]
+            .components(separatedBy: "private func modelBinding")[0]
+        check(makeDefault.contains("saveManagedProviderAPIKeyIfNeeded") && !makeDefault.contains("saveProviderAPIKeys"),
+              "Making a provider default only persists an active credential edit")
         let removal = AIEnhancementSettingsViewModel()
         removal.providerAPIKeys = ["openai": "remove-key", "other": "keep-key"]
         removal.settings.dictationPromptConfigurations = [
@@ -166,7 +170,10 @@ final class AIEnhancementSettingsViewModel {
         check(!removal.cachedAddedProviderItems.contains { $0.id == "openai" }, "Removed built-in disappears from added providers")
         removal.selectedProviderID = "ollama"
         removal.settings.selectedProviderID = "ollama"
+        let keySavesBeforeKeylessRemoval = removal.keySaves
+        removal.failKeychain = true
         check(removal.deleteCurrentProvider() && removal.settings.selectedProviderID.isEmpty && removal.settings.selectedModel == nil, "Removing the default clears its model without selecting another provider")
+        check(removal.keySaves == keySavesBeforeKeylessRemoval, "Removing a keyless provider does not require a Keychain write")
         removal.selectedProviderID = "fluid"
         check(!removal.deleteCurrentProvider(), "External provider removal cannot remove private AI")
         let closing = AIEnhancementSettingsViewModel()
@@ -185,6 +192,8 @@ final class AIEnhancementSettingsViewModel {
         check(closing.saveManagedProviderBeforeClosing("openai") && closing.keySaves == savedCount, "Removal cleanup must not save a different selected provider")
         closing.selectedProviderID = "ollama"
         check(closing.saveManagedProviderBeforeClosing("ollama") && closing.keySaves == savedCount, "Keyless provider close does not touch Keychain")
+        closing.failKeychain = true
+        check(closing.saveManagedProviderAPIKeyIfNeeded("ollama") && closing.keySaves == savedCount, "Making a keyless provider default does not require a Keychain write")
         closing.isTestingConnection = true
         check(!closing.saveManagedProviderBeforeClosing("ollama"), "Busy editor cannot dismiss")
         check(manager.contains(".interactiveDismissDisabled()"), "Interactive dismissal cannot bypass failed persistence")

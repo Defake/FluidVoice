@@ -38,6 +38,12 @@ struct FluidApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            CommandGroup(after: .textEditing) {
+                Button("Find") {
+                    NotificationCenter.default.post(name: .sidebarSearchFocusRequested, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
         }
     }
 }
