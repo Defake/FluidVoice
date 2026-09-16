@@ -358,6 +358,7 @@ struct ContentView: View {
     @State private var overlayLifecycleID: UInt64 = 0
     @State private var spokenSendAutoStopTask: Task<Void, Never>?
     @State private var spokenSendAutoStopTriggered = false
+    @State private var spokenSendArming = SpokenSendArmingState()
     @State private var spokenSendCountdownStartedAt: TimeInterval?
     @State private var spokenSendLastVoiceActivityAt: TimeInterval = 0
     @State private var spokenSendVoiceActivityCancellable: AnyCancellable?
@@ -2884,10 +2885,11 @@ struct ContentView: View {
             bundleID: appInfo.bundleId,
             windowTitle: appInfo.windowTitle
         )
-        let spokenSendParse = SpokenSendParser.parse(
+        let spokenSendParse = SpokenSendParser.parseArmed(
             punctuationFormattedText,
             phrase: self.settings.spokenSendPhrase,
-            enabled: route == .normal && self.settings.spokenSendEnabled
+            enabled: route == .normal && self.settings.spokenSendEnabled,
+            wasArmed: self.spokenSendArming.wasArmed
         )
         self.updateSpokenSendIndicatorForFinalParse(shouldSend: spokenSendParse.shouldSend)
         let normalizedTranscribedText = spokenSendParse.text
@@ -3481,6 +3483,7 @@ struct ContentView: View {
         self.spokenSendAutoStopTask = nil
         self.stopSpokenSendVoiceActivityMonitoring()
         self.spokenSendAutoStopTriggered = false
+        self.spokenSendArming.reset()
         self.spokenSendCountdownStartedAt = nil
         self.spokenSendLastVoiceActivityAt = ProcessInfo.processInfo.systemUptime
         self.overlayLifecycleID &+= 1
@@ -3491,18 +3494,24 @@ struct ContentView: View {
     private func handleSpokenSendPartialTranscription(_ text: String) {
         guard self.settings.spokenSendEnabled else { return }
         let isDictationMode = self.activeRecordingMode == .dictate || self.activeRecordingMode == .promptMode
-        let shouldStop = isDictationMode &&
+        let isEligible = isDictationMode &&
             self.currentDictationOutputRouteForHotkeyStop() == .normal &&
             self.asr.isRunning &&
-            !self.spokenSendAutoStopTriggered &&
-            SpokenSendParser.shouldStopImmediately(
-                text,
-                phrase: self.settings.spokenSendPhrase,
-                spokenSendEnabled: self.settings.spokenSendEnabled,
-                sendImmediatelyEnabled: self.settings.spokenSendImmediatelyEnabled
-            )
+            !self.spokenSendAutoStopTriggered
+        let isArmed = self.spokenSendArming.update(
+            partial: text,
+            isEligible: isEligible,
+            phrase: self.settings.spokenSendPhrase
+        )
 
-        guard shouldStop else {
+        guard self.settings.spokenSendImmediatelyEnabled else {
+            if isEligible {
+                NotchContentState.shared.setSpokenSendIndicatorState(isArmed ? .detected : .hidden)
+            }
+            return
+        }
+
+        guard isArmed else {
             self.spokenSendAutoStopTask?.cancel()
             self.spokenSendAutoStopTask = nil
             self.stopSpokenSendVoiceActivityMonitoring()
@@ -3541,7 +3550,8 @@ struct ContentView: View {
                       phrase: self.settings.spokenSendPhrase,
                       spokenSendEnabled: self.settings.spokenSendEnabled,
                       sendImmediatelyEnabled: self.settings.spokenSendImmediatelyEnabled,
-                      quietDuration: quietDuration
+                      quietDuration: quietDuration,
+                      armedText: self.spokenSendArming.armedText
                   )
             else {
                 if self.overlayLifecycleID == expectedOverlayLifecycleID,
