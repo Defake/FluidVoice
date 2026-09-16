@@ -9,6 +9,7 @@ enum ClipboardBackupReproductionTests {
     static func main() async {
         var failures = 0
         var cases = 0
+        self.testOversizedFileFallback()
         for keepBackup in [false, true] {
             for scenario in Scenario.allCases {
                 cases += 1
@@ -61,6 +62,31 @@ enum ClipboardBackupReproductionTests {
         failures += ordering.failures
         print("\(cases - failures)/\(cases) passed; \(failures) backup contract failures. No system clipboard or real paste commands used.")
         exit(failures == 0 ? 0 : 1)
+    }
+
+    static func testOversizedFileFallback() {
+        for existingText in [nil, "original label"] as [String?] {
+            for oversized in [false, true] {
+                let board = NSPasteboard(name: .init("fluidvoice.filename-fallback.\(UUID().uuidString)"))
+                defer { board.releaseGlobally() }
+                let fileURL = URL(fileURLWithPath: "/tmp/Report with spaces.pdf")
+                let payloadType = NSPasteboard.PasteboardType("com.fluidvoice.tests.payload")
+                let item = NSPasteboardItem()
+                precondition(item.setString(fileURL.absoluteString, forType: .fileURL))
+                precondition(item.setData(Data(count: oversized ? SystemPasteboardManager.maximumRepresentationBytes + 1 : 16), forType: payloadType))
+                if let existingText { precondition(item.setString(existingText, forType: .string)) }
+                precondition(board.writeObjects([item]))
+                let manager = SystemPasteboardManager(pasteboard: board)
+                guard let snapshot = manager.captureSnapshot() else { fatalError("Snapshot missing") }
+                precondition(manager.writeTemporaryText("dictated", sessionID: "filename-test"))
+                precondition(manager.restore(snapshot))
+                precondition(board.string(forType: .fileURL).flatMap(URL.init(string:)) == fileURL)
+                precondition(board.string(forType: .string) == (existingText ?? (oversized ? fileURL.lastPathComponent : nil)))
+                precondition((board.data(forType: payloadType) == nil) == oversized)
+                if oversized { precondition(snapshot.items.first?.portableImage == nil) }
+            }
+        }
+        print("PASS: 4 filename fallback cases; file URLs, existing text and small payloads preserved")
     }
 
     static func testPreparation() async -> (cases: Int, failures: Int) {

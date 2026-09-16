@@ -167,6 +167,7 @@ final class SystemPasteboardManager: PasteboardManaging {
                 }
 
                 var representations: [PasteboardSnapshot.Item.Representation] = []
+                var skippedOversizedRepresentation = false
                 representations.reserveCapacity(sourceTypes.count)
                 for type in sourceTypes {
                     guard let data = sourceItem.data(forType: type) else {
@@ -174,6 +175,7 @@ final class SystemPasteboardManager: PasteboardManaging {
                         break itemLoop
                     }
                     guard data.count <= Self.maximumRepresentationBytes else {
+                        skippedOversizedRepresentation = true
                         skippedBytes += data.count
                         skippedTypes.append(type.rawValue)
                         continue
@@ -182,9 +184,22 @@ final class SystemPasteboardManager: PasteboardManaging {
                     totalBytes += data.count
                     totalRepresentations += 1
                 }
+                // File URLs are small references, not file contents. Preserve them and
+                // offer a plain filename when a large accompanying payload was omitted.
+                if skippedOversizedRepresentation,
+                   !representations.contains(where: { $0.type == .string }),
+                   let fileData = representations.first(where: { $0.type == .fileURL })?.data,
+                   let url = URL(dataRepresentation: fileData, relativeTo: nil, isAbsolute: true),
+                   url.isFileURL, !url.lastPathComponent.isEmpty
+                {
+                    let nameData = Data(url.lastPathComponent.utf8)
+                    representations.append(.init(type: .string, data: nameData))
+                    totalBytes += nameData.count
+                    totalRepresentations += 1
+                }
                 guard !representations.isEmpty else { continue }
                 let item = PasteboardSnapshot.Item(representations: representations)
-                let portableImage = Self.portableImageRepresentation(for: item)
+                let portableImage = skippedOversizedRepresentation ? nil : Self.portableImageRepresentation(for: item)
                 totalPortableImageBytes += portableImage?.data.count ?? 0
                 items.append(
                     .init(
@@ -551,7 +566,9 @@ final class SystemPasteboardManager: PasteboardManaging {
 @MainActor
 final class SystemPasteCommandPoster: PasteCommandPosting {
     func postGlobalPasteCommand() async -> Bool {
-        guard AXIsProcessTrusted(), let events = Self.makePasteEvents() else { return false }
+        guard AXIsProcessTrusted() else { return false }
+        let events = Self.makePasteEvents()
+        guard !events.isEmpty else { return false }
 
         // The coordinator verifies pasteboard ownership before reaching this point,
         // so the temporary item is ready to consume without an additional delay.
@@ -564,7 +581,7 @@ final class SystemPasteCommandPoster: PasteCommandPosting {
     /// Command down, V down, V up, Command up. Pressing and releasing Command
     /// explicitly matters: setting the flag on V alone leaves the HID state
     /// reporting Command as held, which later blocks the send key.
-    nonisolated static func makePasteEvents() -> [CGEvent]? {
+    nonisolated static func makePasteEvents() -> [CGEvent] {
         let pasteKeyCode = TypingService.pasteVirtualKeyCode
         let commandKeyCode = CGKeyCode(kVK_Command)
         let source = CGEventSource(stateID: .combinedSessionState)
@@ -573,7 +590,7 @@ final class SystemPasteCommandPoster: PasteCommandPosting {
               let vUp = CGEvent(keyboardEventSource: source, virtualKey: pasteKeyCode, keyDown: false),
               let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: commandKeyCode, keyDown: false)
         else {
-            return nil
+            return []
         }
 
         cmdDown.flags = .maskCommand

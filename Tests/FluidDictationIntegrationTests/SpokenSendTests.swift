@@ -340,7 +340,7 @@ final class SpokenSendTests: XCTestCase {
     // MARK: - Adversarial: paste key sequence
 
     func testPasteSequencePressesAndReleasesCommandExplicitly() throws {
-        let events = try XCTUnwrap(SystemPasteCommandPoster.makePasteEvents())
+        let events = SystemPasteCommandPoster.makePasteEvents()
         XCTAssertEqual(events.count, 4)
         let keyCodes = events.map { CGKeyCode($0.getIntegerValueField(.keyboardEventKeycode)) }
         XCTAssertEqual(keyCodes, [
@@ -355,7 +355,8 @@ final class SpokenSendTests: XCTestCase {
     }
 
     func testPasteSequenceIsInvisibleToTheHotkeyTap() throws {
-        let events = try XCTUnwrap(SystemPasteCommandPoster.makePasteEvents())
+        let events = SystemPasteCommandPoster.makePasteEvents()
+        XCTAssertEqual(events.count, 4)
         for event in events {
             XCTAssertTrue(GlobalHotkeyManager.isSynthesizedTypingEvent(event))
         }
