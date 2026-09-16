@@ -66,6 +66,14 @@ enum PasteVerifier {
         )
     }
 
+    /// Delays before each read-back. The verdict is only "not landed" after
+    /// the last one, so a slow app that applies the paste late never draws a
+    /// failure card.
+    static let firstCheckDelay: TimeInterval = 0.15
+    static let secondCheckDelay: TimeInterval = 0.35
+    static let finalCheckDelay: TimeInterval = 1.0
+    static var totalDecisionDelay: TimeInterval { self.firstCheckDelay + self.secondCheckDelay + self.finalCheckDelay }
+
     /// Call off the main thread after the paste command was posted.
     nonisolated static func verify(before: Snapshot, pastedText: String) async -> Verdict {
         let needle = self.normalize(pastedText)
@@ -74,31 +82,45 @@ enum PasteVerifier {
             return .unknown(reason: "before_unreadable")
         }
 
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        try? await Task.sleep(nanoseconds: UInt64(self.firstCheckDelay * 1_000_000_000))
         guard let first = self.capture() else { return .unknown(reason: "after_unreadable") }
         guard CFEqual(first.element, before.element) else { return .unknown(reason: "focus_moved") }
 
         if let verdict = self.confirmation(before: before, after: first, needle: needle) { return verdict }
 
         // Nothing changed yet. Give slow apps a second chance before deciding.
-        try? await Task.sleep(nanoseconds: 350_000_000)
+        try? await Task.sleep(nanoseconds: UInt64(self.secondCheckDelay * 1_000_000_000))
         guard let second = self.capture(), CFEqual(second.element, before.element) else {
             return .unknown(reason: "focus_moved_late")
         }
         if let verdict = self.confirmation(before: before, after: second, needle: needle) { return verdict }
+        if let verdict = self.unchangedVerdict(before: before, after: second) { return verdict }
 
-        let valueKnown = before.value != nil && second.value != nil
-        let countKnown = before.characterCount != nil && second.characterCount != nil
-        let caretKnown = before.caret != nil && second.caret != nil
+        // Still unchanged. A failure card is disruptive, so wait once more for
+        // apps that apply Cmd+V on a later run-loop turn before deciding.
+        try? await Task.sleep(nanoseconds: UInt64(self.finalCheckDelay * 1_000_000_000))
+        guard let final = self.capture(), CFEqual(final.element, before.element) else {
+            return .unknown(reason: "focus_moved_final")
+        }
+        if let verdict = self.confirmation(before: before, after: final, needle: needle) { return verdict }
+        return self.unchangedVerdict(before: before, after: final) ?? .notLanded(reason: "value_count_caret_unchanged")
+    }
+
+    /// `unknown` when the signals are incomplete or something other than the
+    /// pasted text changed; nil when everything is exactly as before.
+    private nonisolated static func unchangedVerdict(before: Snapshot, after: Snapshot) -> Verdict? {
+        let valueKnown = before.value != nil && after.value != nil
+        let countKnown = before.characterCount != nil && after.characterCount != nil
+        let caretKnown = before.caret != nil && after.caret != nil
         guard valueKnown, countKnown, caretKnown else {
             return .unknown(reason: "signals_incomplete value=\(valueKnown) count=\(countKnown) caret=\(caretKnown)")
         }
-        guard before.value == second.value,
-              before.characterCount == second.characterCount,
-              before.caret?.location == second.caret?.location,
-              before.caret?.length == second.caret?.length
+        guard before.value == after.value,
+              before.characterCount == after.characterCount,
+              before.caret?.location == after.caret?.location,
+              before.caret?.length == after.caret?.length
         else { return .unknown(reason: "changed_without_text") }
-        return .notLanded(reason: "value_count_caret_unchanged")
+        return nil
     }
 
     private nonisolated static func confirmation(before: Snapshot, after: Snapshot, needle: String) -> Verdict? {

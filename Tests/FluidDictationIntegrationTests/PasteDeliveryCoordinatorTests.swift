@@ -399,6 +399,12 @@ final class PasteDeliveryCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.textDeliveryFailureTranscript, "retained output")
     }
 
+    func testPasteNotLandedVerdictWaitsAtLeastOneAndAHalfSeconds() {
+        // A slow app that applies Cmd+V late must never draw a failure card.
+        XCTAssertGreaterThanOrEqual(PasteVerifier.totalDecisionDelay, 1.5)
+        XCTAssertEqual(PasteVerifier.finalCheckDelay, 1.0)
+    }
+
     func testAccessibilityMessagingTimeoutIsBounded() {
         // Well under the ~6 s system default so a hung target app cannot
         // stall the main thread and the keyboard tap for that long.
