@@ -265,6 +265,72 @@ final class LLMClientRequestBodyTests: XCTestCase {
         settings.defaultDictationPromptOverride = nil
     }
 
+    func testStopSnapshotSurvivesAppSwitchAndSettingsChanges() {
+        self.withPromptSettingsRestored {
+            let settings = SettingsStore.shared
+            self.resetPromptSettings(settings)
+            let configurations = settings.dictationPromptConfigurations
+            let fingerprints = settings.verifiedProviderFingerprints
+            let session = DictationAppSession.shared
+            let previousApp = session.appID
+            defer {
+                settings.dictationPromptConfigurations = configurations
+                settings.verifiedProviderFingerprints = fingerprints
+                session.activate(previousApp ?? "test.finished")
+            }
+            let profile = SettingsStore.DictationPromptProfile(name: "Stop rule", prompt: "Use the stop-time prompt.")
+            settings.dictationPromptProfiles = [profile]
+            settings.setDictationPromptConfiguration(.init(providerID: "ollama", modelName: "stop-model"), for: .profile(profile.id))
+            settings.verifiedProviderFingerprints["ollama"] = DictationAIPostProcessingGate.providerFingerprint(
+                baseURL: ModelRepository.shared.defaultBaseURL(for: "ollama"), apiKey: settings.providerAPIKeys["ollama"] ?? ""
+            )
+            session.activate("test.stop")
+            session.select(.profile(profile.id), slot: .primary, appID: "test.stop")
+            let target = TypingService.RecordingTargetContext(id: UUID(), pid: 123, bundleIdentifier: "test.stop", window: nil, element: nil)
+            let info = (name: "Stop app", bundleId: "test.stop", windowTitle: "Stop window")
+            let snapshot = DictationStopSnapshot.capture(target: target, appInfo: info, slot: .primary, precedingText: "Before cursor")
+            XCTAssertTrue(snapshot.usesAI)
+            session.select(.off, slot: .primary, appID: "test.stop")
+            let basic = DictationStopSnapshot.capture(target: target, appInfo: info, slot: .primary, precedingText: "")
+            session.activate("test.next")
+            settings.setDictationPromptConfiguration(.init(providerID: "openai", modelName: "different-cloud-model"), for: .profile(profile.id))
+            settings.dictationPromptProfiles = []
+            XCTAssertEqual(snapshot.route.providerID, "ollama")
+            XCTAssertEqual(snapshot.route.model, "stop-model")
+            XCTAssertEqual(snapshot.systemPrompt, "Use the stop-time prompt.")
+            XCTAssertEqual(snapshot.target?.id, target.id)
+            XCTAssertEqual(snapshot.appInfo.bundleId, "test.stop")
+            XCTAssertEqual(snapshot.precedingText, "Before cursor")
+            XCTAssertFalse(basic.usesAI)
+            XCTAssertTrue(basic.route.providerID.isEmpty)
+            let missing = DictationStopSnapshot.capture(target: nil, appInfo: info, slot: .primary, precedingText: "")
+            XCTAssertFalse(missing.usesAI)
+        }
+    }
+
+    func testMainWindowEndsAppVisitButOverlayDoesNot() {
+        let session = DictationAppSession.shared
+        let previousApp = session.appID
+        defer { session.activate(previousApp ?? "test.finished") }
+        session.activate("test.editor")
+        session.select(.off, slot: .primary, appID: "test.editor")
+        session.activate(Bundle.main.bundleIdentifier, isMainWindow: false)
+        XCTAssertEqual(session.choice(for: .primary, appID: "test.editor"), .off)
+        session.activate(Bundle.main.bundleIdentifier, isMainWindow: true)
+        XCTAssertEqual(session.appID, Bundle.main.bundleIdentifier)
+        session.activate("test.editor")
+        XCTAssertNil(session.choice(for: .primary, appID: "test.editor"))
+    }
+
+    func testStopTargetUsesEndFieldWithoutChangingExplicitStartingFieldPolicy() {
+        let start = TypingService.RecordingTargetContext(id: UUID(), pid: 1, bundleIdentifier: "start", window: nil, element: nil)
+        let end = TypingService.RecordingTargetContext(id: UUID(), pid: 2, bundleIdentifier: "end", window: nil, element: nil)
+        XCTAssertEqual(DictationStopSnapshot.selectTarget(current: end, original: start, returnToStartingField: false, ownOverlayFocused: false)?.id, end.id)
+        XCTAssertEqual(DictationStopSnapshot.selectTarget(current: end, original: start, returnToStartingField: true, ownOverlayFocused: false)?.id, start.id)
+        XCTAssertEqual(DictationStopSnapshot.selectTarget(current: end, original: start, returnToStartingField: false, ownOverlayFocused: true)?.id, start.id)
+        XCTAssertNil(DictationStopSnapshot.selectTarget(current: nil, original: start, returnToStartingField: false, ownOverlayFocused: false))
+    }
+
     private func withPromptSettingsRestored(run: () -> Void) {
         let settings = SettingsStore.shared
         let profiles = settings.dictationPromptProfiles

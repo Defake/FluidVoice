@@ -987,9 +987,10 @@ struct ContentView: View {
     private func recordDictationUsage(
         shouldUseAI: Bool,
         dictationSlot: SettingsStore.DictationShortcutSlot?,
-        appBundleID: String
+        appBundleID: String,
+        snapshot: DictationStopSnapshot? = nil
     ) -> (provider: String?, model: String?) {
-        let postProcessing = self.currentDictationAIModelInfo(
+        let postProcessing = snapshot.map { (provider: Optional($0.route.providerKey), model: Optional($0.route.model)) } ?? self.currentDictationAIModelInfo(
             dictationSlot: dictationSlot,
             appBundleID: appBundleID
         )
@@ -2038,7 +2039,8 @@ struct ContentView: View {
         targetPID: pid_t?,
         textReadyAt: TimeInterval,
         toggleStopRequestedAt: TimeInterval?,
-        preserveTranscriptOnClipboard: Bool
+        preserveTranscriptOnClipboard: Bool,
+        stopSnapshot: DictationStopSnapshot? = nil
     ) async -> TypingService.DeliveryOutcome {
         let sendsExistingDraft = outputPlan.plainText.isEmpty
         let outcome = await self.asr.typeOutputPlanToActiveFieldAndWait(
@@ -2047,7 +2049,7 @@ struct ContentView: View {
             textReadyAt: textReadyAt,
             toggleStopRequestedAt: toggleStopRequestedAt,
             postInsertionKey: self.settings.spokenSendKey,
-            requiredFocusTarget: self.recordingFocusTarget,
+            requiredFocusTarget: stopSnapshot == nil ? self.recordingFocusTarget : stopSnapshot?.focusTarget,
             preserveTranscriptOnClipboard: preserveTranscriptOnClipboard
         )
         if outcome.didDispatchAction {
@@ -2127,6 +2129,44 @@ struct ContentView: View {
     private func captureRecordingContext() {
         self.captureRecordingTargetContext()
         self.captureRecordingFormattingContextIfNeeded()
+    }
+
+    private func captureDictationStopSnapshot(slot: SettingsStore.DictationShortcutSlot) -> DictationStopSnapshot {
+        let current = TypingService.captureRecordingTargetContext()
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let isOverlay = current?.pid == ownPID && (NSApp.keyWindow == nil || NSApp.keyWindow is NSPanel)
+        let useOriginal = self.settings.returnDictationToStartingField || isOverlay
+        let target = DictationStopSnapshot.selectTarget(
+            current: current,
+            original: NotchContentState.shared.recordingTargetContext,
+            returnToStartingField: self.settings.returnDictationToStartingField,
+            ownOverlayFocused: isOverlay
+        )
+        let app = target.flatMap { NSRunningApplication(processIdentifier: $0.pid) }
+        let info = (
+            name: app?.localizedName ?? "Unknown",
+            bundleId: target?.bundleIdentifier ?? "unknown",
+            windowTitle: target.flatMap { self.getFrontmostWindowTitle(ownerPid: $0.pid) } ?? ""
+        )
+        if !useOriginal { DictationAppSession.shared.activate(target?.bundleIdentifier) }
+        let precedingText = useOriginal ? self.recordingPrecedingText
+            : (self.settings.needsDictationFormattingContext ? TypingService.textBeforeCursorInFocusedField() : "")
+        NotchContentState.shared.frozenDictationLabel = self.settings.dictationOverlayLabel(for: slot, appBundleID: info.bundleId)
+        return .capture(target: target, appInfo: info, slot: slot, precedingText: precedingText)
+    }
+
+    private func prepareStoppedDictationDelivery(_ text: String, keepBackup: Bool, snapshot: DictationStopSnapshot?, needsRestoration: Bool) async -> Bool {
+        if let snapshot { return await snapshot.prepareDelivery(text, keepBackup: keepBackup) }
+        return await self.prepareRecordingTargetForDelivery(text, keepBackup: keepBackup, needsRestoration: needsRestoration)
+    }
+
+    private func showStoppedDictationDeliveryFailure(_ failure: TextDeliveryFailure, transcript: String, snapshot: DictationStopSnapshot?) {
+        if let snapshot {
+            // Retry retains its captured-target behavior, now for the field selected at stop.
+            NotchContentState.shared.recordingTargetContext = snapshot.target
+            NotchContentState.shared.recordingTargetPID = snapshot.target?.pid
+        }
+        self.showTextDeliveryFailure(failure, transcript: transcript)
     }
 
     private func resolveTypingTargetPID(returnToStartingField: Bool = true) -> (pid: pid_t?, shouldRestoreOriginalFocus: Bool) {
@@ -2299,12 +2339,15 @@ struct ContentView: View {
         overrideModel: String? = nil,
         dictationSlot: SettingsStore.DictationShortcutSlot? = nil,
         streamHandler: PrivateAIStreamHandler? = nil,
-        benchmarkID: String? = nil
+        benchmarkID: String? = nil,
+        stopSnapshot: DictationStopSnapshot? = nil
     ) async throws -> AITextProcessingResult {
         let routeStartedAt = ProcessInfo.processInfo.systemUptime
-        let appInfo = self.recordingAppInfo ?? self.getCurrentAppInfo()
+        let appInfo = stopSnapshot?.appInfo ?? self.recordingAppInfo ?? self.getCurrentAppInfo()
         let route: DictationProviderRoute
-        if let overrideProviderID, let overrideModel {
+        if let stopSnapshot {
+            route = stopSnapshot.route
+        } else if let overrideProviderID, let overrideModel {
             route = DictationProviderRoute.resolve(
                 settings: SettingsStore.shared,
                 providerID: overrideProviderID,
@@ -2336,7 +2379,7 @@ struct ContentView: View {
 
         let isDictationCall = overrideSystemPrompt != nil || dictationSlot != nil
         let isPrivateAIProvider = route.usesPrivateAI
-        let usePrivateAIProvider = overrideSystemPrompt == nil &&
+        let usePrivateAIProvider = !(stopSnapshot?.hasCustomPrompt ?? (overrideSystemPrompt != nil)) &&
             isDictationCall &&
             (isPrivateAIProvider || PrivateAIIntegrationService.shouldHandleDictation(model: derivedSelectedModel))
 
@@ -2391,6 +2434,7 @@ struct ContentView: View {
         // Resolve the effective prompt once so every provider path honors
         // transient overrides such as "Transcribe with Prompt".
         let promptText: String = {
+            if let stopSnapshot { return stopSnapshot.systemPrompt }
             if let overrideSystemPrompt { return overrideSystemPrompt }
             return self.buildSystemPrompt(appInfo: appInfo, dictationSlot: dictationSlot)
         }()
@@ -2573,6 +2617,10 @@ struct ContentView: View {
     // MARK: - Stop and Process Transcription
 
     private func stopAndProcessTranscription(route: DictationOutputRoute = .normal, toggleStopRequestedAt: TimeInterval? = nil) async {
+        let lifecycle = self.overlayLifecycleID
+        defer {
+            if self.overlayLifecycleID == lifecycle { NotchContentState.shared.frozenDictationLabel = nil }
+        }
         let pipelineID = UUID().uuidString
         await DebugLogger.$pipelineID.withValue(pipelineID) {
             await self.processStoppedTranscription(route: route, pipelineID: pipelineID, toggleStopRequestedAt: toggleStopRequestedAt)
@@ -2597,7 +2645,9 @@ struct ContentView: View {
         let activeDictationSlot = self.currentDictationShortcutSlot(for: modeAtStop)
         let promptOverride = self.promptModeOverrideText
         let promptTest = DictationPromptTestCoordinator.shared
-        let shouldUseAIOnStop = activeDictationSlot.map {
+        let stopSnapshot = route == .normal && !wasRewriteMode && !wasCommandMode && !promptTest.isActive
+            ? self.captureDictationStopSnapshot(slot: activeDictationSlot ?? .primary) : nil
+        let shouldUseAIOnStop = stopSnapshot?.usesAI ?? activeDictationSlot.map {
             DictationAIPostProcessingGate.isConfigured(for: $0, appBundleID: self.recordingAppInfo?.bundleId)
         } ?? DictationAIPostProcessingGate.isConfigured(for: .primary, appBundleID: self.recordingAppInfo?.bundleId)
         let shouldHideOverlayOnStop = route == .normal &&
@@ -2704,7 +2754,7 @@ struct ContentView: View {
         var fluidIntelligenceDurationMilliseconds: Int?
         var aiTokensPerSecond: Double?
         var aiFallbackNotificationError: String?
-        let appInfo = self.recordingAppInfo ?? self.getCurrentAppInfo()
+        let appInfo = stopSnapshot?.appInfo ?? self.recordingAppInfo ?? self.getCurrentAppInfo()
         let punctuationFormattedText = ASRService.applySpokenPunctuationFormatting(
             transcribedText,
             appName: appInfo.name,
@@ -2723,12 +2773,13 @@ struct ContentView: View {
 
         let practiceModelID = route == .onboardingSandbox && self.settings.onboardingCurrentStep == 5
             ? PrivateAIProviderPromptFormat.verifiedModelID(settings: self.settings) : nil
-        let shouldUseAI = !sendsExistingDraft && (practiceModelID != nil || DictationAIPostProcessingGate.isConfigured(for: activeDictationSlot ?? .primary, appBundleID: appInfo.bundleId))
+        let shouldUseAI = !sendsExistingDraft && (practiceModelID != nil || (stopSnapshot?.usesAI ?? DictationAIPostProcessingGate.isConfigured(for: activeDictationSlot ?? .primary, appBundleID: appInfo.bundleId)))
         let transcriptionModelInfo = self.currentTranscriptionModelInfo()
         let postProcessingModelInfo = self.recordDictationUsage(
             shouldUseAI: shouldUseAI,
             dictationSlot: activeDictationSlot,
-            appBundleID: appInfo.bundleId
+            appBundleID: appInfo.bundleId,
+            snapshot: stopSnapshot
         )
 
         if shouldUseAI {
@@ -2754,7 +2805,8 @@ struct ContentView: View {
                     overrideModel: practiceModelID,
                     dictationSlot: activeDictationSlot,
                     streamHandler: streamHandler,
-                    benchmarkID: pipelineID
+                    benchmarkID: pipelineID,
+                    stopSnapshot: stopSnapshot
                 )
                 refiningStatusTask.cancel()
                 finalText = result.text
@@ -2804,7 +2856,7 @@ struct ContentView: View {
         finalText = ASRService.applyGAAVFormatting(finalText)
         // Apply Continuous Dictation Mode after GAAV so smart caps use the field
         // context captured at recording start, and the trailing space enables chaining.
-        finalText = ASRService.applyContinuousDictationFormatting(finalText, precedingText: self.recordingPrecedingText)
+        finalText = ASRService.applyContinuousDictationFormatting(finalText, precedingText: stopSnapshot?.precedingText ?? self.recordingPrecedingText)
         finalText = ASRService.applyTerminalLiteralAutocompleteSpacing(
             finalText,
             appName: appInfo.name,
@@ -2863,9 +2915,7 @@ struct ContentView: View {
             self.pendingAIReprocessText = nil
         }
 
-        let frontmostApp = NSWorkspace.shared.frontmostApplication
-        let frontmostName = frontmostApp?.localizedName ?? "Unknown"
-        let isFluidFrontmost = frontmostApp?.bundleIdentifier == Bundle.main.bundleIdentifier
+        let isFluidFrontmost = stopSnapshot.map { $0.target?.pid == ProcessInfo.processInfo.processIdentifier } ?? (NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier)
 
         // Save to transcription history (transcription mode only, if enabled)
         if shouldPersistOutputs, !sendsExistingDraft, SettingsStore.shared.saveTranscriptionHistory {
@@ -2901,27 +2951,24 @@ struct ContentView: View {
         var didTypeExternally = false
         var didFailTextDelivery = false
 
-        DebugLogger.shared.debug(
-            "Typing decision → frontmost: \(frontmostName), fluidFrontmost: \(isFluidFrontmost), editorFocused: \(self.isTranscriptionFocused), willTypeExternally: \(shouldTypeExternally)",
-            source: "ContentView"
-        )
+        self.appBench("typing_decision frozenTarget=\(stopSnapshot != nil) external=\(shouldTypeExternally)")
 
         if shouldTypeExternally {
-            let typingTarget = self.resolveTypingTargetPID(returnToStartingField: self.settings.returnDictationToStartingField)
+            let typingTarget = stopSnapshot.map { (pid: $0.target?.pid, shouldRestoreOriginalFocus: true) }
+                ?? self.resolveTypingTargetPID(returnToStartingField: self.settings.returnDictationToStartingField)
             let spokenSendRequested = spokenSendParse.shouldSend
+            let sendFocus = stopSnapshot == nil ? self.recordingFocusTarget : stopSnapshot?.focusTarget
             let targetMatchesRecordingFocus = typingTarget.pid != nil
-                && typingTarget.pid == self.recordingFocusTarget?.pid
+                && typingTarget.pid == sendFocus?.pid
             let spokenSendAllowed = spokenSendRequested
                 && aiFallbackReason == nil
                 && (sendsExistingDraft || !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 && targetMatchesRecordingFocus
-                && (typingTarget.shouldRestoreOriginalFocus || self.recordingFocusTarget.map { TypingService.isExactFocusTargetActive($0) } == true)
+                && (typingTarget.shouldRestoreOriginalFocus || sendFocus.map { TypingService.isExactFocusTargetActive($0) } == true)
                 && !self.isSpokenSendBlockedApp(appInfo)
             // Dispatch insertion as soon as the destination app is ready; the
             // overlay hides asynchronously after output so it cannot delay paste.
-            let focusReady = await self.prepareRecordingTargetForDelivery(
-                finalText, keepBackup: shouldCopyToClipboard, needsRestoration: typingTarget.shouldRestoreOriginalFocus
-            )
+            let focusReady = await self.prepareStoppedDictationDelivery(finalText, keepBackup: shouldCopyToClipboard, snapshot: stopSnapshot, needsRestoration: typingTarget.shouldRestoreOriginalFocus)
 
             if spokenSendAllowed {
                 NotchContentState.shared.setSpokenSendIndicatorState(.sending)
@@ -2940,7 +2987,8 @@ struct ContentView: View {
                     targetPID: typingTarget.pid,
                     textReadyAt: finalTextReadyAt,
                     toggleStopRequestedAt: toggleStopRequestedAt,
-                    preserveTranscriptOnClipboard: shouldCopyToClipboard
+                    preserveTranscriptOnClipboard: shouldCopyToClipboard,
+                    stopSnapshot: stopSnapshot
                 )
                 self.logPipelineCompletion(
                     outcome: String(describing: deliveryOutcome),
@@ -2995,7 +3043,7 @@ struct ContentView: View {
 
             if case let .recoverableFailure(failure) = deliveryResult {
                 didFailTextDelivery = true
-                self.showTextDeliveryFailure(failure, transcript: finalText)
+                self.showStoppedDictationDeliveryFailure(failure, transcript: finalText, snapshot: stopSnapshot)
             } else if !shouldShowAIProcessingFailure, !stopOverlay.didRequestHide {
                 self.hideOverlayAfterOutput()
             }
@@ -4693,6 +4741,7 @@ extension ContentView {
 
     private func applyDictationShortcutSelectionContext(for slot: SettingsStore.DictationShortcutSlot) {
         let settings = SettingsStore.shared
+        NotchContentState.shared.frozenDictationLabel = nil
         self.activeDictationShortcutSlot = slot
         NotchContentState.shared.activeDictationShortcutSlot = slot
         NotchContentState.shared.isPromptModeActive = (slot == .secondary)

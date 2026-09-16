@@ -2408,6 +2408,7 @@ struct BottomOverlayView: View {
     private var selectedPromptLabel: String {
         guard let activePromptMode else { return "N/A" }
         if activePromptMode.normalized == .dictate {
+            if let label = self.contentState.frozenDictationLabel { return label }
             return self.settings.dictationOverlayLabel(
                 for: self.activeDictationShortcutSlot,
                 appBundleID: self.promptResolutionBundleID

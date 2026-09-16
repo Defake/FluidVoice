@@ -8,6 +8,7 @@ final class DictationAppSession: @unchecked Sendable {
     private let lock = NSLock()
     private var state = ForegroundAppOverride<SettingsStore.DictationPromptSelection>()
     private var observer: NSObjectProtocol?
+    private var mainWindowObserver: NSObjectProtocol?
     var appID: String? { self.lock.withLock { self.state.appID } }
 
     @MainActor
@@ -20,12 +21,19 @@ final class DictationAppSession: @unchecked Sendable {
             let appID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
             MainActor.assumeIsolated { self?.activate(appID) }
         }
+        self.mainWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let window = notification.object as? NSWindow, !(window is NSPanel) else { return }
+            MainActor.assumeIsolated { self?.activate(Bundle.main.bundleIdentifier, isMainWindow: true) }
+        }
     }
 
     @MainActor
-    func activate(_ appID: String?) {
+    func activate(_ appID: String?, isMainWindow: Bool? = nil) {
         // Our nonactivating overlay/popover must not end the target app's visit.
-        guard appID != Bundle.main.bundleIdentifier else { return }
+        let mainWindowFocused = isMainWindow ?? (NSApp.keyWindow != nil && !(NSApp.keyWindow is NSPanel))
+        if appID == Bundle.main.bundleIdentifier, !mainWindowFocused { return }
         let changed = self.lock.withLock { self.state.activate(appID) }
         if changed { SettingsStore.shared.objectWillChange.send() }
     }
