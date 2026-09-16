@@ -150,8 +150,19 @@ final class RewriteModeService: ObservableObject {
     func acceptRewrite(_ text: String) async {
         // The panel may clear its state before this queued action starts.
         guard !text.isEmpty else { return }
-        NSApp.hide(nil) // Restore focus to the previous app
-        _ = await self.typingService.typeTextInstantly(text)
+        NSApp.hide(nil)
+        // Hiding alone races the paste: the focused element can still be our
+        // panel when the editability check runs. Put focus back on the field
+        // the rewrite was recorded from, and fall back to a short settle.
+        var targetPID: pid_t?
+        if let context = NotchContentState.shared.recordingTargetContext {
+            let preparation = await TypingService.prepareTargetForDelivery(context)
+            targetPID = context.pid
+            self.appendDiagnosticLog("acceptRewrite focus=\(preparation.rawValue) pid=\(context.pid)")
+        } else {
+            try? await Task.sleep(nanoseconds: 80_000_000)
+        }
+        _ = await self.typingService.typeTextInstantly(text, preferredTargetPID: targetPID)
     }
 
     func clearState() {
