@@ -1386,10 +1386,12 @@ final class ASRService: ObservableObject {
     ) async {
         switch self.activeAudioCaptureBackend {
         case .directCoreAudio:
+            let captureAwaitStartedAt = ProcessInfo.processInfo.systemUptime
             let report = await self.directAudioLifecycleController.stop(
                 retainPrepared: retainDirectPreparedCapture,
                 reason: reason
             )
+            DebugLogger.shared.info("CLOSE_DETAIL audioCallerResumed uptime=\(ProcessInfo.processInfo.systemUptime) awaitMs=\((ProcessInfo.processInfo.systemUptime - captureAwaitStartedAt) * 1000)", source: "StopTiming")
             if report.status != noErr {
                 DebugLogger.shared.warning(
                     "Direct Core Audio stop returned OSStatus \(report.status)",
@@ -1403,10 +1405,16 @@ final class ASRService: ObservableObject {
                 )
             }
         case .audioEngine:
+            let tapStopStartedAt = ProcessInfo.processInfo.systemUptime
             self.removeEngineTap()
+            let tapStopFinishedAt = ProcessInfo.processInfo.systemUptime
             if let engine = self.engineStorage as? AVAudioEngine, engine.isRunning {
                 engine.stop()
             }
+            DebugLogger.shared.info(
+                "STOP_TRACE backend=audioEngine removeTapMs=\(Int((tapStopFinishedAt - tapStopStartedAt) * 1000)) engineStopMs=\(Int((ProcessInfo.processInfo.systemUptime - tapStopFinishedAt) * 1000))",
+                source: "StopTiming"
+            )
         case .none:
             break
         }
@@ -2696,6 +2704,17 @@ final class ASRService: ObservableObject {
         }
         self.lastCompletedAudioSnapshot = nil
         let stopStartedAt = Date().timeIntervalSince1970
+        let traceStartedAt = ProcessInfo.processInfo.systemUptime
+        var tracePreviousAt = traceStartedAt
+        func traceStop(_ phase: String) {
+            let now = ProcessInfo.processInfo.systemUptime
+            DebugLogger.shared.info(
+                "STOP_TRACE phase=\(phase) deltaMs=\(Int((now - tracePreviousAt) * 1000)) totalMs=\(Int((now - traceStartedAt) * 1000))",
+                source: "StopTiming"
+            )
+            tracePreviousAt = now
+        }
+        defer { traceStop("stop_return") }
         self.benchmarkLog("stop_start ageMs=\(self.elapsedMilliseconds(since: self.benchmarkRecordingStartedAt)) bufferedSamples=\(self.audioBuffer.count)")
 
         if self.isStarting, self.isRunning == false {
@@ -2732,7 +2751,9 @@ final class ASRService: ObservableObject {
             self.isDictionaryTrainingCaptureActive = false
         }
 
+        traceStop("route_cleanup_begin")
         await self.cancelAudioRouteRecoveryAndWait()
+        traceStop("route_cleanup_end")
         guard self.isRunning, self.benchmarkSessionID == stoppingSessionID else {
             self.recordingBufferHandoffGate.complete(bufferHandoffToken)
             completedBufferHandoff = true
@@ -2753,7 +2774,9 @@ final class ASRService: ObservableObject {
         DebugLogger.shared.debug("✅ Device monitoring stopped", source: "ASRService")
 
         self.benchmarkLog("capture_stop_await_begin")
+        traceStop("capture_stop_begin")
         await self.stopActiveAudioCapture(reason: "recording_stop")
+        traceStop("capture_stop_end")
         self.benchmarkLog("capture_stop_await_return")
         self.audioCapturePipeline.finishRecording()
         self.benchmarkLog("capture_pipeline_finished")
@@ -2795,6 +2818,7 @@ final class ASRService: ObservableObject {
         // cancellation into incremental provider state.
         DebugLogger.shared.debug("⏳ Awaiting active streaming work...", source: "ASRService")
         let streamingStopStartedAt = Date().timeIntervalSince1970
+        traceStop("streaming_drain_begin")
         guard await self.drainActiveStreamingWork(sessionID: stoppingSessionID) else {
             self.beginStreamingDrainRecovery(sessionID: stoppingSessionID, token: bufferHandoffToken)
             completedBufferHandoff = true // Recovery owns the PCM handoff until real work ends.
@@ -2803,6 +2827,7 @@ final class ASRService: ObservableObject {
             return ""
         }
         self.benchmarkLog("stop_streaming_wait elapsedMs=\(self.elapsedMilliseconds(since: streamingStopStartedAt))")
+        traceStop("streaming_drain_end")
         DebugLogger.shared.debug("✅ Active streaming work completed", source: "ASRService")
 
         self.isProcessingChunk = false
@@ -2814,6 +2839,7 @@ final class ASRService: ObservableObject {
         var pcm = self.audioBuffer.getAll()
         self.audioBuffer.clear()
         let capturedPCM = pcm
+        traceStop("buffer_copied")
         let hasRecognizedStreamingPreview = !self.partialTranscription
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty
@@ -2855,6 +2881,7 @@ final class ASRService: ObservableObject {
             )
 
             if silenceAssessment.shouldSkipTranscription {
+                traceStop("silence_skipped")
                 DebugLogger.shared.info(
                     "Final ASR result | provider=\(self.transcriptionProvider.name) | samples=\(pcm.count) | textChars=0 | confidence=nil | reason=short_silence",
                     source: "ASRService"
@@ -2884,6 +2911,7 @@ final class ASRService: ObservableObject {
         }
 
         do {
+            traceStop("readiness_begin")
             var provider = self.transcriptionProvider
             let ensureStartedAt = Date().timeIntervalSince1970
             if self.isAsrReady, provider.isReady {
@@ -2909,6 +2937,7 @@ final class ASRService: ObservableObject {
 
             DebugLogger.shared.debug("Starting transcription with \(pcm.count) samples (\(Float(pcm.count) / 16_000.0) seconds)", source: "ASRService")
             let finalStartedAt = Date().timeIntervalSince1970
+            traceStop("final_asr_begin")
             let result: ASRTranscriptionResult
             let finalSource: String
             if useDictionaryTrainingPath {
@@ -2952,6 +2981,7 @@ final class ASRService: ObservableObject {
                 finalSource = "full"
             }
             let finalElapsedMs = self.elapsedMilliseconds(since: finalStartedAt)
+            traceStop("final_asr_end")
             if !useDictionaryTrainingPath {
                 self.lastFinalTranscriptionDurationMs = finalElapsedMs
             }

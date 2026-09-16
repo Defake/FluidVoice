@@ -464,6 +464,8 @@ final class TypingService {
         preserveTranscriptOnClipboard: Bool = false
     ) async -> TextDeliveryResult {
         let requestedAt = ProcessInfo.processInfo.systemUptime
+        var closeTrace = OverlayCloseTrace("typing.delivery")
+        defer { closeTrace.finish() }
         let text = plan.plainText
         let mode = self.textInsertionMode
         let textReadyAge = textReadyAt.map { Self.elapsedMs(from: $0, to: requestedAt) }

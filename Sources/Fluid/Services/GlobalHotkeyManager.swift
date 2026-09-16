@@ -2348,7 +2348,7 @@ final class GlobalHotkeyManager: NSObject {
             return false
         }
         guard !self.isProcessingStop else {
-            DebugLogger.shared.debug("Ignoring \(label) - stop already processing", source: "GlobalHotkeyManager")
+            DebugLogger.shared.info("CLOSE_DETAIL shortcutRejected stopLocked=true uptime=\(ProcessInfo.processInfo.systemUptime)", source: "StopTiming")
             return false
         }
         guard !self.asrService.isDictionaryTrainingCaptureActive else {
@@ -2458,8 +2458,8 @@ final class GlobalHotkeyManager: NSObject {
             return
         }
 
-        self.isProcessingStop = true
-        defer { isProcessingStop = false }
+        let closeStartedAt = self.traceStopLocked()
+        defer { self.traceStopUnlocked(since: closeStartedAt) }
 
         if let callback = stopAndProcessCallback {
             await callback(toggleStopRequestedAt)
@@ -2530,5 +2530,18 @@ final class GlobalHotkeyManager: NSObject {
         initializationTask?.cancel()
         healthCheckTask?.cancel()
         cleanupEventTap()
+    }
+}
+
+private extension GlobalHotkeyManager {
+    func traceStopLocked() -> TimeInterval {
+        OverlayCloseRunLoopProbe.begin()
+        self.isProcessingStop = true
+        return ProcessInfo.processInfo.systemUptime
+    }
+
+    func traceStopUnlocked(since startedAt: TimeInterval) {
+        self.isProcessingStop = false
+        DebugLogger.shared.info("CLOSE_DETAIL shortcutUnlocked uptime=\(ProcessInfo.processInfo.systemUptime) heldMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)", source: "StopTiming")
     }
 }
