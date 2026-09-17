@@ -362,6 +362,23 @@ final class SpokenSendTests: XCTestCase {
         }
     }
 
+    // MARK: - Paste read-back after a fast manual send
+
+    func testReadBackStandsDownWhenUserActsAfterPaste() {
+        // Return pressed 0.4 s after the paste; the verdict arrives at 1.5 s.
+        XCTAssertTrue(PasteVerifier.userActedAfterPaste(secondsSinceLastInput: 1.1, secondsSincePaste: 1.5))
+        // Return pressed almost immediately.
+        XCTAssertTrue(PasteVerifier.userActedAfterPaste(secondsSinceLastInput: 1.4, secondsSincePaste: 1.5))
+    }
+
+    func testReadBackStillReportsWhenNothingHappenedSinceThePaste() {
+        // The last input is our own synthesized V at the paste instant.
+        XCTAssertFalse(PasteVerifier.userActedAfterPaste(secondsSinceLastInput: 1.5, secondsSincePaste: 1.5))
+        XCTAssertFalse(PasteVerifier.userActedAfterPaste(secondsSinceLastInput: 1.48, secondsSincePaste: 1.5))
+        // The last input was long before the paste.
+        XCTAssertFalse(PasteVerifier.userActedAfterPaste(secondsSinceLastInput: 30, secondsSincePaste: 1.5))
+    }
+
     func testImmediateStopCompletionRequiresTerminalPhraseAndSilence() {
         let arguments = (
             text: "Ready, send it.",

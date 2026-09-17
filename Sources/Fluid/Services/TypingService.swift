@@ -698,7 +698,13 @@ final class TypingService {
     private func verifyPasteLanded(_ text: String, before: PasteVerifier.Snapshot) {
         Task.detached(priority: .utility) {
             let startedAt = ProcessInfo.processInfo.systemUptime
-            let verdict = await PasteVerifier.verify(before: before, pastedText: text)
+            var verdict = await PasteVerifier.verify(before: before, pastedText: text)
+            if case .notLanded = verdict, PasteVerifier.userActedAfterPaste(
+                secondsSinceLastInput: PasteVerifier.secondsSinceLastUserInput(),
+                secondsSincePaste: ProcessInfo.processInfo.systemUptime - startedAt
+            ) {
+                verdict = .unknown(reason: "user_input_after_paste")
+            }
             let app = NSRunningApplication(processIdentifier: before.pid)?.bundleIdentifier ?? "pid\(before.pid)"
             DebugLogger.shared.info(
                 "PASTE_VERIFY \(verdict.logDescription) app=\(app) before[\(before.summary)] " +

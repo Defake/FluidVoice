@@ -74,6 +74,20 @@ enum PasteVerifier {
     static let finalCheckDelay: TimeInterval = 1.0
     static var totalDecisionDelay: TimeInterval { self.firstCheckDelay + self.secondCheckDelay + self.finalCheckDelay }
 
+    /// A key press or click after the paste means the user acted on the field
+    /// (typically Return to send), so an unchanged field proves nothing.
+    nonisolated static func userActedAfterPaste(secondsSinceLastInput: TimeInterval, secondsSincePaste: TimeInterval) -> Bool {
+        // Our own synthesized V key lands at the paste instant; ignore that window.
+        secondsSinceLastInput < secondsSincePaste - 0.05
+    }
+
+    nonisolated static func secondsSinceLastUserInput() -> TimeInterval {
+        min(
+            CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown),
+            CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .leftMouseDown)
+        )
+    }
+
     /// Call off the main thread after the paste command was posted.
     nonisolated static func verify(before: Snapshot, pastedText: String) async -> Verdict {
         let needle = self.normalize(pastedText)
