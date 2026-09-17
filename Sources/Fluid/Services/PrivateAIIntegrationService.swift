@@ -240,8 +240,7 @@ actor PrivateAIIntegrationService {
     /// Experimental: gives the model's memory back after a quiet period. The
     /// next dictation reloads it while the user is still speaking.
     nonisolated static let idleUnloader = PrivateAIIdleUnloader(
-        delay: .seconds(600),
-        isEnabled: { await MainActor.run { SettingsStore.shared.privateAIIdleUnloadEnabled } },
+        delay: { await MainActor.run { SettingsStore.shared.privateAIIdleUnload.delay } },
         isBusy: { await MainActor.run { AppServices.shared.asr.isRunningOrStarting } },
         unload: { await PrivateAIIntegrationService.shared.unloadCachedRuntime(reason: "idle") }
     )

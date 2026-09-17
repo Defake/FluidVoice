@@ -1692,12 +1692,35 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// Experimental. Off by default: the model stays loaded as before.
-    var privateAIIdleUnloadEnabled: Bool {
-        get { self.defaults.bool(forKey: Keys.privateAIIdleUnloadEnabled) }
+    /// How long the local model may sit unused before its memory is released.
+    enum PrivateAIIdleUnload: Int, CaseIterable, Identifiable {
+        case never = 0
+        case tenMinutes = 10
+        case thirtyMinutes = 30
+        case oneHour = 60
+
+        var id: Int { self.rawValue }
+
+        var title: String {
+            switch self {
+            case .never: "Never"
+            case .tenMinutes: "10 minutes"
+            case .thirtyMinutes: "30 minutes"
+            case .oneHour: "1 hour"
+            }
+        }
+
+        var delay: Duration? {
+            self == .never ? nil : .seconds(self.rawValue * 60)
+        }
+    }
+
+    /// Experimental. `.never` by default: the model stays loaded as before.
+    var privateAIIdleUnload: PrivateAIIdleUnload {
+        get { PrivateAIIdleUnload(rawValue: self.defaults.integer(forKey: Keys.privateAIIdleUnloadMinutes)) ?? .never }
         set {
             objectWillChange.send()
-            self.defaults.set(newValue, forKey: Keys.privateAIIdleUnloadEnabled)
+            self.defaults.set(newValue.rawValue, forKey: Keys.privateAIIdleUnloadMinutes)
         }
     }
 
@@ -5657,7 +5680,7 @@ private extension SettingsStore {
         static let selectedProviderID = "SelectedProviderID"
         static let privateAIPrefixKVCacheEnabled = "PrivateAIProviderPrefixKVCacheEnabled"
         static let privateAIBoostEnabled = "PrivateAIProviderBoostEnabled"
-        static let privateAIIdleUnloadEnabled = "PrivateAIProviderIdleUnloadEnabled"
+        static let privateAIIdleUnloadMinutes = "PrivateAIProviderIdleUnloadMinutes"
         static let privateAIBackendPreference = SettingsStore.privateAIBackendPreferenceDefaultsKey
         static let privateAIContextTokenLimit = "PrivateAIProviderContextTokenLimit"
         static let privateAIContextDefaultMigratedTo4K = "PrivateAIProviderContextDefaultMigratedTo4K"

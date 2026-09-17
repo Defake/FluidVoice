@@ -5,21 +5,19 @@ import Foundation
 /// state the caller reports as busy (a recording that will need the model when
 /// it ends), postpones the unload rather than cancelling it.
 actor PrivateAIIdleUnloader {
-    private let delay: Duration
-    private let isEnabled: @Sendable () async -> Bool
+    /// The quiet period to wait, or nil while the feature is off.
+    private let delay: @Sendable () async -> Duration?
     private let isBusy: @Sendable () async -> Bool
     private let unload: @Sendable () async -> Void
     private var inFlight = 0
     private var pending: Task<Void, Never>?
 
     init(
-        delay: Duration,
-        isEnabled: @escaping @Sendable () async -> Bool,
+        delay: @escaping @Sendable () async -> Duration?,
         isBusy: @escaping @Sendable () async -> Bool,
         unload: @escaping @Sendable () async -> Void
     ) {
         self.delay = delay
-        self.isEnabled = isEnabled
         self.isBusy = isBusy
         self.unload = unload
     }
@@ -49,9 +47,17 @@ actor PrivateAIIdleUnloader {
         }
     }
 
+    /// Restarts the countdown with the current setting, e.g. after the user
+    /// picks a different quiet period.
+    func settingsChanged() {
+        guard self.inFlight == 0 else { return }
+        self.schedule()
+    }
+
     private func schedule() {
         self.pending?.cancel()
         self.pending = Task { [delay] in
+            guard let delay = await delay() else { return }
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self.fire()
@@ -59,7 +65,7 @@ actor PrivateAIIdleUnloader {
     }
 
     private func fire() async {
-        guard self.inFlight == 0, await self.isEnabled() else { return }
+        guard self.inFlight == 0, await self.delay() != nil else { return }
         if await self.isBusy() {
             self.schedule()
             return

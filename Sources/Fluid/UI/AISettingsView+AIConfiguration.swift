@@ -999,10 +999,13 @@ extension AIEnhancementSettingsView {
         )
     }
 
-    private var privateAIIdleUnloadBinding: Binding<Bool> {
+    private var privateAIIdleUnloadBinding: Binding<SettingsStore.PrivateAIIdleUnload> {
         Binding(
-            get: { self.settings.privateAIIdleUnloadEnabled },
-            set: { self.settings.privateAIIdleUnloadEnabled = $0 }
+            get: { self.settings.privateAIIdleUnload },
+            set: { option in
+                self.settings.privateAIIdleUnload = option
+                Task { await PrivateAIIntegrationService.idleUnloader.settingsChanged() }
+            }
         )
     }
 
@@ -1922,9 +1925,13 @@ extension AIEnhancementSettingsView {
                                 .labelsHidden().toggleStyle(.switch).disabled(isBusy)
                         }
                         Divider()
-                        FluidManagementRow(title: "Free memory when idle", detail: "Experimental. Unloads the model after 10 quiet minutes and reloads it as you start speaking.") {
-                            Toggle("Free memory when idle", isOn: self.privateAIIdleUnloadBinding)
-                                .labelsHidden().toggleStyle(.switch)
+                        FluidManagementRow(title: "Free memory when idle", detail: "Experimental. Unloads the model after a quiet period and reloads it as you start speaking.") {
+                            Picker("Free memory when idle", selection: self.privateAIIdleUnloadBinding) {
+                                ForEach(SettingsStore.PrivateAIIdleUnload.allCases) { option in
+                                    Text(option.title).tag(option)
+                                }
+                            }
+                            .labelsHidden().frame(width: 200)
                         }
                         if self.privateAIShowsBoostRow {
                             Divider()

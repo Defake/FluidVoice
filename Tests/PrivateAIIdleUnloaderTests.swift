@@ -2,17 +2,16 @@ import Foundation
 
 private actor Recorder {
     private(set) var unloads = 0
-    var enabled = true
+    var delayMs: Int? = 60
     var busy = false
     func noteUnload() { self.unloads += 1 }
-    func set(enabled: Bool) { self.enabled = enabled }
+    func set(delayMs: Int?) { self.delayMs = delayMs }
     func set(busy: Bool) { self.busy = busy }
 }
 
-private func makeUnloader(_ recorder: Recorder, delayMs: Int = 60) -> PrivateAIIdleUnloader {
+private func makeUnloader(_ recorder: Recorder) -> PrivateAIIdleUnloader {
     PrivateAIIdleUnloader(
-        delay: .milliseconds(delayMs),
-        isEnabled: { await recorder.enabled },
+        delay: { await recorder.delayMs.map { .milliseconds($0) } },
         isBusy: { await recorder.busy },
         unload: { await recorder.noteUnload() }
     )
@@ -43,7 +42,8 @@ enum PrivateAIIdleUnloaderTests {
         }
         do {
             let recorder = Recorder()
-            let unloader = makeUnloader(recorder, delayMs: 150)
+            await recorder.set(delayMs: 150)
+            let unloader = makeUnloader(recorder)
             for _ in 0 ..< 4 {
                 await unloader.tracking {}
                 await pause(60)
@@ -78,12 +78,17 @@ enum PrivateAIIdleUnloaderTests {
         }
         do {
             let recorder = Recorder()
-            await recorder.set(enabled: false)
+            await recorder.set(delayMs: nil)
             let unloader = makeUnloader(recorder)
             await unloader.tracking {}
             await pause(250)
-            let unloads = await recorder.unloads
-            expect(unloads == 0, "does nothing when the setting is off")
+            var unloads = await recorder.unloads
+            expect(unloads == 0, "does nothing when set to never")
+            await recorder.set(delayMs: 60)
+            await unloader.settingsChanged()
+            await pause(250)
+            unloads = await recorder.unloads
+            expect(unloads == 1, "picking a period starts the countdown without new activity")
         }
         do {
             let recorder = Recorder()
