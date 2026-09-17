@@ -1715,6 +1715,15 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// The chosen quiet period. A local-testing override shortens it without
+    /// adding a UI option: `defaults write com.FluidApp.app
+    /// PrivateAIProviderIdleUnloadTestSeconds -int 60`.
+    var privateAIIdleUnloadDelay: Duration? {
+        guard let delay = self.privateAIIdleUnload.delay else { return nil }
+        let testSeconds = self.defaults.integer(forKey: Keys.privateAIIdleUnloadTestSeconds)
+        return testSeconds > 0 ? .seconds(testSeconds) : delay
+    }
+
     /// Experimental. `.never` by default: the model stays loaded as before.
     var privateAIIdleUnload: PrivateAIIdleUnload {
         get { PrivateAIIdleUnload(rawValue: self.defaults.integer(forKey: Keys.privateAIIdleUnloadMinutes)) ?? .never }
@@ -5681,6 +5690,7 @@ private extension SettingsStore {
         static let privateAIPrefixKVCacheEnabled = "PrivateAIProviderPrefixKVCacheEnabled"
         static let privateAIBoostEnabled = "PrivateAIProviderBoostEnabled"
         static let privateAIIdleUnloadMinutes = "PrivateAIProviderIdleUnloadMinutes"
+        static let privateAIIdleUnloadTestSeconds = "PrivateAIProviderIdleUnloadTestSeconds"
         static let privateAIBackendPreference = SettingsStore.privateAIBackendPreferenceDefaultsKey
         static let privateAIContextTokenLimit = "PrivateAIProviderContextTokenLimit"
         static let privateAIContextDefaultMigratedTo4K = "PrivateAIProviderContextDefaultMigratedTo4K"
