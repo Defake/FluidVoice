@@ -2146,7 +2146,9 @@ struct SettingsView: View {
             }
         }
     }
+}
 
+private extension SettingsView {
     private func shortcutLabel(icon: String, color: Color, title: String, description: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon).foregroundStyle(color).frame(width: 20).padding(.top, 2)
