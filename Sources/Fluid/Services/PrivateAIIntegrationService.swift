@@ -237,8 +237,17 @@ actor PrivateAIIntegrationService {
         await Self.provider.loadedModelState()
     }
 
+    /// Experimental: gives the model's memory back after a quiet period. The
+    /// next dictation reloads it while the user is still speaking.
+    nonisolated static let idleUnloader = PrivateAIIdleUnloader(
+        delay: .seconds(600),
+        isEnabled: { await MainActor.run { SettingsStore.shared.privateAIIdleUnloadEnabled } },
+        isBusy: { await MainActor.run { AppServices.shared.asr.isRunningOrStarting } },
+        unload: { await PrivateAIIntegrationService.shared.unloadCachedRuntime(reason: "idle") }
+    )
+
     func loadModel(_ model: PrivateAIRegisteredModel) async throws -> PrivateAIStatus {
-        let status = try await Self.provider.loadModel(model)
+        let status = try await Self.idleUnloader.tracking { try await Self.provider.loadModel(model) }
         guard status.state == .ready else { return status }
 
         await self.removeInactiveInstalledModels(keeping: model)
@@ -246,7 +255,7 @@ actor PrivateAIIntegrationService {
     }
 
     func verifyModel(_ model: PrivateAIRegisteredModel) async throws -> PrivateAIStatus {
-        try await Self.provider.verifyModel(model)
+        try await Self.idleUnloader.tracking { try await Self.provider.verifyModel(model) }
     }
 
     func removeInactiveInstalledModels(keeping model: PrivateAIRegisteredModel) async {
@@ -272,7 +281,7 @@ actor PrivateAIIntegrationService {
     }
 
     func prewarmDictation() async {
-        await Self.provider.prewarmDictation()
+        await Self.idleUnloader.tracking { await Self.provider.prewarmDictation() }
     }
 
     func unloadCachedRuntime(reason: String = "manual") async {
@@ -289,12 +298,14 @@ actor PrivateAIIntegrationService {
         context: AppContext
     ) async throws -> EnhancementResult {
         let budget = try Self.validatedDictationBudget(inputText, contextTokenLimit: runtime.contextTokenLimit)
-        return try await self.dictationProvider.enhanceDictation(
-            inputText,
-            runtime: runtime,
-            context: context,
-            maxOutputTokens: budget.maxOutputTokens
-        )
+        return try await Self.idleUnloader.tracking {
+            try await self.dictationProvider.enhanceDictation(
+                inputText,
+                runtime: runtime,
+                context: context,
+                maxOutputTokens: budget.maxOutputTokens
+            )
+        }
     }
 
     nonisolated func enhanceDictation(
@@ -304,13 +315,15 @@ actor PrivateAIIntegrationService {
         streamHandler: PrivateAIStreamHandler?
     ) async throws -> EnhancementResult {
         let budget = try Self.validatedDictationBudget(inputText, contextTokenLimit: runtime.contextTokenLimit)
-        return try await self.dictationProvider.enhanceDictation(
-            inputText,
-            runtime: runtime,
-            context: context,
-            maxOutputTokens: budget.maxOutputTokens,
-            streamHandler: streamHandler
-        )
+        return try await Self.idleUnloader.tracking {
+            try await self.dictationProvider.enhanceDictation(
+                inputText,
+                runtime: runtime,
+                context: context,
+                maxOutputTokens: budget.maxOutputTokens,
+                streamHandler: streamHandler
+            )
+        }
     }
 
     private nonisolated static func validatedDictationBudget(
@@ -333,12 +346,14 @@ actor PrivateAIIntegrationService {
         runtime: RuntimeConfiguration,
         context: AppContext
     ) async throws -> EnhancementResult {
-        try await Self.provider.rewrite(
-            inputText,
-            systemPrompt: systemPrompt,
-            runtime: runtime,
-            context: context
-        )
+        try await Self.idleUnloader.tracking {
+            try await Self.provider.rewrite(
+                inputText,
+                systemPrompt: systemPrompt,
+                runtime: runtime,
+                context: context
+            )
+        }
     }
 }
 

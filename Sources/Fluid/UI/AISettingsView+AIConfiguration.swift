@@ -999,6 +999,13 @@ extension AIEnhancementSettingsView {
         )
     }
 
+    private var privateAIIdleUnloadBinding: Binding<Bool> {
+        Binding(
+            get: { self.settings.privateAIIdleUnloadEnabled },
+            set: { self.settings.privateAIIdleUnloadEnabled = $0 }
+        )
+    }
+
     private var privateAIBoostBinding: Binding<Bool> {
         Binding(
             get: { self.settings.privateAIBoostEnabled },
@@ -1913,6 +1920,11 @@ extension AIEnhancementSettingsView {
                         FluidManagementRow(title: "Faster first result", detail: "Keep the model ready between dictations.") {
                             Toggle("Faster first result", isOn: self.privateAIPrefixCacheBinding)
                                 .labelsHidden().toggleStyle(.switch).disabled(isBusy)
+                        }
+                        Divider()
+                        FluidManagementRow(title: "Free memory when idle", detail: "Experimental. Unloads the model after 10 quiet minutes and reloads it as you start speaking.") {
+                            Toggle("Free memory when idle", isOn: self.privateAIIdleUnloadBinding)
+                                .labelsHidden().toggleStyle(.switch)
                         }
                         if self.privateAIShowsBoostRow {
                             Divider()

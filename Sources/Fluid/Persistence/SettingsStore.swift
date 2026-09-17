@@ -1692,6 +1692,15 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Experimental. Off by default: the model stays loaded as before.
+    var privateAIIdleUnloadEnabled: Bool {
+        get { self.defaults.bool(forKey: Keys.privateAIIdleUnloadEnabled) }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: Keys.privateAIIdleUnloadEnabled)
+        }
+    }
+
     var privateAIBoostEnabled: Bool {
         get { self.defaults.object(forKey: PrivateAIProviderFeature.shared.boostDefaultsKey) as? Bool ?? true }
         set {
@@ -5648,6 +5657,7 @@ private extension SettingsStore {
         static let selectedProviderID = "SelectedProviderID"
         static let privateAIPrefixKVCacheEnabled = "PrivateAIProviderPrefixKVCacheEnabled"
         static let privateAIBoostEnabled = "PrivateAIProviderBoostEnabled"
+        static let privateAIIdleUnloadEnabled = "PrivateAIProviderIdleUnloadEnabled"
         static let privateAIBackendPreference = SettingsStore.privateAIBackendPreferenceDefaultsKey
         static let privateAIContextTokenLimit = "PrivateAIProviderContextTokenLimit"
         static let privateAIContextDefaultMigratedTo4K = "PrivateAIProviderContextDefaultMigratedTo4K"
