@@ -2065,6 +2065,12 @@ final class AIEnhancementSettingsViewModel: ObservableObject {
     func selectPrivateAIPromptIfAvailable() {
         guard self.isPrivateAIPromptAvailable() else { return }
         self.settings.setDictationPromptSelection(.privateAI)
+        // "Only in listed apps" with an empty list would silently keep every app on Basic.
+        if self.settings.promptRoutingScope(for: .dictate) == .selectedAppsOnly,
+           self.settings.appPromptBindings(for: .dictate).isEmpty
+        {
+            self.settings.setPromptRoutingScope(.allApps, for: .dictate)
+        }
         self.refreshPromptSelectionState()
     }
 
