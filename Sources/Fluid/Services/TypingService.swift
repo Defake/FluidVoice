@@ -567,7 +567,9 @@ final class TypingService {
             toggleStopRequestedAt: toggleStopRequestedAt,
             completedAt: completedAt
         )
-        if verifiesLanding, result == .commandPosted, deliveryPath != .direct, let verificationBefore {
+        if verifiesLanding, SettingsStore.shared.showPasteCheckAlerts,
+           result == .commandPosted, deliveryPath != .direct, let verificationBefore
+        {
             self.verifyPasteLanded(text, before: verificationBefore)
         }
         // The caller starts correction tracking after completing delivery UI.

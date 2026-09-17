@@ -45,6 +45,7 @@ enum SettingsSearchTarget: Hashable {
     case notifications
     case aiEnhancementFailures
     case microphoneChanges
+    case pasteCheck
 
     case audio
     case inputDevicePriority
@@ -101,7 +102,7 @@ enum SettingsSearchTarget: Hashable {
              .pasteLastTranscriptionShortcut:
             return .shortcuts
 
-        case .notifications, .aiEnhancementFailures, .microphoneChanges:
+        case .notifications, .aiEnhancementFailures, .microphoneChanges, .pasteCheck:
             return .notifications
 
         case .audio, .inputDevicePriority, .outputDevice:
@@ -349,6 +350,11 @@ enum SettingsSearchIndex {
             target: .microphoneChanges,
             title: "Microphone Changes",
             terms: ["mic device lost changed alert notification"]
+        ),
+        .init(
+            target: .pasteCheck,
+            title: "Paste Check",
+            terms: ["text wasn't inserted not inserted card clipboard verify delivery failure alert"]
         ),
 
         .init(target: .audio, title: "Audio", terms: ["sound devices microphone speaker"]),

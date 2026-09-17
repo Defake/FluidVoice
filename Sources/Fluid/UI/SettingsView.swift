@@ -1133,6 +1133,18 @@ struct SettingsView: View {
                                 )
                             )
                             .settingsSearchTarget(.microphoneChanges)
+
+                            Divider().opacity(0.2)
+
+                            self.optionToggleRow(
+                                title: "Paste Check",
+                                description: "Show a card when FluidVoice can't confirm that pasted text landed.",
+                                isOn: Binding(
+                                    get: { self.settings.showPasteCheckAlerts },
+                                    set: { self.settings.showPasteCheckAlerts = $0 }
+                                )
+                            )
+                            .settingsSearchTarget(.pasteCheck)
                         }
                     }
                     .padding(16)

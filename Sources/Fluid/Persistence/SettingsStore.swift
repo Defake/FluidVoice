@@ -3410,6 +3410,19 @@ final class SettingsStore: ObservableObject {
         }
     }
 
+    /// Whether a card is shown when a paste could not be confirmed in the target field.
+    /// Off by default: the read-back is a guess, and a wrong guess interrupts for nothing.
+    var showPasteCheckAlerts: Bool {
+        get {
+            let value = self.defaults.object(forKey: Keys.showPasteCheckAlerts)
+            return value as? Bool ?? false
+        }
+        set {
+            objectWillChange.send()
+            self.defaults.set(newValue, forKey: Keys.showPasteCheckAlerts)
+        }
+    }
+
     func makeBackupPayload() -> SettingsBackupPayload {
         SettingsBackupPayload(
             selectedProviderID: self.selectedProviderID,
@@ -3493,6 +3506,7 @@ final class SettingsStore: ObservableObject {
             audioHistoryBudgetGB: self.audioHistoryBudgetGB,
             notifyAIProcessingFailures: self.notifyAIProcessingFailures,
             showMicrophoneChangeAlerts: self.showMicrophoneChangeAlerts,
+            showPasteCheckAlerts: self.showPasteCheckAlerts,
             weekendsDontBreakStreak: self.weekendsDontBreakStreak,
             fillerWords: self.fillerWords,
             removeFillerWordsEnabled: self.removeFillerWordsEnabled,
@@ -3675,6 +3689,9 @@ final class SettingsStore: ObservableObject {
         }
         if let showMicrophoneChangeAlerts = payload.showMicrophoneChangeAlerts {
             self.showMicrophoneChangeAlerts = showMicrophoneChangeAlerts
+        }
+        if let showPasteCheckAlerts = payload.showPasteCheckAlerts {
+            self.showPasteCheckAlerts = showPasteCheckAlerts
         }
         self.weekendsDontBreakStreak = payload.weekendsDontBreakStreak
         self.fillerWords = payload.fillerWords
@@ -5651,6 +5668,7 @@ private extension SettingsStore {
         // Keep the original persisted key so existing installs migrate in place.
         static let microphoneSelectionMigrationVersion = "AppOnlyMicrophoneSelectionMigrationVersion"
         static let showMicrophoneChangeAlerts = "ShowMicrophoneChangeAlerts"
+        static let showPasteCheckAlerts = "ShowPasteCheckAlerts"
         static let visualizerNoiseThreshold = "VisualizerNoiseThreshold"
         static let launchAtStartup = "LaunchAtStartup"
         static let showInDock = "ShowInDock"

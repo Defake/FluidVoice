@@ -5,6 +5,19 @@ import XCTest
 
 @MainActor
 final class PasteDeliveryCoordinatorTests: XCTestCase {
+    func testPasteCheckAlertsDefaultOffAndRoundTripThroughBackup() {
+        let settings = SettingsStore.shared
+        let original = settings.showPasteCheckAlerts
+        defer { settings.showPasteCheckAlerts = original }
+
+        UserDefaults.standard.removeObject(forKey: "ShowPasteCheckAlerts")
+        XCTAssertFalse(settings.showPasteCheckAlerts)
+
+        settings.showPasteCheckAlerts = true
+        XCTAssertTrue(settings.showPasteCheckAlerts)
+        XCTAssertEqual(settings.makeBackupPayload().showPasteCheckAlerts, true)
+    }
+
     func testDeliveryPostsImmediatelyAndRestoresOriginalClipboard() async {
         let pasteboard = FakePasteboardManager(text: "before")
         let commandPoster = FakePasteCommandPoster()
