@@ -775,6 +775,7 @@ final class BottomOverlayPromptMenuController {
 
     private var menuWindow: NSPanel?
     private var hostingView: NSHostingView<BottomOverlayPromptMenuView>?
+    var isMenuVisible: Bool { self.menuWindow?.isVisible == true }
     private var selectorFrameInScreen: CGRect = .zero
     private weak var parentWindow: NSWindow?
     private var menuMaxWidth: CGFloat = 220
@@ -1692,6 +1693,13 @@ private struct BottomOverlayPromptMenuView: View {
     let onDismissRequested: () -> Void
     @State private var hoveredRowID: String?
 
+    /// The pill gets a menu sized like the pill: names only, no captions or shortcut badges.
+    private var isCompact: Bool { self.settings.overlaySize == .pill }
+    private var rowHorizontalPadding: CGFloat { self.isCompact ? 6 : 8 }
+    private var rowVerticalPadding: CGFloat { self.isCompact ? 3 : 6 }
+    private var rowCornerRadius: CGFloat { self.isCompact ? 5 : 7 }
+    private var checkmarkSize: CGFloat { self.isCompact ? 7 : 10 }
+
     private func rowBackground(isSelected: Bool, rowID: String) -> some View {
         let isHovered = self.hoveredRowID == rowID
         let fillColor: Color
@@ -1712,10 +1720,10 @@ private struct BottomOverlayPromptMenuView: View {
             strokeColor = Color.clear
         }
 
-        return RoundedRectangle(cornerRadius: 7)
+        return RoundedRectangle(cornerRadius: self.rowCornerRadius)
             .fill(fillColor)
             .overlay(
-                RoundedRectangle(cornerRadius: 7)
+                RoundedRectangle(cornerRadius: self.rowCornerRadius)
                     .stroke(strokeColor, lineWidth: 1)
             )
     }
@@ -1747,7 +1755,7 @@ private struct BottomOverlayPromptMenuView: View {
 
     @ViewBuilder
     private func shortcutBadge(for selection: SettingsStore.DictationPromptSelection) -> some View {
-        if let shortcut = self.shortcutDisplay(for: selection) {
+        if !self.isCompact, let shortcut = self.shortcutDisplay(for: selection) {
             Text(shortcut)
                 .font(.fluidSystem(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.58))
@@ -1783,17 +1791,19 @@ private struct BottomOverlayPromptMenuView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("Basic")
                 Spacer(minLength: 12)
-                Text("No cleanup")
-                    .font(.fluidSystem(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                if !self.isCompact {
+                    Text("No cleanup")
+                        .font(.fluidSystem(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: self.checkmarkSize, weight: .semibold))
                 }
                 self.shortcutBadge(for: .off)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, self.rowHorizontalPadding)
+            .padding(.vertical, self.rowVerticalPadding)
             .background(self.rowBackground(isSelected: isSelected, rowID: "off"))
         }
         .buttonStyle(.plain)
@@ -1824,12 +1834,12 @@ private struct BottomOverlayPromptMenuView: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: self.checkmarkSize, weight: .semibold))
                 }
                 self.shortcutBadge(for: .default)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, self.rowHorizontalPadding)
+            .padding(.vertical, self.rowVerticalPadding)
             .background(self.rowBackground(isSelected: isSelected, rowID: "default"))
         }
         .buttonStyle(.plain)
@@ -1852,17 +1862,19 @@ private struct BottomOverlayPromptMenuView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(SettingsStore.DictationModeLabels.smart)
                 Spacer(minLength: 12)
-                Text(PrivateAIModelRegistry.model(id: PrivateAIIntegrationService.configuredModelID)?.displayName ?? "Fluid-1")
-                    .font(.fluidSystem(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                if !self.isCompact {
+                    Text(PrivateAIModelRegistry.model(id: PrivateAIIntegrationService.configuredModelID)?.displayName ?? "Fluid-1")
+                        .font(.fluidSystem(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: self.checkmarkSize, weight: .semibold))
                 }
                 self.shortcutBadge(for: .privateAI)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, self.rowHorizontalPadding)
+            .padding(.vertical, self.rowVerticalPadding)
             .background(self.rowBackground(isSelected: isSelected, rowID: PrivateAIProviderFeature.shared.providerID))
         }
         .buttonStyle(.plain)
@@ -1896,12 +1908,12 @@ private struct BottomOverlayPromptMenuView: View {
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .font(.fluidSystem(size: self.checkmarkSize, weight: .semibold))
                 }
                 self.shortcutBadge(for: .profile(profile.id))
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, self.rowHorizontalPadding)
+            .padding(.vertical, self.rowVerticalPadding)
             .background(self.rowBackground(isSelected: isSelected, rowID: profile.id))
         }
         .buttonStyle(.plain)
@@ -1916,12 +1928,14 @@ private struct BottomOverlayPromptMenuView: View {
 
         VStack(alignment: .leading, spacing: 0) {
             if self.promptMode.normalized == .dictate {
-                Text("ON-DEVICE")
-                    .font(.fluidSystem(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
-                    .padding(.bottom, 3)
+                if !self.isCompact {
+                    Text("ON-DEVICE")
+                        .font(.fluidSystem(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                        .padding(.bottom, 3)
+                }
 
                 self.offRow()
 
@@ -1932,15 +1946,17 @@ private struct BottomOverlayPromptMenuView: View {
 
             if self.promptMode.normalized == .dictate {
                 Divider()
-                    .padding(.vertical, 4)
+                    .padding(.vertical, self.isCompact ? 2 : 4)
             }
 
-            Text("EXTERNAL")
-                .font(.fluidSystem(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.horizontal, 8)
-                .padding(.top, self.promptMode.normalized == .dictate ? 0 : 4)
-                .padding(.bottom, 3)
+            if !self.isCompact {
+                Text("EXTERNAL")
+                    .font(.fluidSystem(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.horizontal, 8)
+                    .padding(.top, self.promptMode.normalized == .dictate ? 0 : 4)
+                    .padding(.bottom, 3)
+            }
 
             self.defaultRow(selectedID: selectedID)
 
@@ -1950,10 +1966,12 @@ private struct BottomOverlayPromptMenuView: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .bottomOverlaySurface(self.settings.bottomOverlayAppearance, cornerRadius: 8)
-        .frame(width: min(self.maxWidth, 250), alignment: .leading)
+        .font(self.isCompact ? .fluidSystem(size: 10, weight: .medium) : nil)
+        .lineLimit(1)
+        .padding(.horizontal, self.isCompact ? 3 : 8)
+        .padding(.vertical, self.isCompact ? 3 : 4)
+        .bottomOverlaySurface(self.settings.bottomOverlayAppearance, cornerRadius: self.isCompact ? 9 : 8)
+        .frame(width: self.isCompact ? 96 : min(self.maxWidth, 250), alignment: .leading)
         .preferredColorScheme(.dark)
         .onHover { hovering in
             self.onHoverChanged(hovering)
@@ -2280,13 +2298,17 @@ private enum PillShadowMetrics {
     /// Hit-test inset must cover the visible shadow extent (radius + |offset|)
     /// plus a small margin so the shadow region doesn't intercept clicks.
     static let hitTestInset: CGFloat = radius + abs(yOffset) + 12
+    /// The window is always as wide as the expanded pill so hover growth never
+    /// resizes it; hit testing follows the pill that is actually drawn.
+    static let canvasWidth: CGFloat = 236
+    static var visibleWidth: CGFloat = 100
 }
 
 private final class BottomOverlayHostingView: NSHostingView<BottomOverlayView> {
     override func hitTest(_ point: NSPoint) -> NSView? {
         if SettingsStore.shared.overlaySize == .pill {
             let visibleOverlayBounds = self.bounds.insetBy(
-                dx: PillShadowMetrics.hitTestInset,
+                dx: max((self.bounds.width - PillShadowMetrics.visibleWidth) / 2, PillShadowMetrics.hitTestInset),
                 dy: PillShadowMetrics.hitTestInset
             )
             guard visibleOverlayBounds.contains(point) else { return nil }
@@ -2318,6 +2340,8 @@ struct BottomOverlayView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHoveringModeChip = false
     @State private var isHoveringPromptChip = false
+    @State private var isPillExpanded = false
+    @State private var pillHoverWorkItem: DispatchWorkItem?
     @State private var isHoveringActionsChip = false
     @State private var isHoveringSettingsChip = false
     @State private var modeSelectorFrameInScreen: CGRect = .zero
@@ -2625,7 +2649,11 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorDisplayLabel: String {
-        if self.activePromptMode?.normalized == .dictate { return self.selectedPromptLabel }
+        if self.activePromptMode?.normalized == .dictate {
+            let label = self.selectedPromptLabel
+            guard self.isPillSize, label.count > 18 else { return label }
+            return "\(label.prefix(17))…"
+        }
         let selectedLabel = self.selectedPromptLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = self.promptSelectorBuiltInLabel ?? selectedLabel
         guard !label.isEmpty else { return "Default" }
@@ -2656,6 +2684,7 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorFontSize: CGFloat {
+        if self.isPillSize { return 8 }
         if self.isCompactControls { return 10 }
         return max(self.layout.modeFontSize - 1, 9)
     }
@@ -2669,7 +2698,9 @@ struct BottomOverlayView: View {
     }
 
     private var promptMenuGap: CGFloat {
-        max(0, self.layout.vPadding * 0.05)
+        // The pill's chip sits inside the pill, so clear the pill's top edge too.
+        if self.isPillSize { return self.layout.vPadding + 12 }
+        return max(0, self.layout.vPadding * 0.05)
     }
 
     private var promptSelectorCornerRadius: CGFloat {
@@ -2677,7 +2708,7 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorMaxWidth: CGFloat {
-        self.layout.waveformWidth * 1.75
+        self.isPillSize ? 220 : self.layout.waveformWidth * 1.75
     }
 
     private var previewMaxHeight: CGFloat {
@@ -2861,6 +2892,41 @@ struct BottomOverlayView: View {
         BottomOverlayPromptMenuController.shared.hide()
     }
 
+    private static let pillExpansionAnimation: Animation = .spring(response: 0.28, dampingFraction: 0.9)
+
+    /// Expands after a short dwell so a passing pointer never moves the pill, and
+    /// collapses late so the trip from pill to menu does not close it.
+    private func handlePillHover(_ hovering: Bool) {
+        guard self.isPillSize else { return }
+        self.pillHoverWorkItem?.cancel()
+        let shouldExpand = hovering && self.isPromptSelectableMode && !self.contentState.isProcessing
+        guard shouldExpand != self.isPillExpanded else { return }
+        let work = DispatchWorkItem {
+            if !shouldExpand, BottomOverlayPromptMenuController.shared.isMenuVisible {
+                self.handlePillHover(false)
+                return
+            }
+            self.setPillExpanded(shouldExpand)
+        }
+        self.pillHoverWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (shouldExpand ? 0.06 : 0.25), execute: work)
+    }
+
+    private func collapsePillImmediately() {
+        self.pillHoverWorkItem?.cancel()
+        self.pillHoverWorkItem = nil
+        PillShadowMetrics.visibleWidth = self.layout.containerWidth
+        self.isPillExpanded = false
+    }
+
+    private func setPillExpanded(_ expanded: Bool) {
+        guard self.isPillExpanded != expanded else { return }
+        PillShadowMetrics.visibleWidth = expanded ? PillShadowMetrics.canvasWidth : self.layout.containerWidth
+        withAnimation(self.reduceMotion ? .easeOut(duration: 0.15) : Self.pillExpansionAnimation) {
+            self.isPillExpanded = expanded
+        }
+    }
+
     private func rememberAppIcon(_ icon: NSImage?) {
         guard let icon else { return }
         self.lastResolvedAppIcon = icon
@@ -2873,7 +2939,7 @@ struct BottomOverlayView: View {
     private func handlePromptSelectorFrameChange(_ frameInScreen: CGRect, window: NSWindow?) {
         self.promptSelectorFrameInScreen = frameInScreen
         self.promptSelectorWindow = window
-        guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else {
+        guard self.layout.showsTopControls || self.isPillSize, self.isPromptSelectableMode, !self.contentState.isProcessing else {
             BottomOverlayPromptMenuController.shared.hide()
             return
         }
@@ -3001,7 +3067,7 @@ struct BottomOverlayView: View {
 
     private var promptSelectorTrigger: some View {
         HStack(spacing: 5) {
-            if let promptSelectorIconName = self.promptSelectorIconName {
+            if !self.isPillSize, let promptSelectorIconName = self.promptSelectorIconName {
                 Image(systemName: promptSelectorIconName)
                     .font(.fluidSystem(size: max(self.promptSelectorFontSize - 1, 9), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.72))
@@ -3043,7 +3109,7 @@ struct BottomOverlayView: View {
                 )
         )
         .overlay(alignment: .top) {
-            if self.isHoveringPromptChip, self.isPromptSelectableMode, !self.contentState.isProcessing {
+            if self.isHoveringPromptChip, self.isPromptSelectableMode, !self.contentState.isProcessing, !self.isPillSize {
                 Text("Select dictation mode")
                     .font(.fluidSystem(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
@@ -3079,7 +3145,7 @@ struct BottomOverlayView: View {
                         self.isHoveringPromptChip = hovering && !self.contentState.isProcessing
                     }
                     .onTapGesture {
-                        guard self.layout.showsTopControls, self.isPromptSelectableMode, !self.contentState.isProcessing else { return }
+                        guard self.layout.showsTopControls || self.isPillSize, self.isPromptSelectableMode, !self.contentState.isProcessing else { return }
                         self.closeModeMenu()
                         self.closeActionsMenu()
                         BottomOverlayPromptMenuController.shared.updateAnchor(
@@ -3499,6 +3565,12 @@ struct BottomOverlayView: View {
                         height: self.layout.waveformHeight
                     )
 
+                    if self.isPillSize, self.isPillExpanded {
+                        self.promptSelectorView
+                            .fixedSize()
+                            .transition(self.reduceMotion ? .opacity : .pillChip)
+                    }
+
                     // Compact overlays still need a visible mode because they have no selector.
                     if self.layout.showsModeLabel, !self.layout.showsTopControls {
                         VStack(alignment: .leading, spacing: 2) {
@@ -3525,7 +3597,7 @@ struct BottomOverlayView: View {
                     }
                 }
                 .offset(x: self.waveformHorizontalOffset)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(maxWidth: self.isPillSize ? nil : .infinity, alignment: .center)
                 .overlay(alignment: .leading) {
                     if self.layout.showsTopControls {
                         self.leadingAppContextView
@@ -3542,7 +3614,11 @@ struct BottomOverlayView: View {
             }
             .padding(.horizontal, self.layout.hPadding)
             .padding(.vertical, self.layout.vPadding)
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(
+                minWidth: self.isPillSize ? self.layout.containerWidth : nil,
+                maxWidth: self.isPillSize ? nil : .infinity,
+                alignment: .center
+            )
             .bottomOverlaySurface(
                 self.settings.bottomOverlayAppearance,
                 cornerRadius: self.layout.cornerRadius,
@@ -3598,6 +3674,10 @@ struct BottomOverlayView: View {
                     }
                 }
             }
+            .contentShape(RoundedRectangle(cornerRadius: self.layout.cornerRadius, style: .continuous))
+            .onHover { hovering in
+                self.handlePillHover(hovering)
+            }
             // Bottom-anchored so a growing pill rises into the enlarged window
             // instead of dropping its lower edge mid-animation.
             .frame(maxWidth: .infinity, alignment: .bottom)
@@ -3608,7 +3688,9 @@ struct BottomOverlayView: View {
             }
         }
         .frame(
-            width: self.layout.usesFixedCanvas ? self.layout.overlayWidth : self.layout.containerWidth,
+            width: self.isPillSize
+                ? PillShadowMetrics.canvasWidth
+                : (self.layout.usesFixedCanvas ? self.layout.overlayWidth : self.layout.containerWidth),
             height: self.overlayFrameHeight,
             alignment: .top
         )
@@ -3616,6 +3698,10 @@ struct BottomOverlayView: View {
         .padding(self.isPillSize ? 26 : 0)
         .onChange(of: self.contentState.isBottomOverlayPresented) { _, presented in
             self.borderAnimationStartedAt = presented ? Date() : nil
+            if !presented { self.collapsePillImmediately() }
+        }
+        .onChange(of: self.contentState.isProcessing) { _, processing in
+            if processing { self.handlePillHover(false) }
         }
         .onChange(of: self.settings.enableStreamingPreview) { _, _ in
             self.dynamicPreviewResizeBucket = self.previewResizeBucket(for: self.currentPreviewSizingText)
@@ -3916,5 +4002,27 @@ struct BottomWaveformView: View {
                 self.barHeights[i] = min(self.maxHeight, max(self.minHeight, nextHeight))
             }
         }
+    }
+}
+
+/// The chip resolves out of a soft blur while the pill widens, so the growth
+/// reads as one gesture instead of a width change followed by a pop-in.
+private struct PillChipTransitionModifier: ViewModifier {
+    let progress: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(self.progress)
+            .blur(radius: (1 - self.progress) * 5)
+            .scaleEffect(0.94 + 0.06 * self.progress, anchor: .leading)
+    }
+}
+
+private extension AnyTransition {
+    static var pillChip: AnyTransition {
+        .modifier(
+            active: PillChipTransitionModifier(progress: 0),
+            identity: PillChipTransitionModifier(progress: 1)
+        )
     }
 }
