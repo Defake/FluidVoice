@@ -402,12 +402,17 @@ final nonisolated class MeetingAudioChunkWriter: @unchecked Sendable {
         var presentationTime = sourcePresentationTime + self.canonicalTimelineOffset
         var backwardReset = false
         if let previousEnd, presentationTime < previousEnd {
+            // SCK nanosecond stamps and frame-derived durations can differ by tens of
+            // nanoseconds after CMTime rescaling. Keep them contiguous without creating
+            // hundreds of tiny analysis epochs. A real one-frame overlap still rotates.
+            let overlap = previousEnd - presentationTime
+            let isRoundingOverlap = overlap <= CMTime(value: 1, timescale: 1_000_000)
             // Establish (or re-establish) the mapping once, then keep applying it. Anchoring the
             // offset instead of clamping each sample preserves the producer's internal spacing.
             self.canonicalTimelineOffset = previousEnd - sourcePresentationTime
             self.canonicalTimelineOffsetEpoch = producerEpoch
             presentationTime = previousEnd
-            backwardReset = true
+            backwardReset = !isRoundingOverlap
         } else if self.canonicalTimelineOffsetEpoch == nil {
             self.canonicalTimelineOffsetEpoch = producerEpoch
         }
@@ -480,7 +485,8 @@ final nonisolated class MeetingAudioChunkWriter: @unchecked Sendable {
             guard var activeChunk = self.activeChunk else { return }
             let receipt = try activeChunk.sink.append(sampleBuffer)
             guard receipt.framesAccepted == receipt.framesWritten,
-                  receipt.framesAccepted == Int64(CMSampleBufferGetNumSamples(sampleBuffer)) else {
+                  receipt.framesAccepted == Int64(CMSampleBufferGetNumSamples(sampleBuffer))
+            else {
                 throw MeetingCaptureError.writerFailed("PCM sink reported a short write.")
             }
 

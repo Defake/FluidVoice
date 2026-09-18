@@ -186,6 +186,7 @@ final class MeetingSessionCoordinator: ObservableObject {
     }
 
     private var correctionUndoStacks: [MeetingSessionID: [TranscriptCorrection]] = [:]
+    private let validateRecordingModels: @MainActor () async throws -> Void
     private static let correctionUndoStackCap = 50
 
     init(
@@ -193,13 +194,15 @@ final class MeetingSessionCoordinator: ObservableObject {
         capture: any MeetingCaptureControlling,
         processing: any MeetingProcessingControlling,
         audioArbiter: any MeetingAudioActivityArbitrating,
-        preferredMicrophoneUID: @escaping @MainActor () -> String? = { nil }
+        preferredMicrophoneUID: @escaping @MainActor () -> String? = { nil },
+        validateRecordingModels: @escaping @MainActor () async throws -> Void = {}
     ) {
         self.store = store
         self.capture = capture
         self.processing = processing
         self.audioArbiter = audioArbiter
         self.preferredMicrophoneUID = preferredMicrophoneUID
+        self.validateRecordingModels = validateRecordingModels
     }
 
     var currentSession: MeetingSession? {
@@ -369,6 +372,8 @@ final class MeetingSessionCoordinator: ObservableObject {
 
         // Permission prompts are outside the exclusive audio lease. A prompt can remain
         // open indefinitely; reserving meeting audio first would unnecessarily block dictation.
+        try await self.validateRecordingModels()
+        try Task.checkCancellation()
         try await self.capture.preflightPermissions()
         try Task.checkCancellation()
         guard self.startReservation == reservation,

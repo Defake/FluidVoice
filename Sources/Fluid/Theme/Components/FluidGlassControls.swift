@@ -37,24 +37,30 @@ private struct FluidGlassActionModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let prominent: Bool
     let circular: Bool
+    let tone: Color?
+    let spacious: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
         if #available(macOS 26, *), !self.reduceTransparency {
             if self.prominent {
-                content.buttonStyle(.glassProminent).tint(FluidBrandColors.blue)
-                    .controlSize(.large).buttonBorderShape(.capsule)
+                content.buttonStyle(.glassProminent).tint(self.tone ?? FluidBrandColors.blue)
+                    .controlSize(self.spacious ? .extraLarge : .large).buttonBorderShape(.capsule)
             } else {
-                content.buttonStyle(.glass).controlSize(.large).buttonBorderShape(self.circular ? .circle : .capsule)
+                content.buttonStyle(.glass).controlSize(self.spacious ? .extraLarge : .large).buttonBorderShape(self.circular ? .circle : .capsule)
             }
         } else {
-            content.fluidButton(self.prominent ? .accent : .secondary, size: .large)
+            if self.prominent {
+                content.buttonStyle(AccentButtonStyle(tone: self.tone ?? FluidBrandColors.blue))
+            } else {
+                content.buttonStyle(FluidOutlinedButtonStyle(height: FluidButtonSize.large.controlHeight))
+            }
         }
     }
 }
 
 extension View {
-    func fluidGlassAction(prominent: Bool = false, circular: Bool = false) -> some View {
-        self.modifier(FluidGlassActionModifier(prominent: prominent, circular: circular))
+    func fluidGlassAction(prominent: Bool = false, circular: Bool = false, tone: Color? = nil, spacious: Bool = false) -> some View {
+        self.modifier(FluidGlassActionModifier(prominent: prominent, circular: circular, tone: tone, spacious: spacious))
             .fixedSize(horizontal: true, vertical: false)
     }
 }

@@ -354,7 +354,7 @@ private struct DashboardQuickAction: View {
     var body: some View {
         Button(action: self.action) {
             HStack(spacing: 12) {
-                DashboardIconTile(icon: self.icon, tint: self.tint)
+                FluidIconTile(icon: self.icon, tint: self.tint)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(self.title).font(self.theme.typography.bodySmallStrong)
                     Text(self.detail).font(self.theme.typography.caption).foregroundStyle(.secondary)
@@ -390,7 +390,7 @@ private struct DashboardLessonCard: View {
     var body: some View {
         Button(action: self.action) {
             HStack(spacing: 12) {
-                DashboardIconTile(icon: self.icon, tint: self.theme.palette.accent)
+                FluidIconTile(icon: self.icon, tint: self.theme.palette.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(self.title).font(self.theme.typography.bodySmallStrong)
                     Text(self.detail).font(self.theme.typography.caption).foregroundStyle(.secondary)
@@ -415,23 +415,6 @@ private struct DashboardLessonCard: View {
         .onHover { self.hovered = $0 && self.isEnabled }
         .animation(self.reduceMotion ? nil : .easeOut(duration: 0.15), value: self.hovered)
         .accessibilityLabel("\(self.title), \(self.complete ? "configured" : self.detail)")
-    }
-}
-
-private struct DashboardIconTile: View {
-    let icon: String
-    let tint: Color
-
-    var body: some View {
-        Image(systemName: self.icon)
-            .font(.fluidSystem(size: 15, weight: .medium))
-            .foregroundStyle(self.tint)
-            .frame(width: 34, height: 34)
-            .background(
-                LinearGradient(colors: [self.tint.opacity(0.18), self.tint.opacity(0.07)], startPoint: .top, endPoint: .bottom),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(self.tint.opacity(0.16), lineWidth: 1))
     }
 }
 

@@ -1,11 +1,103 @@
-@testable import FluidVoice_Debug
+import AppKit
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import SwiftUI
 import XCTest
 
 @MainActor
 final class MeetingRecoveryTests: XCTestCase {
+    func testNotesSetupDraftDoesNotPersistDetectionChanges() {
+        let native = SettingsStore.shared.meetingAutoDetectEnabled
+        let browser = SettingsStore.shared.meetingAutoDetectBrowserEnabled
+        let original = MeetingTranscriptionSetupDraft()
+        var draft = original
+        draft.autoDetectEnabled = !native
+        draft.browserDetectionEnabled = !browser
+        draft.title = "Unsaved meeting"
+        XCTAssertEqual(SettingsStore.shared.meetingAutoDetectEnabled, native)
+        XCTAssertEqual(SettingsStore.shared.meetingAutoDetectBrowserEnabled, browser)
+        draft = original
+        XCTAssertEqual(draft.autoDetectEnabled, native)
+        XCTAssertEqual(draft.browserDetectionEnabled, browser)
+        XCTAssertEqual(draft.title, original.title)
+    }
+
+    func testNotesCanvasStatesRenderWithoutInvokingActions() throws {
+        var session = self.makeCorrectionSession(state: .completed).session
+        session.title = "Design review"
+        session.transcriptSegments[0].text = "The meeting workspace should keep recording sources visible and make the transcript easy to read."
+        let live = MeetingLiveTranscriptSnapshot.empty.inserting(MeetingLiveUtterance(
+            id: UUID(), speaker: .you, text: "Let's keep the important controls within reach.", start: 0, end: 4
+        ))
+        let states: [(String, MeetingTranscriptionCanvasState)] = [
+            ("setup", .setup(isStarting: false, recentSession: nil)),
+            ("starting", .setup(isStarting: true, recentSession: nil)),
+            ("recording", .recording(session: session, trackHealth: [:], liveTranscript: live)),
+            ("stopping", .stopping(session: session, trackHealth: [:], liveTranscript: live)),
+            ("processing", .processing(session: session, stage: .identifyingSpeakers)),
+            ("result", .result(session)),
+            ("recovery", .failed(session: session, message: "Transcription could not finish. Try again.")),
+            ("failure", .failed(session: nil, message: "Choose an available microphone.")),
+        ]
+        var actionCount = 0
+        let action = { actionCount += 1 }
+        let output = URL(fileURLWithPath: "/tmp/fluid-notes-ui-review", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        for scheme in [ColorScheme.dark, .light] {
+            for width in [CGFloat(520), 1000] {
+                for (name, state) in states {
+                    let canvas = MeetingTranscriptionCanvas(
+                        setupDraft: .constant(MeetingTranscriptionSetupDraft()),
+                        state: state,
+                        applications: [],
+                        microphones: [],
+                        readiness: .checking,
+                        errorMessage: nil,
+                        onStart: action,
+                        onStop: action,
+                        onRetrySession: { _ in action() },
+                        onRevealAudio: { _ in action() },
+                        onRecordAgain: { _ in action() },
+                        onCopyTranscript: { _, _ in action() },
+                        onExportTranscript: { _, _, _ in action() },
+                        onReassignSegment: { _, _, _ in action() },
+                        onNameUnknownSegment: { _, _, _ in action() },
+                        onRenameSpeaker: { _, _, _ in action() },
+                        onMergeSpeakers: { _, _, _ in action() },
+                        onUndoCorrection: { _ in action() },
+                        onRenameSession: { _, _ in action() },
+                        onAssignSpeakers: { _, _ in action(); return nil },
+                        canUndoCorrection: { _ in false },
+                        isQuiescent: true,
+                        onRepairSetup: action,
+                        isRetrying: false,
+                        onCloseSelection: action
+                    )
+                    .frame(width: width, height: 680)
+                    .appTheme(.adaptive(accent: FluidBrandColors.blue, colorScheme: scheme))
+                    .environment(\.colorScheme, scheme)
+                    // AppKit-backed ScrollViews are not captured by SwiftUI ImageRenderer.
+                    let host = NSHostingView(rootView: canvas)
+                    let window = NSWindow(
+                        contentRect: NSRect(x: 0, y: 0, width: width, height: 680),
+                        styleMask: [.borderless],
+                        backing: .buffered,
+                        defer: false
+                    )
+                    window.contentView = host
+                    host.layoutSubtreeIfNeeded()
+                    host.displayIfNeeded()
+                    let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds), "\(name) must render")
+                    host.cacheDisplay(in: host.bounds, to: bitmap)
+                    let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                    try png.write(to: output.appendingPathComponent("\(name)-\(scheme)-\(Int(width)).png"))
+                }
+            }
+        }
+        XCTAssertEqual(actionCount, 0, "Rendering must not start capture, persist settings, export or modify a transcript")
+    }
+
     func testHistoryKeyboardTraversalWalksTheRenderedOrder() {
         let ids = [UUID(), UUID(), UUID()]
         func move(from current: UUID?, _ direction: MoveCommandDirection) -> UUID? {
@@ -417,6 +509,33 @@ final class MeetingRecoveryTests: XCTestCase {
         XCTAssertLessThan(restoreIndex, captureIndex)
     }
 
+    func testMissingModelBlocksCaptureAndClearsStartReservation() async throws {
+        let dir = self.makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let capture = StubCaptureController()
+        let recorder = EventRecorder()
+        capture.onStart = { await recorder.record("capture.start") }
+        let coordinator = MeetingSessionCoordinator(
+            store: MeetingSessionStore(rootDirectory: dir),
+            capture: capture,
+            processing: StubProcessingController(),
+            audioArbiter: StubArbiter(),
+            validateRecordingModels: { throw MeetingModelInstaller.InstallError.wrongPackage }
+        )
+        for _ in 0..<2 {
+            do {
+                _ = try await coordinator.startRecording(configuration: self.makeConfiguration(title: "Missing model"))
+                XCTFail("Recording must not start without the required model")
+            } catch is MeetingModelInstaller.InstallError {
+                // Both attempts must reach validation, not a stale recording-already-active gate.
+            }
+            XCTAssertFalse(coordinator.hasPendingStart)
+            XCTAssertFalse(coordinator.isRecording)
+        }
+        let events = await recorder.events
+        XCTAssertFalse(events.contains("capture.start"))
+    }
+
     // MARK: - Test 6: salvage current behavior pin
 
     func testMissingChunkFileIsRetainedAsFailedNotDropped() async throws {
@@ -463,8 +582,8 @@ final class MeetingRecoveryTests: XCTestCase {
             id: UUID(),
             sequence: 0,
             relativeFilePath: "tracks/microphone/invalid.m4a",
-            presentationStart: MeetingMediaTime(value: 2_000, timescale: 1_000),
-            presentationEnd: MeetingMediaTime(value: 1_000, timescale: 1_000),
+            presentationStart: MeetingMediaTime(value: 2000, timescale: 1000),
+            presentationEnd: MeetingMediaTime(value: 1000, timescale: 1000),
             discontinuities: [],
             sha256: "invalid",
             byteCount: 1,
@@ -996,8 +1115,11 @@ final class MeetingRecoveryTests: XCTestCase {
         let dir = self.makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = MeetingSessionStore(rootDirectory: dir)
-        let old = self.makeSession(state: .interrupted, endedAt: Date(),
-                                   audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])])
+        let old = self.makeSession(
+            state: .interrupted,
+            endedAt: Date(),
+            audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
+        )
         try await store.create(old)
         let capture = StubCaptureController()
         capture.preflightError = MeetingCaptureError.microphonePermissionDenied
@@ -1041,7 +1163,9 @@ final class MeetingRecoveryTests: XCTestCase {
             store: store, capture: capture, processing: StubProcessingController(), audioArbiter: arbiter
         )
         let start = Task { try await coordinator.startRecording(configuration: self.makeConfiguration()) }
-        while capture.preflightCount == 0 { await Task.yield() }
+        while capture.preflightCount == 0 {
+            await Task.yield()
+        }
 
         do {
             _ = try await coordinator.retryProcessing(sessionID: UUID())
@@ -1091,7 +1215,9 @@ final class MeetingRecoveryTests: XCTestCase {
             processing: StubProcessingController(), audioArbiter: StubArbiter()
         )
         let start = Task { try await coordinator.startRecording(configuration: self.makeConfiguration()) }
-        while capture.preflightCount == 0 { await Task.yield() }
+        while capture.preflightCount == 0 {
+            await Task.yield()
+        }
         await coordinator.shutdownForTermination()
         continuation?.resume()
         do {
@@ -2244,7 +2370,9 @@ final class MeetingRecoveryTests: XCTestCase {
         // Simulate the crash window: the cleared manifest was saved, but file removal never ran —
         // leave an actual leftover file behind (an empty recreated tracks/ is not a leftover).
         var cleared = session
-        for index in cleared.audioTracks.indices { cleared.audioTracks[index].chunks = [] }
+        for index in cleared.audioTracks.indices {
+            cleared.audioTracks[index].chunks = []
+        }
         cleared.retention.audioDeletedAt = Date()
         try await store.save(cleared)
         try Data("leftover".utf8).write(to: tracksURL.appendingPathComponent("stray.caf", isDirectory: false))
@@ -2270,7 +2398,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let tracksURL = sessionDirectory.appendingPathComponent("tracks", isDirectory: true)
 
         var cleared = session
-        for index in cleared.audioTracks.indices { cleared.audioTracks[index].chunks = [] }
+        for index in cleared.audioTracks.indices {
+            cleared.audioTracks[index].chunks = []
+        }
         cleared.retention.audioDeletedAt = Date()
         try await store.save(cleared)
         XCTAssertTrue(FileManager.default.fileExists(atPath: tracksURL.path))
@@ -2297,7 +2427,9 @@ final class MeetingRecoveryTests: XCTestCase {
 
         // Simulate the crash window: the cleared manifest was saved, but tracks/ removal never ran.
         var cleared = session
-        for index in cleared.audioTracks.indices { cleared.audioTracks[index].chunks = [] }
+        for index in cleared.audioTracks.indices {
+            cleared.audioTracks[index].chunks = []
+        }
         cleared.retention.audioDeletedAt = Date()
         try await store.save(cleared)
 
@@ -2599,7 +2731,9 @@ final class MeetingRecoveryTests: XCTestCase {
         )
 
         let start = Task { try await coordinator.startRecording(configuration: self.makeConfiguration()) }
-        while capture.preflightCount == 0 { await Task.yield() }
+        while capture.preflightCount == 0 {
+            await Task.yield()
+        }
         XCTAssertEqual(arbiter.acquireCount, 0, "permission prompt must not hold the meeting audio lease")
 
         continuation?.resume()
@@ -2655,7 +2789,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let arbiter = AudioActivityArbiter { leasing }
         let firstAcquire = Task { try await arbiter.acquireMeetingCapture() }
 
-        while leasing.prepareStarted == false { await Task.yield() }
+        while leasing.prepareStarted == false {
+            await Task.yield()
+        }
         do {
             _ = try await arbiter.acquireMeetingCapture()
             XCTFail("Expected the published preparing lease to reject re-entrant acquisition")
@@ -2676,7 +2812,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let arbiter = AudioActivityArbiter { leasing }
         let acquire = Task { try await arbiter.acquireMeetingCapture() }
 
-        while leasing.prepareStarted == false { await Task.yield() }
+        while leasing.prepareStarted == false {
+            await Task.yield()
+        }
         acquire.cancel()
         leasing.resumePrepare()
 
@@ -2710,7 +2848,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let lease = try await arbiter.acquireMeetingCapture()
 
         let firstRelease = Task { await arbiter.release(lease) }
-        while leasing.handbackStarted == false { await Task.yield() }
+        while leasing.handbackStarted == false {
+            await Task.yield()
+        }
         let duplicateRelease = Task { await arbiter.release(lease) }
         await Task.yield()
 
@@ -3127,9 +3267,11 @@ private final class ThrowingDirectoryStore: MeetingSessionStoring, @unchecked Se
         if self.throwOnSessionDirectory { throw CocoaError(.fileWriteNoPermission) }
         return try await self.wrapped.sessionDirectory(for: id)
     }
+
     func existingSessionDirectory(for id: MeetingSessionID) async throws -> URL? {
         try await self.wrapped.existingSessionDirectory(for: id)
     }
+
     func delete(id: MeetingSessionID) async throws { try await self.wrapped.delete(id: id) }
     func deleteAudioFiles(for id: MeetingSessionID) async throws { try await self.wrapped.deleteAudioFiles(for: id) }
 }
@@ -3294,6 +3436,7 @@ private final class StubArbiter: MeetingAudioActivityArbitrating {
         self.acquireCount += 1
         return MeetingAudioActivityLease(id: UUID())
     }
+
     func release(_ lease: MeetingAudioActivityLease) async {}
 }
 
@@ -3325,6 +3468,7 @@ private final class FakeASRActivityLeasing: ASRActivityLeasing {
     func prepareMeetingAudioHandoff(_ lease: ASRActivityLease) async throws {
         self.prepareCount += 1
     }
+
     func completeMeetingAudioHandback(_ lease: ASRActivityLease) async {
         self.handbackCount += 1
         self.releaseExclusiveActivity(lease)
@@ -3419,6 +3563,7 @@ private final class ThrowOnceArbiter: MeetingAudioActivityArbitrating {
         }
         return MeetingAudioActivityLease(id: UUID())
     }
+
     func release(_ lease: MeetingAudioActivityLease) async {}
 }
 
@@ -3450,6 +3595,7 @@ private actor GatedDeleteStore: MeetingSessionStoring {
     func existingSessionDirectory(for id: MeetingSessionID) async throws -> URL? {
         try await self.inner.existingSessionDirectory(for: id)
     }
+
     func delete(id: MeetingSessionID) async throws {
         await self.recorder.record("store.delete.start")
         if !self.isOpen {
@@ -3457,6 +3603,7 @@ private actor GatedDeleteStore: MeetingSessionStoring {
         }
         try await self.inner.delete(id: id)
     }
+
     func deleteAudioFiles(for id: MeetingSessionID) async throws { try await self.inner.deleteAudioFiles(for: id) }
 }
 
@@ -3487,6 +3634,7 @@ private actor GatedRecoverableStore: MeetingSessionStoring {
     func existingSessionDirectory(for id: MeetingSessionID) async throws -> URL? {
         try await self.inner.existingSessionDirectory(for: id)
     }
+
     func delete(id: MeetingSessionID) async throws { try await self.inner.delete(id: id) }
     func deleteAudioFiles(for id: MeetingSessionID) async throws { try await self.inner.deleteAudioFiles(for: id) }
 
@@ -3543,6 +3691,7 @@ private actor GatedThrowingSaveStore: MeetingSessionStoring {
     func existingSessionDirectory(for id: MeetingSessionID) async throws -> URL? {
         try await self.inner.existingSessionDirectory(for: id)
     }
+
     func delete(id: MeetingSessionID) async throws { try await self.inner.delete(id: id) }
     func deleteAudioFiles(for id: MeetingSessionID) async throws { try await self.inner.deleteAudioFiles(for: id) }
 }

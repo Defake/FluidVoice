@@ -46,6 +46,9 @@ final class MeetingAutoDetector {
     var onSuggestDisablingAutoDetect: (() -> Void)?
     var onEpisodeInvalidated: ((UUID) -> Void)?
     var onHealthChanged: ((Health) -> Void)?
+    /// Independent of prompt presentation/consumption; selecting a source never starts capture.
+    var onAutomaticTargetChanged: ((ResolvedTarget?) -> Void)?
+    private(set) var automaticTarget: ResolvedTarget?
 
     private struct CandidateRecord {
         var incarnation: UInt64
@@ -93,9 +96,15 @@ final class MeetingAutoDetector {
     private let isNativeDetectionEnabled: () -> Bool
     private let isBrowserDetectionEnabled: () -> Bool
 
-    private var records: [Int32: CandidateRecord] = [:]
+    private var records: [Int32: CandidateRecord] = [:] {
+        didSet { self.publishAutomaticTarget() }
+    }
+
     private var lastMicReleaseAt: Date?
-    private var episodesByKey: [String: Episode] = [:]
+    private var episodesByKey: [String: Episode] = [:] {
+        didSet { self.publishAutomaticTarget() }
+    }
+
     private var activeConsumedEpisodeKey: String?
     private var dismissedBundleUntil: [String: Date] = [:]
     private var dismissalTimestamps: [Date] = []
@@ -154,6 +163,8 @@ final class MeetingAutoDetector {
     }
 
     func stop() {
+        self.automaticTarget = nil
+        self.onAutomaticTargetChanged?(nil)
         self.runGeneration &+= 1
         self.pollTask?.cancel()
         self.pollTask = nil
@@ -321,7 +332,7 @@ final class MeetingAutoDetector {
             // to make output-only activity meaningful. Zoom's muted output-only path remains
             // supported because Zoom also requires an explicit meeting-window title.
             let hasEstablishedEpisode = self.episodesByKey.values.contains { $0.pid == pid }
-            if isActive && !hasInput && record.bundleIdentifier != "us.zoom.xos" && !hasEstablishedEpisode {
+            if isActive, !hasInput, record.bundleIdentifier != "us.zoom.xos", !hasEstablishedEpisode {
                 self.handleAudioProcessActivity(false, pid: pid, at: now)
                 continue
             }
@@ -332,7 +343,7 @@ final class MeetingAutoDetector {
     func handleAudioProcessActivity(_ isActive: Bool, pid: Int32, at now: Date) {
         guard var record = self.records[pid], record.tier == .nativeTier1 else { return }
         record.processAudioObserved = true
-        if isActive && record.processAudioWasActive {
+        if isActive, record.processAudioWasActive {
             // A continuous stream is still fresh evidence. Refreshing here allows a late window
             // snapshot/activation to confirm without synthesizing duplicate episodes.
             record.audioEvidenceAt = now
@@ -342,7 +353,7 @@ final class MeetingAutoDetector {
             self.attemptConfirm(pid: pid, at: now)
             return
         }
-        if !isActive && !record.processAudioWasActive {
+        if !isActive, !record.processAudioWasActive {
             // Inactivity must be continuously observed; an unknown snapshot resets this timer.
             if record.processAudioInactiveAt == nil { record.processAudioInactiveAt = now }
             self.records[pid] = record
@@ -382,7 +393,8 @@ final class MeetingAutoDetector {
             let matched = self.matchingNativeWindow(ownedWindows, bundleIdentifier: bundleIdentifier)
 
             if matched == nil, bundleIdentifier == "us.zoom.xos",
-               let unreadableWindow = ownedWindows.first(where: { $0.title == nil }) {
+               let unreadableWindow = ownedWindows.first(where: { $0.title == nil })
+            {
                 guard !self.titleEnrichmentInFlight.contains(pid) else { continue }
                 self.titleEnrichmentInFlight.insert(pid)
                 let generation = (self.titleEnrichmentGeneration[pid] ?? 0) &+ 1
@@ -602,6 +614,27 @@ final class MeetingAutoDetector {
         return ResolvedTarget(bundleIdentifier: episode.bundleIdentifier, pid: episode.pid, windowID: episode.windowID)
     }
 
+    private func publishAutomaticTarget() {
+        let eligible = self.episodesByKey.values.filter { episode in
+            guard self.isNativeDetectionEnabled(),
+                  episode.tier == .nativeTier1 || self.isBrowserDetectionEnabled(),
+                  let record = self.records[episode.pid],
+                  record.bundleIdentifier == episode.bundleIdentifier,
+                  episode.key == "pid:\(episode.pid)|\(record.windowEvidenceKey ?? "")",
+                  record.hasLiveWindow,
+                  record.processAudioInactiveAt == nil
+            else { return false }
+            return true
+        }
+        // Ambiguity requires an explicit source, never arbitrary dictionary order.
+        let target = eligible.count == 1 ? eligible.first.map {
+            ResolvedTarget(bundleIdentifier: $0.bundleIdentifier, pid: $0.pid, windowID: $0.windowID)
+        } : nil
+        guard target != self.automaticTarget else { return }
+        self.automaticTarget = target
+        self.onAutomaticTargetChanged?(target)
+    }
+
     /// Explicit "X" dismiss: suppresses the bundle for 30 minutes and counts toward the rolling
     /// 14-day counter. A 20s auto-dismiss timeout must call `timeoutDismissed` instead.
     func dismissTapped(episodeID: UUID, at now: Date) {
@@ -632,6 +665,7 @@ final class MeetingAutoDetector {
     // MARK: Tick — grace, release, episode teardown, still-recording nudge
 
     func tick(at now: Date) {
+        defer { self.publishAutomaticTarget() }
         for pid in self.records.keys {
             guard var record = self.records[pid] else { continue }
             if let windowLostAt = record.windowLostAt, now.timeIntervalSince(windowLostAt) > Self.windowLossGraceSeconds {

@@ -329,10 +329,11 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         _ writer: MeetingAudioChunkWriter,
         ptsSeconds: Double,
         frameCount: Int = 480,
-        producerEpoch: UInt64 = 0
+        producerEpoch: UInt64 = 0,
+        timescale: CMTimeScale = 48_000
     ) {
         let buffer = self.makeMonoBuffer(frameCount: frameCount) { _ in 0.1 }
-        let pts = CMTime(seconds: ptsSeconds, preferredTimescale: 48_000)
+        let pts = CMTime(seconds: ptsSeconds, preferredTimescale: timescale)
         guard let sampleBuffer = meetingMicrophoneSynthesizeSampleBuffer(from: buffer, presentationTime: pts) else {
             return XCTFail("failed to synthesize a sample buffer")
         }
@@ -350,6 +351,20 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
         XCTAssertEqual(track.chunks.count, 1)
         XCTAssertEqual(track.chunks.first?.discontinuities ?? [], [])
+    }
+
+    func testNanosecondClockRoundingDoesNotFragmentApplicationAudio() async throws {
+        let (writer, sessionDirectory) = try self.makeWriter()
+        defer { try? FileManager.default.removeItem(at: sessionDirectory) }
+        for tick in 0..<100 {
+            self.pushBuffer(writer, ptsSeconds: 188_092.2630985 + Double(tick) * 0.01 - Double(tick) * 0.000000042,
+                            timescale: 1_000_000_000)
+            if tick.isMultiple(of: 10) { _ = await writer.snapshot() }
+        }
+        let track = await writer.stop()
+        XCTAssertEqual(track.chunks.count, 1)
+        XCTAssertEqual(track.chunks.first?.discontinuities ?? [], [])
+        XCTAssertEqual(track.chunks.first?.captureAnalysisAsset?.frameCount, 48_000)
     }
 
     func testWriterPublishesPCMCAFMetadataAndReadyLedgerTerminal() async throws {

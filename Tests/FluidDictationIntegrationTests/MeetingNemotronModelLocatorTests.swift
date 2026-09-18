@@ -7,6 +7,34 @@ import XCTest
 /// location, and fail-closed structure validation. No network and no bundled 190 MB weights.
 @MainActor
 final class MeetingNemotronModelLocatorTests: XCTestCase {
+    func testInvalidImportPreservesInstalledPackage() throws {
+        let root = try self.makeTempDirectory()
+        let source = try self.makeFakePackage(at: root.appendingPathComponent("source"))
+        let destination = try self.makeFakePackage(at: root.appendingPathComponent("installed"))
+        let manifest = destination.appendingPathComponent("Manifest.json")
+        let original = try Data(contentsOf: manifest)
+        XCTAssertThrowsError(try MeetingModelInstaller.install(from: source, to: destination))
+        XCTAssertEqual(try Data(contentsOf: manifest), original)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: destination.deletingLastPathComponent().path), [destination.lastPathComponent])
+    }
+
+    func testBetaImportPersistsForFreshLocatorAndReplacement() throws {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("scratch/nemotron-diar/handoff/nemotron-3-diarization/models/nemotron_diar_fp16.mlpackage")
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw XCTSkip("Beta model fixture is not available")
+        }
+        let root = try self.makeTempDirectory()
+        let destination = root.appendingPathComponent("installed/model.mlpackage")
+        _ = try MeetingModelInstaller.install(from: source, to: destination)
+        // A fresh locator has no reference to the import task or original download.
+        XCTAssertEqual(try MeetingNemotronModelLocator(injectedURL: destination).locate().totalByteCount, 199_101_327)
+        _ = try MeetingModelInstaller.install(from: source, to: destination)
+        XCTAssertEqual(try MeetingModelInstaller.validate(destination).totalByteCount, 199_101_327)
+        XCTAssertEqual(try MeetingModelInstaller.validate(source).totalByteCount, 199_101_327)
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("nemotron-locator-\(UUID().uuidString)", isDirectory: true)

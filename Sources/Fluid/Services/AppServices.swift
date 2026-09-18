@@ -32,6 +32,7 @@ final class AppServices: ObservableObject {
     /// Heavy operations should wait until this is true.
     @Published private(set) var isUIReady: Bool = false
     @Published private(set) var meetingAutoDetectHealth: MeetingAutoDetector.Health?
+    @Published private(set) var meetingAutomaticTarget: MeetingAutoDetector.ResolvedTarget?
 
     /// Call this once the main UI has finished its initial layout.
     /// This signals that it's safe to start heavy services.
@@ -119,6 +120,14 @@ final class AppServices: ObservableObject {
             audioArbiter: self.meetingAudioActivityArbiter,
             preferredMicrophoneUID: { [weak self] in
                 self?.microphonePreferenceCoordinator.inputDeviceForCapture()?.uid
+            },
+            validateRecordingModels: {
+                try await Task.detached(priority: .utility) {
+                    guard CPUArchitecture.isAppleSilicon else {
+                        throw MeetingParakeetNemotronRuntimeError.unsupportedArchitecture
+                    }
+                    _ = try MeetingModelInstaller.validate(MeetingNemotronModelLocator().resolvedPackageURL())
+                }.value
             }
         )
         self._meetingSessionCoordinator = coordinator
@@ -168,6 +177,9 @@ final class AppServices: ObservableObject {
     }
 
     private func wireMeetingAutoDetector(_ detector: MeetingAutoDetector) {
+        detector.onAutomaticTargetChanged = { [weak self] target in
+            self?.meetingAutomaticTarget = target
+        }
         detector.onPromptRequested = { request in
             MeetingDetectionPromptController.shared.present(request)
         }

@@ -12,9 +12,13 @@ struct MeetingBubbleStyle {
 
     static func final(fill: Color, foreground: Color) -> MeetingBubbleStyle {
         MeetingBubbleStyle(
-            font: .system(size: 15, design: .monospaced), lineSpacing: 5,
-            horizontalPadding: 18, verticalPadding: 12, cornerRadius: 18,
-            fill: fill, foreground: foreground
+            font: .system(size: 15, design: .monospaced),
+            lineSpacing: 5,
+            horizontalPadding: 18,
+            verticalPadding: 12,
+            cornerRadius: 18,
+            fill: fill,
+            foreground: foreground
         )
     }
 }
@@ -36,6 +40,7 @@ extension View {
 struct MeetingLiveBubbleScrollList: View {
     let rows: [MeetingLiveBubbleComposer.Row]
     var hidesPartialFromAccessibility = true
+    var documentStyle = false
 
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -53,7 +58,7 @@ struct MeetingLiveBubbleScrollList: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
                         ForEach(self.rows) { row in
-                            MeetingLiveBubbleRow(row: row, hidesPartialFromAccessibility: self.hidesPartialFromAccessibility)
+                            MeetingLiveBubbleRow(row: row, hidesPartialFromAccessibility: self.hidesPartialFromAccessibility, documentStyle: self.documentStyle)
                                 .equatable()
                                 .id(row.id)
                                 .transition(.opacity)
@@ -115,11 +120,12 @@ struct MeetingLiveBubbleScrollList: View {
 struct MeetingLiveBubbleRow: View, Equatable {
     let row: MeetingLiveBubbleComposer.Row
     var hidesPartialFromAccessibility: Bool = true
+    var documentStyle = false
 
     @Environment(\.theme) private var theme
 
     static func == (lhs: MeetingLiveBubbleRow, rhs: MeetingLiveBubbleRow) -> Bool {
-        lhs.row == rhs.row && lhs.hidesPartialFromAccessibility == rhs.hidesPartialFromAccessibility
+        lhs.row == rhs.row && lhs.hidesPartialFromAccessibility == rhs.hidesPartialFromAccessibility && lhs.documentStyle == rhs.documentStyle
     }
 
     private var isMicrophone: Bool { self.row.speaker == .you }
@@ -135,7 +141,7 @@ struct MeetingLiveBubbleRow: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: self.isMicrophone ? .trailing : .leading, spacing: 4) {
+        VStack(alignment: self.isMicrophone && !self.documentStyle ? .trailing : .leading, spacing: 4) {
             if self.row.showsLabel {
                 Text(self.sourceLabel)
                     .font(self.theme.typography.captionStrong)
@@ -144,12 +150,26 @@ struct MeetingLiveBubbleRow: View, Equatable {
             Text(self.row.text)
                 // The partial→final color swap solidifies in place; it must never animate.
                 .transaction { $0.animation = nil }
-                .meetingBubbleStyle(.final(fill: self.fill, foreground: self.row.isPartial ? self.theme.palette.secondaryText : self.theme.palette.primaryText))
+                .meetingBubbleStyle(self.presentationStyle)
         }
-        .frame(maxWidth: .infinity, alignment: self.isMicrophone ? .trailing : .leading)
-        .padding(self.isMicrophone ? .leading : .trailing, 32)
+        .frame(maxWidth: .infinity, alignment: self.isMicrophone && !self.documentStyle ? .trailing : .leading)
+        .padding(self.isMicrophone ? .leading : .trailing, self.documentStyle ? 0 : 32)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(self.sourceLabel), \(self.row.text)")
         .accessibilityHidden(self.hidesPartialFromAccessibility && self.row.isPartial)
+    }
+
+    private var presentationStyle: MeetingBubbleStyle {
+        let foreground = self.row.isPartial ? self.theme.palette.secondaryText : self.theme.palette.primaryText
+        guard self.documentStyle else { return .final(fill: self.fill, foreground: foreground) }
+        return MeetingBubbleStyle(
+            font: self.theme.typography.body,
+            lineSpacing: 5,
+            horizontalPadding: 0,
+            verticalPadding: self.theme.metrics.spacing.sm,
+            cornerRadius: 0,
+            fill: .clear,
+            foreground: foreground
+        )
     }
 }

@@ -42,15 +42,47 @@ struct FluidDropdownChevron: View {
 }
 
 private struct FluidDropdownControlStyle: ViewModifier {
+    var fillsWidth = false
+
     @Environment(\.theme) private var theme
-    func body(content: Content) -> some View {
-        content
-            .menuStyle(.borderlessButton)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .labelsHidden()
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if self.fillsWidth {
+            content
+                .menuStyle(.button)
+                .buttonStyle(FluidDropdownButtonStyle(fillsWidth: true))
+                .menuIndicator(.hidden)
+                .labelsHidden()
+        } else {
+            content
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .labelsHidden()
+                .font(self.theme.typography.bodySmall)
+                .foregroundStyle(self.theme.palette.primaryText)
+                .padding(.leading, 12)
+                .padding(.trailing, 30)
+                .padding(.vertical, 9)
+                .fluidDropdownSurface()
+                .overlay(alignment: .trailing) {
+                    FluidDropdownChevron().padding(.trailing, 12).allowsHitTesting(false)
+                }
+        }
+    }
+}
+
+/// Keep the surface inside the native control's label, so its padding and
+/// expanded width participate in hit testing, not just the selected text.
+private struct FluidDropdownButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    let fillsWidth: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
             .font(self.theme.typography.bodySmall)
             .foregroundStyle(self.theme.palette.primaryText)
+            .frame(maxWidth: self.fillsWidth ? .infinity : nil, alignment: .leading)
             .padding(.leading, 12)
             .padding(.trailing, 30)
             .padding(.vertical, 9)
@@ -64,7 +96,11 @@ private struct FluidDropdownControlStyle: ViewModifier {
 extension View {
     /// Apply outside a native menu/picker, rather than inside its label:
     /// macOS may flatten label styling when building the native control.
-    func fluidDropdownStyle() -> some View { modifier(FluidDropdownControlStyle()) }
+    /// Full-width selectors use a Menu containing an inline Picker. Native
+    /// menu Pickers and borderless menus ignore custom ButtonStyle hit geometry.
+    func fluidDropdownStyle(fillsWidth: Bool = false) -> some View {
+        modifier(FluidDropdownControlStyle(fillsWidth: fillsWidth))
+    }
 
     /// For custom searchable controls that provide their own label and chevron.
     func fluidDropdownSurface(cornerRadius: CGFloat = 10) -> some View {

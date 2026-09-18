@@ -925,7 +925,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.meetingStatusMenuItem = meetingStatusItem
 
         let openMeetingItem = NSMenuItem(
-            title: "Open Meeting Transcription",
+            title: "Open Fluid Notes",
             action: #selector(openMeetingTranscription),
             keyEquivalent: ""
         )
@@ -1077,24 +1077,24 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             break
         case .preparing:
             self.meetingStatusMenuItem?.title = "Starting meeting recording…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .recording:
             let source = self.meetingMenuPresentation.sourceName ?? "Meeting"
             let elapsed = self.meetingMenuPresentation.startedAt.map { Self.elapsedText(now.timeIntervalSince($0)) } ?? "0:00"
             self.meetingStatusMenuItem?.title = "Recording \(source) · \(elapsed)"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .stopping:
             self.meetingStatusMenuItem?.title = "Finalizing meeting audio…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .processing:
             self.meetingStatusMenuItem?.title = "Transcribing meeting…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .interrupted:
             self.meetingStatusMenuItem?.title = self.meetingMenuPresentation.attentionStatus ?? "Recording interrupted"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .failed:
             self.meetingStatusMenuItem?.title = self.meetingMenuPresentation.attentionStatus ?? "Meeting setup failed"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meeting Transcription"
+            self.openMeetingTranscriptionMenuItem?.title = "Open Fluid Notes"
         case .completed:
             self.openMeetingTranscriptionMenuItem?.title = "Open Latest Meeting Transcript"
         }

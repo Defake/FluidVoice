@@ -38,14 +38,21 @@ private final class FakeAudioProcessActivity: AudioProcessActivityProviding {
         if let snapshotOverride { return snapshotOverride }
         let processes = self.activeBundleIdentifiers.map { bundle in
             let owner = bundle == "us.zoom.caphost" ? "us.zoom.xos" : bundle
-            return AudioProcessDescriptor(processID: 55, bundleIdentifier: bundle,
-                                   executablePath: "/Applications/\(owner).app/Contents/Helpers/\(bundle)",
-                                   isInputRunning: bundle != "us.zoom.caphost", isOutputRunning: true)
+            return AudioProcessDescriptor(
+                processID: 55,
+                bundleIdentifier: bundle,
+                executablePath: "/Applications/\(owner).app/Contents/Helpers/\(bundle)",
+                isInputRunning: bundle != "us.zoom.caphost",
+                isOutputRunning: true
+            )
         }
         let owners = self.activeBundleIdentifiers.map { bundle in
             let owner = bundle == "us.zoom.caphost" ? "us.zoom.xos" : bundle
-            return MeetingProcessOwner(processID: 5, bundleIdentifier: owner,
-                                bundlePath: "/Applications/\(owner).app")
+            return MeetingProcessOwner(
+                processID: 5,
+                bundleIdentifier: owner,
+                bundlePath: "/Applications/\(owner).app"
+            )
         }
         return AudioProcessActivitySnapshot(processes: processes, owners: owners, queryState: .valid)
     }
@@ -137,6 +144,54 @@ private final class DetectorHarness {
 
 @MainActor
 final class MeetingAutoDetectorTests: XCTestCase {
+    func testAutomaticSourcePublishesConfirmedTargetWithoutConsumingPrompt() throws {
+        let h = DetectorHarness()
+        var changes: [MeetingAutoDetector.ResolvedTarget?] = []
+        h.detector.onAutomaticTargetChanged = { changes.append($0) }
+        XCTAssertNil(h.detector.automaticTarget)
+        let episode = try XCTUnwrap(h.confirmZoom())
+        XCTAssertEqual(h.detector.automaticTarget?.bundleIdentifier, "us.zoom.xos")
+        XCTAssertEqual(h.detector.automaticTarget?.pid, 100)
+        XCTAssertEqual(h.detector.automaticTarget?.windowID, 900)
+        XCTAssertTrue(h.detector.canStart(episodeID: episode), "Selecting a source must not consume or start a recording")
+        let count = changes.count
+        h.detector.tick(at: h.clock.now())
+        XCTAssertEqual(changes.count, count, "Unchanged evidence must not trigger source refreshes")
+        h.detector.timeoutDismissed(episodeID: episode)
+        XCTAssertNotNil(h.detector.automaticTarget, "Prompt timeout must not hide a live source from the manual page")
+        h.detector.handleWindowSnapshot([], at: h.clock.now())
+        XCTAssertNil(h.detector.automaticTarget, "Do not retain a source through the episode's teardown grace period")
+    }
+
+    func testAutomaticSourceClearsWhenDetectionDisabledOrStopped() {
+        let h = DetectorHarness()
+        h.confirmZoom()
+        XCTAssertNotNil(h.detector.automaticTarget)
+        h.nativeEnabled = false
+        h.detector.tick(at: h.clock.now())
+        XCTAssertNil(h.detector.automaticTarget)
+        h.nativeEnabled = true
+        h.detector.tick(at: h.clock.now())
+        XCTAssertNotNil(h.detector.automaticTarget)
+        h.detector.stop()
+        XCTAssertNil(h.detector.automaticTarget)
+    }
+
+    func testAutomaticSourceDoesNotGuessBetweenTwoLiveMeetings() {
+        let h = DetectorHarness()
+        h.confirmZoom(pid: 100)
+        h.confirmZoom(pid: 200)
+        h.detector.handleWindowSnapshot([
+            .init(processID: 100, windowID: 900, title: "Zoom Meeting", layer: 0),
+            .init(processID: 200, windowID: 900, title: "Zoom Meeting", layer: 0),
+        ], at: h.clock.now())
+        XCTAssertNil(h.detector.automaticTarget)
+        h.detector.handleWorkspaceEvent(.init(kind: .terminated, bundleIdentifier: "us.zoom.xos", processID: 200), at: h.clock.now())
+        XCTAssertEqual(h.detector.automaticTarget?.pid, 100)
+        h.detector.disarmAndClearTransientState()
+        XCTAssertNil(h.detector.automaticTarget)
+    }
+
     // MARK: Generic HAL ownership resolver
 
     func testAudioResolverMapsHelpersInsideEachRegisteredNativeBundle() {
@@ -150,7 +205,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         for (bundle, root) in apps {
             let result = MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
                 processes: [.init(processID: 900, bundleIdentifier: "helper.unknown", executablePath: root + "/Contents/Helpers/Module.app/Contents/MacOS/Module", isInputRunning: true, isOutputRunning: false)],
-                owners: [.init(processID: 42, bundleIdentifier: bundle, bundlePath: root)], queryState: .valid))
+                owners: [.init(processID: 42, bundleIdentifier: bundle, bundlePath: root)], queryState: .valid
+            ))
             XCTAssertEqual(result?[42], true, "helper attribution should work for \(bundle)")
         }
     }
@@ -159,7 +215,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         func resolve(_ processPath: String?, owners: [MeetingProcessOwner]) -> [Int32: Bool]? {
             MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
                 processes: [.init(processID: 1, bundleIdentifier: nil, executablePath: processPath, isInputRunning: true, isOutputRunning: false)],
-                owners: owners, queryState: .valid))
+                owners: owners, queryState: .valid
+            ))
         }
         let owner = MeetingProcessOwner(processID: 10, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")
         XCTAssertEqual(resolve("/Applications/Teams.app.evil/Contents/MacOS/x", owners: [owner]), [:])
@@ -188,7 +245,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let result = MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
             processes: [.init(processID: 1, bundleIdentifier: nil, executablePath: link.path + "/Module", isInputRunning: true, isOutputRunning: false)],
-            owners: [.init(processID: 2, bundleIdentifier: "com.microsoft.teams2", bundlePath: app.path)], queryState: .valid))
+            owners: [.init(processID: 2, bundleIdentifier: "com.microsoft.teams2", bundlePath: app.path)], queryState: .valid
+        ))
         XCTAssertEqual(result, [:])
     }
 
@@ -198,7 +256,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         h.detector.handleWindowSnapshot([.init(processID: 5, windowID: 9, title: nil, layer: 0)], at: h.clock.now())
         h.audioProcessActivity.snapshotOverride = .init(
             processes: [.init(processID: 55, bundleIdentifier: "teams.helper", executablePath: "/Applications/com.microsoft.teams2.app/Contents/Helpers/Module", isInputRunning: false, isOutputRunning: true)],
-            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/com.microsoft.teams2.app")], queryState: .valid)
+            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/com.microsoft.teams2.app")], queryState: .valid
+        )
         await h.detector.pollAudioProcessActivity(at: h.clock.now())
         XCTAssertTrue(h.prompts.isEmpty)
     }
@@ -217,7 +276,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         h.detector.handleWorkspaceEvent(.init(kind: .launched, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
         h.audioProcessActivity.snapshotOverride = .init(
             processes: [.init(processID: 55, bundleIdentifier: "teams.helper", executablePath: "/Applications/Teams.app/Contents/Helpers/Module", isInputRunning: true, isOutputRunning: true)],
-            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")], queryState: .valid)
+            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")], queryState: .valid
+        )
         h.audioProcessActivity.beforeSnapshot = {
             h.detector.handleWorkspaceEvent(.init(kind: .terminated, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
             h.detector.handleWorkspaceEvent(.init(kind: .activated, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
@@ -351,7 +411,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
     }
 
     func testPromptDefaultsToTopCenterOfVisibleFrame() {
-        let visibleFrame = NSRect(x: 100, y: 50, width: 1_200, height: 800)
+        let visibleFrame = NSRect(x: 100, y: 50, width: 1200, height: 800)
         let frame = MeetingDetectionPromptController.defaultFrame(
             panelSize: MeetingDetectionPromptController.panelSize,
             visibleFrame: visibleFrame

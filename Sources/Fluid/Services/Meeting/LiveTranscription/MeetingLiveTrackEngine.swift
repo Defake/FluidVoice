@@ -148,7 +148,9 @@ actor MeetingLiveTrackEngine {
                 try Task.checkCancellation()
                 // Shares FluidAudio's default cache dir, so a Parakeet Flash download for
                 // dictation already satisfies this — first-run cost is paid at most once.
-                try await manager.prepareModels()
+                try await MeetingModelPreparationQueue.shared.run {
+                    try await manager.prepareModels()
+                }
                 guard !Task.isCancelled else { return }
                 await self.warmUp()
                 guard !Task.isCancelled else { return }
@@ -164,6 +166,9 @@ actor MeetingLiveTrackEngine {
     func stop() async {
         self.loadTask?.cancel()
         self.drainTask?.cancel()
+        await self.loadTask?.value
+        self.loadTask = nil
+        self.isModelReady = false
         await self.drainTask?.value
         self.drainTask = nil
         await self.resetRecognizer()
@@ -339,7 +344,8 @@ actor MeetingLiveTrackEngine {
         if self.diagnosticsEnabled {
             self.diagnosticSnapshot.partialCallbacks += 1
             if self.diagnosticSnapshot.firstPartialAfterResetSeconds == nil,
-               let reset = self.diagnosticResetUptime {
+               let reset = self.diagnosticResetUptime
+            {
                 self.diagnosticSnapshot.firstPartialAfterResetSeconds = self.uptime() - reset
             }
         }

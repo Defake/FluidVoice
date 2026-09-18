@@ -3,6 +3,58 @@ import CoreMedia
 import Foundation
 import XCTest
 
+@MainActor
+final class MeetingModelPreparationQueueTests: XCTestCase {
+    private actor Counter {
+        var active = 0
+        var maximum = 0
+        var completed = 0
+        func enter() { active += 1; maximum = max(maximum, active) }
+        func leave() { active -= 1; completed += 1 }
+    }
+
+    func testConcurrentPreparationsNeverOverlap() async throws {
+        let queue = MeetingModelPreparationQueue()
+        let counter = Counter()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for _ in 0..<20 {
+                group.addTask {
+                    try await queue.run {
+                        await counter.enter()
+                        try await Task.sleep(nanoseconds: 1_000_000)
+                        await counter.leave()
+                    }
+                }
+            }
+            try await group.waitForAll()
+        }
+        let maximum = await counter.maximum
+        let completed = await counter.completed
+        XCTAssertEqual(maximum, 1)
+        XCTAssertEqual(completed, 20)
+    }
+
+    func testFailureAndCancellationDoNotPoisonNextPreparation() async throws {
+        let queue = MeetingModelPreparationQueue()
+        let counter = Counter()
+        do {
+            try await queue.run { throw CancellationError() }
+            XCTFail("Expected failure")
+        } catch is CancellationError {}
+        let cancelled = Task {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            try await queue.run { await counter.enter() }
+        }
+        cancelled.cancel()
+        _ = await cancelled.result
+        try await queue.run { await counter.enter(); await counter.leave() }
+        let completed = await counter.completed
+        let active = await counter.active
+        XCTAssertEqual(completed, 1)
+        XCTAssertEqual(active, 0)
+    }
+}
+
 final class MeetingLiveTimeConversionTests: XCTestCase {
     func testZeroOriginPassesPTSThrough() {
         let pts = CMTime(value: 5, timescale: 1)

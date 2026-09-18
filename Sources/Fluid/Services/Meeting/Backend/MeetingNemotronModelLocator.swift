@@ -36,7 +36,7 @@ nonisolated enum MeetingNemotronModelReadinessError: LocalizedError, Equatable {
         switch self {
         case let .modelNotInstalled(path):
             return "The Nemotron diarization model is not installed at \(path). "
-                + "Meeting model preparation has not run."
+                + "Open Fluid Notes settings and load the supplied speaker separation model before recording."
         case let .invalidModelPackage(reason):
             return "The Nemotron diarization model package is invalid (\(reason))."
         case let .artifactChanged(path):
