@@ -1043,6 +1043,9 @@ struct MeetingTranscriptionView: View {
         self.actionErrorMessage = nil
         self.isShowingMeetingSettings = false
         self.selectPreferredApplication(from: self.applications.map(\.identity))
+        // Import is applied immediately inside the sheet; Save must rediscover the installed
+        // model even when no source selection changed and no app-activation event follows.
+        Task { await self.refreshSources(requestPermissions: false) }
     }
 
     private func copyTranscript(_ session: MeetingSession, includeEchoes: Bool) {
