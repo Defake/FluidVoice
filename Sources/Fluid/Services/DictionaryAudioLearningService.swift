@@ -152,7 +152,7 @@ actor OriginalAudioEmbeddingExtractor {
         case "parakeet-v3": version = .v3
         default: throw PronunciationDictionaryStoreError.inconsistentEnrollment
         }
-        let models = try await AsrModels.load(
+        let models = try await AsrModels.loadLocalOnly(
             from: AsrModels.defaultCacheDirectory(for: version),
             version: version
         )

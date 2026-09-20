@@ -67,3 +67,16 @@ Validation: 76 dictionary/pronunciation and meeting-policy tests passed together
 The evaluation executables, comparison script, commands and machine-readable baseline now live in tools/DictionaryLearningEvaluation. A fresh Release run of both executables reproduced the saved results exactly. Model files, audio and large acoustic vectors remain external local inputs.
 
 The later real Huang occurrence was transcribed as Hong Kong and produced no acoustic hit above 0.70 from its earlier enrollment. This is an important unresolved example of the mean-pooled encoder's limitations; no threshold was lowered to make it pass. The multilingual combined result still equals text-only (19 true, 2 false substitutions) rather than exceeding it. Improvement on held-out personalized names remains an open acceptance gate, despite functional approval-to-reuse and composition regression tests passing.
+
+
+## Local model loading safety
+
+Fallback extraction now uses AsrModels.loadLocalOnly rather than the normal recoverable model loader. The normal loader can remove a cache and re-download after a load error; optional background correction learning must not do that. The new API accepts only local file URLs, validates installed files, checks cancellation between loads, and propagates missing/corrupt-model errors without repairing the installation. The existing text correction survives failure.
+
+Forty library tests passed, including missing-file preservation, remote-URL rejection and real-audio embedding equivalence. Offline evaluation tools use the same local-only API. This changes model loading behavior, not embeddings or acceptance thresholds.
+
+The Huang diagnostic isolated the miss: searching every window length from 1 to 24 frames kept the best score at 0.681. Trimming the enrollment to 60 percent raised it to 0.707, still below the 0.85 novel-variant gate, and narrowed the match to part of the ASR phrase. Neither adjustment is shipped; the evidence does not support a safe general accuracy improvement.
+
+App validation after the loader change: all 68 affected app tests passed, scoped learning-service lint is clean, and the Release interview evaluation output exactly matches the preceding loader. Both dependency lockfiles and both manifests now reference the same companion revision.
+
+The signed private FI build also passed after local-only loading, and the installed app passed strict deep signature verification. Unrelated Feedback work and local dependency overrides remain untouched.

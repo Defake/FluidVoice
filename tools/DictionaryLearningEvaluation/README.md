@@ -14,7 +14,7 @@ swift run -c release --package-path tools/DictionaryLearningEvaluation Evaluate 
 python3 tools/DictionaryLearningEvaluation/analyze_search.py /tmp/word-vectors.json.trials.json /tmp/search-comparison.json
 ```
 
-Baseline companion revision: 9725fb6. Default sibling checkout is FluidAudio_pronunciation_streaming; FLUIDAUDIO_SOURCE allows another checkout for comparison. No model or audio is committed here.
+Baseline matcher revision: 9725fb6; local-only loader requires companion revision 932842b or later. Default sibling checkout is FluidAudio_pronunciation_streaming; FLUIDAUDIO_SOURCE allows another checkout for comparison. No model or audio is committed here.
 
 Evaluate expects de_de, fr_fr, pl_pl, da_dk, el_gr, ru_ru, es_419 and en_us directories, each with WAV files and a matching LANGUAGE.trans.txt. Each reference line begins with the WAV stem, followed by its reference transcript. It excludes recordings longer than 14.88 seconds. Enrollment is from one clip; all evaluation clips differ from enrollment. Edit-distance reference alignment is approximate and must be inspected before interpreting individual errors.
 

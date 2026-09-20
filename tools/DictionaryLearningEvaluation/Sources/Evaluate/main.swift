@@ -70,7 +70,7 @@ func align(_ hypothesis: [String], _ reference: [String]) -> [Int: String] {
         ])
     }
     let root = URL(fileURLWithPath: CommandLine.arguments[1])
-    let models = try await AsrModels.load(
+    let models = try await AsrModels.loadLocalOnly(
       from: URL(fileURLWithPath: CommandLine.arguments[2]), version: .v3)
     let manager = AsrManager(
       config: ASRConfig(
