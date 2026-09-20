@@ -100,6 +100,13 @@ final class FluidAudioProvider: TranscriptionProvider {
     private var latestStreamingPreviewFinishedAt: TimeInterval?
     private var incrementalSession: ParakeetIncrementalSession?
     private var incrementalAcceptedSampleCount = 0
+    private var recordingGeneration = UUID()
+    private var incrementalPronunciationProfiles: [PronunciationDictionaryProfile] = []
+
+    private var usesIncrementalDictation: Bool {
+        self.effectiveExperimentalUnifiedFinalEnabled || self.effectivePronunciationMatchingEnabled
+    }
+
     private(set) var isReady: Bool = false
     private(set) var isWordBoostingActive: Bool = false
     private(set) var boostedVocabularyTermsCount: Int = 0
@@ -116,16 +123,19 @@ final class FluidAudioProvider: TranscriptionProvider {
     /// Explicitly pinned enhancement options for offline/baseline runs. Precedence for each
     /// effective getter: fixed meeting policy, then this, then live `SettingsStore`.
     private let enhancementOptions: FluidAudioProviderEnhancementOptions?
+    private let pronunciationStore: PronunciationDictionaryStore
 
     init(
         modelOverride: SettingsStore.SpeechModel? = nil,
         configureWordBoosting: Bool = true,
-        enhancementOptions: FluidAudioProviderEnhancementOptions? = nil
+        enhancementOptions: FluidAudioProviderEnhancementOptions? = nil,
+        pronunciationStore: PronunciationDictionaryStore = .shared
     ) {
         self.modelOverride = modelOverride
         self.configureWordBoosting = configureWordBoosting
         self.meetingOptions = nil
         self.enhancementOptions = enhancementOptions
+        self.pronunciationStore = pronunciationStore
     }
 
     /// Opt-in meeting post-processing provider. The model is pinned immutably and every
@@ -138,6 +148,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         self.configureWordBoosting = false
         self.meetingOptions = options
         self.enhancementOptions = nil
+        self.pronunciationStore = .shared
     }
 
     private var effectiveExperimentalUnifiedFinalEnabled: Bool {
@@ -294,8 +305,8 @@ final class FluidAudioProvider: TranscriptionProvider {
         self.latestStreamingPreviewText = ""
         self.latestStreamingPreviewSampleCount = 0
         self.latestStreamingPreviewFinishedAt = nil
-        self.incrementalSession = nil
-        self.incrementalAcceptedSampleCount = 0
+        self.recordingGeneration = UUID()
+        self.resetIncrementalSession()
 
         try Task.checkCancellation()
         self.isReady = true
@@ -314,8 +325,8 @@ final class FluidAudioProvider: TranscriptionProvider {
         self.latestStreamingPreviewText = ""
         self.latestStreamingPreviewSampleCount = 0
         self.latestStreamingPreviewFinishedAt = nil
-        self.incrementalSession = nil
-        self.incrementalAcceptedSampleCount = 0
+        self.recordingGeneration = UUID()
+        self.resetIncrementalSession()
     }
 
     func transcribeStreaming(_ samples: [Float]) async throws -> ASRTranscriptionResult {
@@ -327,9 +338,10 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
         }
 
+        let generation = self.recordingGeneration
         let startedAt = Date().timeIntervalSince1970
         let result: ASRResult
-        if self.effectiveExperimentalUnifiedFinalEnabled,
+        if self.usesIncrementalDictation,
            samples.count > Self.incrementalChunkingThresholdSamples,
            let incrementalManager = self.finalAsrManager ?? self.streamingAsrManager
         {
@@ -339,7 +351,8 @@ final class FluidAudioProvider: TranscriptionProvider {
                     manager: incrementalManager
                 )
             } catch {
-                self.resetIncrementalSession()
+                if self.recordingGeneration == generation { self.resetIncrementalSession() }
+                try self.requireCurrentRecording(generation)
                 if Task.isCancelled || error is CancellationError {
                     throw CancellationError()
                 }
@@ -350,13 +363,14 @@ final class FluidAudioProvider: TranscriptionProvider {
                 result = try await fullPreviewManager.transcribe(samples, source: AudioSource.microphone)
             }
         } else {
-            if !self.effectiveExperimentalUnifiedFinalEnabled
+            if !self.usesIncrementalDictation
                 || samples.count < self.incrementalAcceptedSampleCount
             {
                 self.resetIncrementalSession()
             }
             result = try await fullPreviewManager.transcribe(samples, source: AudioSource.microphone)
         }
+        try self.requireCurrentRecording(generation)
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         self.latestStreamingPreviewText = text
         self.latestStreamingPreviewSampleCount = samples.count
@@ -380,7 +394,7 @@ final class FluidAudioProvider: TranscriptionProvider {
     /// growing recording on every live-preview tick.
     func incrementalPreviewDeltaStart(totalSampleCount: Int) -> Int? {
         Self.incrementalPreviewDeltaRange(
-            enabled: self.effectiveExperimentalUnifiedFinalEnabled,
+            enabled: self.usesIncrementalDictation,
             hasSession: self.incrementalSession != nil,
             acceptedSampleCount: self.incrementalAcceptedSampleCount,
             totalSampleCount: totalSampleCount
@@ -408,6 +422,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         _ newSamples: [Float],
         totalSampleCount: Int
     ) async throws -> ASRTranscriptionResult {
+        let generation = self.recordingGeneration
         guard let session = self.incrementalSession,
               self.incrementalAcceptedSampleCount + newSamples.count == totalSampleCount
         else {
@@ -422,8 +437,10 @@ final class FluidAudioProvider: TranscriptionProvider {
         let startedAt = Date().timeIntervalSince1970
         do {
             try await session.append(newSamples)
+            try self.requireCurrentRecording(generation)
             self.incrementalAcceptedSampleCount = totalSampleCount
             let result = try await session.preview()
+            try self.requireCurrentRecording(generation)
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             self.latestStreamingPreviewText = text
             self.latestStreamingPreviewSampleCount = totalSampleCount
@@ -436,7 +453,8 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
             return ASRTranscriptionResult(text: result.text, confidence: result.confidence)
         } catch {
-            self.resetIncrementalSession()
+            if self.recordingGeneration == generation { self.resetIncrementalSession() }
+            try self.requireCurrentRecording(generation)
             if Task.isCancelled || error is CancellationError {
                 throw CancellationError()
             }
@@ -473,9 +491,10 @@ final class FluidAudioProvider: TranscriptionProvider {
     }
 
     func transcribeFinal(_ samples: [Float]) async throws -> ASRTranscriptionResult {
+        let generation = self.recordingGeneration
         defer {
             let resetStartedAt = ProcessInfo.processInfo.systemUptime
-            self.resetIncrementalSession()
+            if self.recordingGeneration == generation { self.resetIncrementalSession() }
             let resetFinishedAt = ProcessInfo.processInfo.systemUptime
             DebugLogger.shared.debug(
                 "ASR_BENCH t=\(resetFinishedAt) incremental_reset_done elapsedMs=\((resetFinishedAt - resetStartedAt) * 1000)",
@@ -490,13 +509,14 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
         }
 
-        if self.effectiveExperimentalUnifiedFinalEnabled,
+        if self.usesIncrementalDictation,
            samples.count > Self.incrementalChunkingThresholdSamples,
            self.incrementalSession != nil
         {
             do {
                 let startedAt = Date().timeIntervalSince1970
                 let result = try await self.transcribeIncrementalFinal(samples)
+                try self.requireCurrentRecording(generation)
                 self.logFinalBenchmark(
                     samples: samples,
                     text: result.text,
@@ -506,6 +526,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 )
                 return result
             } catch {
+                try self.requireCurrentRecording(generation)
                 if Task.isCancelled || error is CancellationError {
                     throw CancellationError()
                 }
@@ -521,9 +542,11 @@ final class FluidAudioProvider: TranscriptionProvider {
         do {
             let startedAt = Date().timeIntervalSince1970
             let outcome = try await self.transcribeFinalResult(samples, manager: manager)
+            try self.requireCurrentRecording(generation)
             self.logFinalBenchmark(samples: samples, text: outcome.result.text, startedAt: startedAt, usedFallback: false)
             return outcome.result
         } catch {
+            try self.requireCurrentRecording(generation)
             guard let fallback = self.streamingAsrManager, fallback !== manager else {
                 throw error
             }
@@ -533,6 +556,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
             let startedAt = Date().timeIntervalSince1970
             let outcome = try await self.transcribeFinalResult(samples, manager: fallback)
+            try self.requireCurrentRecording(generation)
             self.logFinalBenchmark(samples: samples, text: outcome.result.text, startedAt: startedAt, usedFallback: true)
             return outcome.result
         }
@@ -546,7 +570,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             self.resetIncrementalSession()
         }
         if self.incrementalSession == nil {
-            self.incrementalSession = try await manager.makeIncrementalSession(source: .microphone)
+            try await self.startIncrementalSession(manager: manager)
         }
         guard let session = self.incrementalSession else {
             throw NSError(
@@ -571,6 +595,8 @@ final class FluidAudioProvider: TranscriptionProvider {
                 userInfo: [NSLocalizedDescriptionKey: "Incremental ASR session cannot finalize this recording"]
             )
         }
+        let generation = self.recordingGeneration
+        let profiles = self.incrementalPronunciationProfiles
         let startedAt = ProcessInfo.processInfo.systemUptime
         let acceptedBeforeFinal = self.incrementalAcceptedSampleCount
         if samples.count > acceptedBeforeFinal {
@@ -578,6 +604,17 @@ final class FluidAudioProvider: TranscriptionProvider {
         }
         let appendFinishedAt = ProcessInfo.processInfo.systemUptime
         let result = try await session.finish(finalAudioSamples: samples)
+        try self.requireCurrentRecording(generation)
+        let matches = await session.pronunciationMatches
+        let originalText = await session.unboostedText
+        try self.requireCurrentRecording(generation)
+        let text = self.effectivePronunciationMatchingEnabled && originalText == result.text
+            ? Self.applyPronunciationMatches(
+                result: result,
+                matches: matches,
+                profiles: profiles,
+                labels: Self.dictionaryLabels(from: self.effectiveCustomDictionaryEntries)
+            ) : result.text
         let finishFinishedAt = ProcessInfo.processInfo.systemUptime
         DebugLogger.shared.debug(
             "ASR_BENCH incremental_final_split acceptedBefore=\(acceptedBeforeFinal) " +
@@ -586,7 +623,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 "finishMs=\(Self.milliseconds(from: appendFinishedAt, to: finishFinishedAt))",
             source: "ASRBenchmark"
         )
-        return ASRTranscriptionResult(text: result.text, confidence: result.confidence)
+        return ASRTranscriptionResult(text: text, confidence: result.confidence)
     }
 
     private static func milliseconds(from start: TimeInterval, to end: TimeInterval) -> String {
@@ -597,10 +634,12 @@ final class FluidAudioProvider: TranscriptionProvider {
         _ samples: [Float],
         to session: ParakeetIncrementalSession
     ) async throws {
+        let generation = self.recordingGeneration
         var offset = self.incrementalAcceptedSampleCount
         while offset < samples.count {
             let end = min(offset + Self.incrementalAppendBlockSamples, samples.count)
             try await session.append(Array(samples[offset..<end]))
+            try self.requireCurrentRecording(generation)
             offset = end
             self.incrementalAcceptedSampleCount = offset
         }
@@ -608,6 +647,41 @@ final class FluidAudioProvider: TranscriptionProvider {
 
     private func resetIncrementalSession() {
         self.incrementalSession = nil
+        self.incrementalAcceptedSampleCount = 0
+        self.incrementalPronunciationProfiles = []
+    }
+
+    private func requireCurrentRecording(_ generation: UUID) throws {
+        try Task.checkCancellation()
+        guard self.recordingGeneration == generation else { throw CancellationError() }
+    }
+
+    private func pronunciationProfiles() async -> [PronunciationDictionaryProfile] {
+        guard self.effectivePronunciationMatchingEnabled else { return [] }
+        let labels = Self.dictionaryLabels(from: self.effectiveCustomDictionaryEntries)
+        let stored = await self.pronunciationStore.profiles(modelKey: self.pronunciationModelKey)
+        return stored.filter { $0.enrollments.count >= 3 && labels[$0.dictionaryEntryID] != nil }
+    }
+
+    private static func pronunciationPrototype(_ profile: PronunciationDictionaryProfile) -> PronunciationEmbedding? {
+        PronunciationEmbeddingMatcher.prototype(from: profile.enrollments.map {
+            PronunciationEmbedding(values: $0.values, sourceFrameCount: $0.sourceFrameCount)
+        })
+    }
+
+    private func startIncrementalSession(manager: AsrManager) async throws {
+        let generation = self.recordingGeneration
+        let profiles = await self.pronunciationProfiles()
+        try self.requireCurrentRecording(generation)
+        let pairs = profiles.compactMap { profile in
+            Self.pronunciationPrototype(profile).map { (profile, $0) }
+        }
+        let session = try await manager.makeIncrementalSession(
+            source: .microphone, pronunciationPrototypes: pairs.map { $0.1 }
+        )
+        try self.requireCurrentRecording(generation)
+        self.incrementalPronunciationProfiles = pairs.map { $0.0 }
+        self.incrementalSession = session
         self.incrementalAcceptedSampleCount = 0
     }
 
@@ -620,7 +694,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
         }
 
-        let outcome: (result: ASRTranscriptionResult, tokenTimings: [TokenTiming]?, textMayBeCorrected: Bool)
+        let outcome: (result: ASRTranscriptionResult, tokenTimings: [TokenTiming]?, textMayBeCorrected: Bool) // swiftlint:disable:this discouraged_optional_collection
         do {
             let startedAt = Date().timeIntervalSince1970
             outcome = try await self.transcribeFinalResult(samples, manager: manager)
@@ -648,14 +722,19 @@ final class FluidAudioProvider: TranscriptionProvider {
 
     private func transcribeFinalResult(
         _ samples: [Float], manager: AsrManager
-    ) async throws -> (result: ASRTranscriptionResult, tokenTimings: [TokenTiming]?, textMayBeCorrected: Bool) {
+    ) async throws -> (result: ASRTranscriptionResult, tokenTimings: [TokenTiming]?, textMayBeCorrected: Bool) { // swiftlint:disable:this discouraged_optional_collection
+        if self.effectivePronunciationMatchingEnabled, samples.count > Self.incrementalChunkingThresholdSamples {
+            self.resetIncrementalSession()
+            try await self.startIncrementalSession(manager: manager)
+            return try (await self.transcribeIncrementalFinal(samples), nil, true)
+        }
         let matchingEnabled = self.effectivePronunciationMatchingEnabled && samples.count <= 16_000 * 15
         let dictionaryLabels = Self.dictionaryLabels(
             from: self.effectiveCustomDictionaryEntries
         )
         let profiles: [PronunciationDictionaryProfile]
         if matchingEnabled {
-            let storedProfiles = await PronunciationDictionaryStore.shared.profiles(
+            let storedProfiles = await self.pronunciationStore.profiles(
                 modelKey: self.pronunciationModelKey
             )
             profiles = storedProfiles.compactMap { storedProfile in
@@ -733,10 +812,28 @@ final class FluidAudioProvider: TranscriptionProvider {
             else { return nil }
             return (profile, prototype)
         }
-        let matches = PronunciationEmbeddingMatcher.bestMatches(
-            prototypes: usableProfiles.map { $0.1 },
-            in: features
+        let matches = PronunciationEmbeddingMatcher.allMatches(
+            prototypes: usableProfiles.map { $0.1 }, in: features
+        ).enumerated().flatMap { index, hits in
+            hits.map { PronunciationWindowMatch(prototypeIndex: index, score: $0.score, frameRange: $0.frameRange) }
+        }
+        return Self.applyPronunciationMatches(
+            result: result,
+            matches: matches,
+            profiles: usableProfiles.map { $0.0 },
+            labels: Self.dictionaryLabels(from: self.effectiveCustomDictionaryEntries)
         )
+    }
+
+    static func applyPronunciationMatches(
+        result: ASRResult,
+        matches: [PronunciationWindowMatch],
+        profiles: [PronunciationDictionaryProfile],
+        labels: [UUID: String]
+    ) -> String {
+        guard let timings = result.tokenTimings else { return result.text }
+        let words = WordAudioChunkExtractor.words(from: timings)
+        guard !words.isEmpty else { return result.text }
 
         struct Candidate {
             let label: String
@@ -744,22 +841,30 @@ final class FluidAudioProvider: TranscriptionProvider {
             let wordIndices: [Int]
         }
         var candidates: [Candidate] = []
-        for (index, match) in matches.enumerated() {
-            guard let match, match.score >= PronunciationCustomizationDefaults.acceptanceThreshold else { continue }
-            let startTime = Double(match.frameRange.lowerBound) * features.frameDuration
-            let endTime = Double(match.frameRange.upperBound) * features.frameDuration
+        for match in matches {
+            guard match.score.isFinite, match.score >= PronunciationCustomizationDefaults.acceptanceThreshold,
+                  profiles.indices.contains(match.prototypeIndex),
+                  let label = labels[profiles[match.prototypeIndex].dictionaryEntryID],
+                  !match.frameRange.isEmpty, match.frameRange.lowerBound >= 0
+            else { continue }
+            let startTime = Double(match.frameRange.lowerBound) * 0.08
+            let endTime = Double(match.frameRange.upperBound) * 0.08
             let indices = WordAudioChunkExtractor.substantiallyOverlappingWordIndices(
                 in: words,
                 startTime: startTime,
                 endTime: endTime
             )
             guard !indices.isEmpty else { continue }
-            candidates.append(Candidate(label: usableProfiles[index].0.label, score: match.score, wordIndices: indices))
+            candidates.append(Candidate(label: label, score: match.score, wordIndices: indices))
         }
 
         var claimed = Set<Int>()
         var accepted: [Candidate] = []
-        for candidate in candidates.sorted(by: { $0.score > $1.score }) {
+        for candidate in candidates.sorted(by: {
+            if $0.score != $1.score { return $0.score > $1.score }
+            if $0.wordIndices.first != $1.wordIndices.first { return ($0.wordIndices.first ?? 0) < ($1.wordIndices.first ?? 0) }
+            return $0.label < $1.label
+        }) {
             guard candidate.wordIndices.allSatisfy({ !claimed.contains($0) }) else { continue }
             accepted.append(candidate)
             claimed.formUnion(candidate.wordIndices)
@@ -869,6 +974,7 @@ final class FluidAudioProvider: TranscriptionProvider {
     }
 
     func clearCache() async throws {
+        self.recordingGeneration = UUID()
         self.resetIncrementalSession()
         let baseCacheDir = AsrModels.defaultCacheDirectory().deletingLastPathComponent()
         let selectedModel = self.modelOverride ?? SettingsStore.shared.selectedSpeechModel

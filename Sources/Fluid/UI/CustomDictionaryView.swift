@@ -114,8 +114,7 @@ struct CustomDictionaryView: View {
 
     private var trainingFinalOutputIsReady: Bool {
         if self.activePronunciationMatching {
-            return !self.trainingAlreadyCorrectWithoutReplacement &&
-                self.trainingPronunciationEnrollments.count >= CustomDictionaryTrainingMerge.readyCoveredCount
+            return self.trainingPronunciationEnrollments.count >= CustomDictionaryTrainingMerge.readyCoveredCount
         }
         return !self.trainingAlreadyCorrectWithoutReplacement &&
             self.trainingOutputIsCovered &&
@@ -123,12 +122,7 @@ struct CustomDictionaryView: View {
     }
 
     private var trainingAlreadyCorrectWithoutReplacement: Bool {
-        if self.activePronunciationMatching {
-            return self.trainingVariants.isEmpty &&
-                !self.lastTrainingOutput.isEmpty &&
-                self.lastTrainingOutput.caseInsensitiveCompare(self.normalizedTrainingReplacement) == .orderedSame &&
-                self.trainingPronunciationEnrollments.count >= CustomDictionaryTrainingMerge.readyCoveredCount
-        }
+        if self.activePronunciationMatching { return false }
         return self.trainingVariants.isEmpty &&
             self.trainingOutputIsCovered &&
             !self.lastTrainingOutput.isEmpty &&
@@ -622,7 +616,7 @@ struct CustomDictionaryView: View {
                 Label(
                     self.activePronunciationMatching
                         ? "Voice profile for \(self.trainingTargetReference) captured 3 times."
-                        : "FluidVoice recognized \(self.trainingTargetReference) 3 times in a row.",
+                        : "The last 3 recordings are covered by this correction.",
                     systemImage: "checkmark.circle.fill"
                 )
                 .font(self.theme.typography.captionStrong)
@@ -644,7 +638,7 @@ struct CustomDictionaryView: View {
                     self.trainingInstruction(
                         number: 4,
                         text: self.activePronunciationMatching
-                            ? "Repeat 3 times to teach FluidVoice how your voice sounds."
+                            ? "Repeat 3 times to capture pronunciation samples."
                             : "Keep repeating it until the circle reaches 3/3."
                     )
                 }
@@ -654,7 +648,8 @@ struct CustomDictionaryView: View {
                 DictionaryTrainingReadinessRing(
                     progress: self.trainingReadinessProgress,
                     total: CustomDictionaryTrainingMerge.readyCoveredCount,
-                    isReady: self.trainingFinalOutputIsReady || self.trainingAlreadyCorrectWithoutReplacement
+                    isReady: self.trainingFinalOutputIsReady || self.trainingAlreadyCorrectWithoutReplacement,
+                    usesVoiceMatching: self.activePronunciationMatching
                 )
 
                 Text(self.trainingReadinessCaption)
@@ -749,11 +744,11 @@ struct CustomDictionaryView: View {
     private var trainingFinalOutputPanel: some View {
         HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Final output")
+                Text(self.activePronunciationMatching ? "Spelling to save" : "Final output")
                     .font(self.theme.typography.captionStrong)
                     .foregroundStyle(self.theme.palette.secondaryText)
 
-                Text(self.trainingFinalOutputText)
+                Text(self.activePronunciationMatching ? self.normalizedTrainingReplacement : self.trainingFinalOutputText)
                     .font(self.theme.typography.bodySmallStrong)
                     .foregroundStyle(self.lastTrainingOutput.isEmpty ? self.theme.palette.tertiaryText : self.theme.palette.primaryText)
                     .lineLimit(1)
@@ -2177,12 +2172,13 @@ struct CustomDictionaryView: View {
         let updatesExisting = self.entries.contains {
             $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
         }
-        self.entries = CustomDictionaryTrainingMerge.mergedEntries(
+        let updatedEntries = CustomDictionaryTrainingMerge.mergedEntries(
             current: self.entries,
             replacement: replacementText,
-            triggers: self.trainingVariants
+            triggers: self.trainingVariants,
+            savePronunciation: self.activePronunciationMatching
         )
-        let entry = self.entries.first {
+        let entry = updatedEntries.first {
             $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
         }
         let enrollments = self.trainingPronunciationEnrollments
@@ -2205,11 +2201,15 @@ struct CustomDictionaryView: View {
                 return
             }
         }
+        let savedPronunciation = self.activePronunciationMatching
+        self.entries = updatedEntries
         self.saveEntries()
         self.resetTraining()
         self.showReplacementConfirmation(
-            title: updatesExisting ? "Replacement updated" : "Recorded",
-            detail: updatesExisting ? "Your variants are ready." : "Replacement added at the top."
+            title: savedPronunciation ? "Word saved" : (updatesExisting ? "Replacement updated" : "Recorded"),
+            detail: savedPronunciation
+                ? "Spelling and pronunciation samples saved. Try the word in a sentence."
+                : (updatesExisting ? "Your variants are ready." : "Replacement added at the top.")
         )
     }
 
@@ -2480,7 +2480,8 @@ private extension CustomDictionaryView {
     var asr: ASRService { self.appServices.asr }
 
     var trainedReplacementButtonTitle: String {
-        self.trainingAlreadyCorrectWithoutReplacement ? "Nothing to Save" : "Add Replacement"
+        self.activePronunciationMatching ? "Save Word"
+            : (self.trainingAlreadyCorrectWithoutReplacement ? "Nothing to Save" : "Add Replacement")
     }
 
     var shouldEmphasizeTrainedReplacementButton: Bool {
@@ -2750,12 +2751,12 @@ private enum DictionaryTrainingCopy {
         }
         if isReady {
             return usesVoiceMatching
-                ? "Ready. FluidVoice learned how \(target) sounds in your voice."
-                : "Ready. FluidVoice got \(target) right 3 times in a row."
+                ? "3 samples captured for \(target). Save, then try it in a sentence."
+                : "Ready. The last 3 recordings are covered by this correction."
         }
         return usesVoiceMatching
-            ? "Say \(target) 3 times to unlock Add Replacement."
-            : "Keep trying until FluidVoice gets \(target) right 3 times in a row."
+            ? "Say \(target) 3 times to capture pronunciation samples."
+            : "Repeat until 3 recordings in a row need no new corrections."
     }
 }
 
@@ -2963,11 +2964,23 @@ enum CustomDictionaryTrainingMerge {
     static func mergedEntries(
         current entries: [SettingsStore.CustomDictionaryEntry],
         replacement: String,
-        triggers: [String]
+        triggers: [String],
+        savePronunciation: Bool = false
     ) -> [SettingsStore.CustomDictionaryEntry] {
         let replacementText = self.normalizedReplacement(replacement)
-        let incomingTriggers = self.normalizedTriggers(from: triggers, intendedReplacement: replacementText)
-        guard !replacementText.isEmpty, !incomingTriggers.isEmpty else { return entries }
+        var incomingTriggers = self.normalizedTriggers(from: triggers, intendedReplacement: replacementText)
+        guard !replacementText.isEmpty else { return entries }
+        // Retraining pronunciation must not change existing text correction rules.
+        if incomingTriggers.isEmpty, savePronunciation,
+           entries.contains(where: { $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame })
+        {
+            return entries
+        }
+        // A spelling-only rule anchors the pronunciation profile without inventing a misheard alias.
+        if incomingTriggers.isEmpty, savePronunciation {
+            incomingTriggers = [replacementText.lowercased()]
+        }
+        guard !incomingTriggers.isEmpty else { return entries }
 
         let matchingIndex = entries.firstIndex {
             $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
@@ -2977,10 +2990,13 @@ enum CustomDictionaryTrainingMerge {
             $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
         }
         let existingTriggers = matchingEntries.flatMap(\.triggers)
-        let combinedTriggers = self.normalizedTriggers(
+        var combinedTriggers = self.normalizedTriggers(
             from: existingTriggers + incomingTriggers,
             intendedReplacement: replacementText
         )
+        if combinedTriggers.isEmpty, savePronunciation {
+            combinedTriggers = [replacementText.lowercased()]
+        }
         let triggerKeys = Set(combinedTriggers)
 
         let mergedEntry = replacementID.map {
@@ -3097,6 +3113,7 @@ private struct DictionaryTrainingReadinessRing: View {
     let progress: Int
     let total: Int
     let isReady: Bool
+    let usesVoiceMatching: Bool
 
     @Environment(\.theme) private var theme
 
@@ -3124,7 +3141,7 @@ private struct DictionaryTrainingReadinessRing: View {
                     .foregroundStyle(self.isReady ? self.theme.palette.accent : self.theme.palette.primaryText)
                     .monospacedDigit()
 
-                Text(self.isReady ? "Ready" : "correct")
+                Text(self.usesVoiceMatching ? "samples" : "covered")
                     .font(self.theme.typography.captionSmall)
                     .foregroundStyle(self.theme.palette.secondaryText)
             }
@@ -3134,7 +3151,7 @@ private struct DictionaryTrainingReadinessRing: View {
         .animation(.easeOut(duration: 0.24), value: self.progress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Training progress")
-        .accessibilityValue("\(self.progress) of \(self.total) correct")
+        .accessibilityValue("\(self.progress) of \(self.total) \(self.usesVoiceMatching ? "samples captured" : "recordings covered")")
     }
 }
 
