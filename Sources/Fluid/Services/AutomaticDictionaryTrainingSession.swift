@@ -35,15 +35,21 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     var onSuccess: (() -> Void)?
 
     private let asr: ASRService
+    private let audioLearning: DictionaryAudioLearningService
     private var stopRequestedDuringStart = false
     private var didStartAudioCapture = false
     private var discardCurrentCapture = false
     private var isCancelled = false
     private var stopTask: Task<Void, Never>?
 
-    init(candidate: AutomaticDictionaryCorrectionCandidate, asr: ASRService) {
+    init(
+        candidate: AutomaticDictionaryCorrectionCandidate,
+        asr: ASRService,
+        audioLearning: DictionaryAudioLearningService = .shared
+    ) {
         self.candidate = candidate
         self.asr = asr
+        self.audioLearning = audioLearning
 
         let replacement = CustomDictionaryTrainingMerge.normalizedReplacement(candidate.correctedText)
         let savedVariants = SettingsStore.shared.customDictionaryEntries
@@ -362,7 +368,7 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             $0.replacement.caseInsensitiveCompare(self.intendedText) == .orderedSame
         }) {
             // Scheduled work runs after this synchronous text save returns.
-            DictionaryAudioLearningService.shared.learn(
+            self.audioLearning.learn(
                 entry: entry, evidenceID: self.candidate.id, evidence: evidence
             )
         }

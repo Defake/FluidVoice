@@ -38,3 +38,14 @@ Validation status: scoped service lint is clean. Full-source format and strict l
 ## Composition regression follow-up
 
 A verified failure showed that `fluid -> Fluid Voice` expanded an already-correct acoustic output into `Fluid Voice Voice`. The text matcher now protects completed occurrences of a rule's own output when that output contains a partial trigger. Ordinary rules retain the existing fast path. Tests cover independent uncorrected occurrences, capitalization, word boundaries, literal replacement text, and a combined sentence where text-only and acoustic-only each miss a different occurrence. This is deterministic composition proof, not a new field-accuracy claim. All 65 affected app tests passed, and the signed private FI build succeeded.
+
+
+## Approved-path and same-speaker follow-up
+
+The production correction detector, original-occurrence resolver, existing Add Only session, background encoder and isolated durable store now run together in a real-audio integration test. Detection alone creates no pronunciation profile; approval saves the text rule and then exactly one linked enrollment. Dependency injection leaves the existing UI call unchanged. All 67 affected app tests passed together with no failures or skipped tests.
+
+A separate real 60-second speech experiment enrolled the first occurrence and excluded its entire 14.88-second window from subsequent searches. Later NVIDIA and AI occurrences scored 0.877 and 0.914. A later Jensen occurrence scored 0.779, showing that the 0.85 novel-variant threshold can still miss useful matches; the known text fallback remains necessary. A broad, poorly aligned NVIDIA span scored 0.754 and correctly failed the novel-variant threshold. These labels are ASR-derived, not independent human ground truth, so this is diagnostic evidence rather than word-error-rate proof.
+
+The experiment also found a concrete false edit: Jensen's scored 0.884 against Jensen and could lose its possessive. Original-audio matching now preserves straight or curly apostrophe possessives unless an approved observed variant explicitly taught their removal. Existing possessive labels are not doubled. This is a narrow English possessive safeguard, not a general inflection model. Tests cover both preservation and explicit removal.
+
+Raw experiment: scratch/original-audio-learning/evaluation/personal-trials.json and Sources/PersonalProof/main.swift. No thresholds were relaxed from this small sample.

@@ -3520,3 +3520,73 @@ extension DictationE2ETests {
     }
     #endif
 }
+
+extension DictationE2ETests {
+    #if arch(arm64)
+    func testOriginalPronunciationKeepsNewPossessiveEnding() {
+        let id = UUID()
+        let sample = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "jensen")
+        var profile = PronunciationDictionaryProfile(dictionaryEntryID: id, label: "Jensen", modelKey: sample.modelKey, hiddenSize: 2, enrollments: [sample])
+        for spoken in ["Jensen's", "Jensen’s"] {
+            let result = ASRResult(text: spoken + " project", confidence: 1, duration: 1, processingTime: 0, tokenTimings: [
+                TokenTiming(token: "▁" + spoken, tokenId: 1, startTime: 0, endTime: 0.48, confidence: 1),
+                TokenTiming(token: "▁project", tokenId: 2, startTime: 0.6, endTime: 0.9, confidence: 1),
+            ])
+            XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [.init(prototypeIndex: 0, score: 0.8835, frameRange: 0..<6)], profiles: [profile], labels: [id: "Jensen"]), result.text)
+        }
+        XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen's", heardText: "Jensen's", profile: profile), "Jensen's")
+        XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen", heardText: "Jensen", profile: profile), "Jensen")
+        profile.enrollments[0].observedText = "Jensen's"
+        XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen", heardText: "Jensen's", profile: profile), "Jensen", "An explicitly taught removal keeps its intended meaning")
+    }
+
+    func testApprovedCorrectionLearnsOriginalRealAudioThroughExistingSession() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["FLUIDVOICE_PRONUNCIATION_AUDIO"], let modelPath = environment["FLUIDAUDIO_PARAKEET_MODEL_DIR"] else {
+            throw XCTSkip("Set the public speech fixture and Parakeet model paths")
+        }
+        let defaults = UserDefaults.standard
+        let previousEntries = defaults.object(forKey: self.customDictionaryEntriesKey)
+        defer {
+            if let previousEntries { defaults.set(previousEntries, forKey: self.customDictionaryEntriesKey) }
+            else { defaults.removeObject(forKey: self.customDictionaryEntriesKey) }
+            ASRService.invalidateDictionaryCache()
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = PronunciationDictionaryStore(fileURL: folder.appendingPathComponent("profiles.json"))
+        let samples = Array(try AudioConverter().resampleAudioFile(path: path).prefix(160000))
+        let models = try await AsrModels.load(from: URL(fileURLWithPath: modelPath), version: .v3)
+        let manager = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: AsrModelVersion.v3.blankId), encoderHiddenSize: 1024))
+        try await manager.initialize(models: models)
+        let transcription = try await manager.transcribe(samples, source: .microphone)
+        await manager.cleanup()
+        let words = WordAudioChunkExtractor.words(from: transcription.tokenTimings ?? [])
+        let word = try XCTUnwrap(words.first { $0.text.count >= 5 && $0.startTime < 2 && $0.endTime - $0.startTime >= 0.24 })
+        let delivered = words.map(\.text).joined(separator: " ")
+        let oldRange = (delivered as NSString).range(of: word.text)
+        let intended = "PersonalName"
+        let edited = (delivered as NSString).replacingCharacters(in: oldRange, with: intended)
+        var candidate = try XCTUnwrap(AutomaticDictionaryCorrectionDetector.candidate(before: delivered, after: edited, insertedRange: NSRange(location: 0, length: (delivered as NSString).length), allowsInsertionAtEnd: true))
+        let recording = try XCTUnwrap(DictionaryLearningRecording(alignment: .init(modelKey: "parakeet-v3", words: words.map { .init(text: $0.text, start: $0.startTime, end: $0.endTime) }), samples: samples))
+        candidate.audioEvidence = try DictionaryLearningAlignmentResolver.resolve(recording: recording, deliveredTextBeforeEdit: delivered, selectedUTF16Range: try XCTUnwrap(candidate.sourceUTF16Range), observedText: candidate.heardText)
+        let worker = DictionaryAudioLearningService(store: store, canProcess: { true })
+        let session = AutomaticDictionaryTrainingSession(candidate: candidate, asr: AppServices.shared.asr, audioLearning: worker)
+        let before = await store.allProfiles()
+        XCTAssertTrue(before.isEmpty, "Detection alone cannot activate acoustic learning")
+        session.addOnlyCorrection()
+        XCTAssertEqual(session.screen, .success)
+        let entry = try XCTUnwrap(SettingsStore.shared.customDictionaryEntries.first { $0.replacement == intended })
+        XCTAssertTrue(entry.triggers.contains(candidate.heardText.lowercased()))
+        for _ in 0..<1000 where worker.pendingCount > 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(worker.pendingCount, 0)
+        let learned = await store.allProfiles()
+        XCTAssertEqual(learned.count, 1)
+        XCTAssertEqual(learned.first?.dictionaryEntryID, entry.id)
+        XCTAssertEqual(learned.first?.label, intended)
+        XCTAssertEqual(learned.first?.enrollments.first?.sourceRecordingID, recording.id)
+        XCTAssertEqual(learned.first?.enrollments.first?.observedText, candidate.heardText)
+        XCTAssertEqual(learned.first?.enrollments.count, 1)
+    }
+    #endif
+}

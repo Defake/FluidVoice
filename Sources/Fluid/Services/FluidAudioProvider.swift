@@ -881,14 +881,18 @@ final class FluidAudioProvider: TranscriptionProvider {
             )
             guard !indices.isEmpty else { continue }
             let profile = profiles[match.prototypeIndex]
+            var correctedLabel = label
             if profile.hasOriginalAudio {
                 guard profile.label.caseInsensitiveCompare(label) == .orderedSame else { continue }
                 let heard = indices.map { words[$0].text }.joined(separator: " ")
                 guard DictionaryPronunciationDecision.accepts(
                     score: match.score, heardText: heard, profile: profile
                 ) else { continue }
+                correctedLabel = DictionaryPronunciationDecision.labelPreservingPossessive(
+                    label, heardText: heard, profile: profile
+                )
             }
-            candidates.append(Candidate(label: label, score: match.score, wordIndices: indices))
+            candidates.append(Candidate(label: correctedLabel, score: match.score, wordIndices: indices))
         }
 
         var leaders: [Int: [(label: String, score: Float)]] = [:]
