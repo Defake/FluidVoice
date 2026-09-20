@@ -3459,3 +3459,64 @@ extension DictationE2ETests {
     }
     #endif
 }
+
+extension DictationE2ETests {
+    func testDictionaryCanonicalReplacementDoesNotExpandAgain() {
+        defer { ASRService.invalidateDictionaryCache() }
+        self.withRestoredDefaults(keys: [self.customDictionaryEntriesKey]) {
+            SettingsStore.shared.customDictionaryEntries = [
+                .init(triggers: ["fluid"], replacement: "Fluid Voice"),
+                .init(triggers: ["api"], replacement: "API Client"),
+            ]
+            ASRService.invalidateDictionaryCache()
+            XCTAssertEqual(ASRService.applyCustomDictionary("Fluid Voice and fluid"), "Fluid Voice and Fluid Voice")
+            XCTAssertEqual(ASRService.applyCustomDictionary("API Client, api!"), "API Client, API Client!")
+            XCTAssertEqual(ASRService.applyCustomDictionary("fluid voice"), "fluid voice")
+            let once = ASRService.applyCustomDictionary("fluid and api")
+            XCTAssertEqual(ASRService.applyCustomDictionary(once), once)
+        }
+    }
+}
+
+extension DictationE2ETests {
+    func testDictionaryCanonicalProtectionPreservesOtherRulesAndLiteralText() {
+        defer { ASRService.invalidateDictionaryCache() }
+        self.withRestoredDefaults(keys: [self.customDictionaryEntriesKey]) {
+            SettingsStore.shared.customDictionaryEntries = [
+                .init(triggers: ["client"], replacement: "API Client"),
+                .init(triggers: ["apí"], replacement: "$apí client"),
+                .init(triggers: ["plain"], replacement: "PLAIN"),
+            ]
+            ASRService.invalidateDictionaryCache()
+            XCTAssertEqual(ASRService.applyCustomDictionary("API Client; client"), "API Client; API Client")
+            XCTAssertEqual(ASRService.applyCustomDictionary("apí!"), "$apí client!")
+            XCTAssertEqual(ASRService.applyCustomDictionary("plain"), "PLAIN", "Whole-trigger capitalization still applies")
+            XCTAssertEqual(ASRService.applyCustomDictionary("clientele"), "clientele", "Word boundaries remain intact")
+        }
+    }
+
+    #if arch(arm64)
+    func testDictionaryCombinedRecoveryDoesNotOverwriteAcousticOutput() {
+        defer { ASRService.invalidateDictionaryCache() }
+        self.withRestoredDefaults(keys: [self.customDictionaryEntriesKey]) {
+            let entry = SettingsStore.CustomDictionaryEntry(triggers: ["fluid"], replacement: "Fluid Voice")
+            SettingsStore.shared.customDictionaryEntries = [entry]
+            ASRService.invalidateDictionaryCache()
+            let result = ASRResult(text: "fluent voice plus fluid", confidence: 1, duration: 2, processingTime: 0, tokenTimings: [
+                TokenTiming(token: "▁fluent", tokenId: 1, startTime: 0, endTime: 0.24, confidence: 1),
+                TokenTiming(token: "▁voice", tokenId: 2, startTime: 0.24, endTime: 0.48, confidence: 1),
+                TokenTiming(token: "▁plus", tokenId: 3, startTime: 0.8, endTime: 1.0, confidence: 1),
+                TokenTiming(token: "▁fluid", tokenId: 4, startTime: 1.2, endTime: 1.5, confidence: 1),
+            ])
+            let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "fluid")
+            let profile = PronunciationDictionaryProfile(dictionaryEntryID: entry.id, label: entry.replacement, modelKey: capture.modelKey, hiddenSize: 2, enrollments: [capture])
+            let audioOnly = FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 0, score: 0.95, frameRange: 0..<6)], profiles: [profile], labels: [entry.id: entry.replacement])
+            let textOnly = ASRService.applyCustomDictionary(result.text)
+            let combined = ASRService.applyCustomDictionary(audioOnly)
+            XCTAssertEqual(audioOnly, "Fluid Voice plus fluid")
+            XCTAssertEqual(textOnly, "fluent voice plus Fluid Voice")
+            XCTAssertEqual(combined, "Fluid Voice plus Fluid Voice")
+        }
+    }
+    #endif
+}

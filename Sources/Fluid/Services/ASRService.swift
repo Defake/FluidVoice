@@ -6840,16 +6840,18 @@ final class ASRService: ObservableObject {
     /// Cache for compiled custom dictionary regexes.
     /// Key: trigger word, Value: (compiled regex, escaped replacement template)
     /// Cleared when dictionary entries change.
-    private static var cachedDictionaryPatterns: [(regex: NSRegularExpression, template: String)] = []
+    private static var cachedDictionaryPatterns: [(regex: NSRegularExpression, template: String, canonical: NSRegularExpression?)] = []
     private static var dictionaryCacheNeedsRebuild: Bool = true
 
     /// Rebuilds the regex cache if dictionary has changed.
     /// Called lazily on first apply after settings change.
     private static func rebuildDictionaryCache() {
         let entries = SettingsStore.shared.customDictionaryEntries
-        var patterns: [(regex: NSRegularExpression, template: String)] = []
+        var patterns: [(regex: NSRegularExpression, template: String, canonical: NSRegularExpression?)] = []
 
         for entry in entries {
+            var canonical: NSRegularExpression?
+            let replacementRange = NSRange(entry.replacement.startIndex..., in: entry.replacement)
             for trigger in entry.triggers {
                 guard !trigger.isEmpty else { continue }
 
@@ -6864,7 +6866,13 @@ final class ASRService: ObservableObject {
                     options: .caseInsensitive
                 ) else { continue }
 
-                patterns.append((regex: regex, template: NSRegularExpression.escapedTemplate(for: entry.replacement)))
+                let needsProtection = regex.matches(in: entry.replacement, range: replacementRange).contains {
+                    $0.range.length < replacementRange.length
+                }
+                if needsProtection, canonical == nil {
+                    canonical = try? NSRegularExpression(pattern: self.dictionaryPattern(for: entry.replacement), options: .caseInsensitive)
+                }
+                patterns.append((regex: regex, template: NSRegularExpression.escapedTemplate(for: entry.replacement), canonical: needsProtection ? canonical : nil))
             }
         }
 
@@ -6926,10 +6934,11 @@ final class ASRService: ObservableObject {
 
         // Apply cached regexes - O(n) where n = number of patterns
         for pattern in self.cachedDictionaryPatterns {
-            result = pattern.regex.stringByReplacingMatches(
+            result = DictionaryReplacementProtection.replacingMatches(
                 in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: pattern.template
+                regex: pattern.regex,
+                template: pattern.template,
+                canonical: pattern.canonical
             )
         }
 

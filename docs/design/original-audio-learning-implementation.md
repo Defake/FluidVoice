@@ -34,3 +34,7 @@ An initial experiment required acoustic confirmation before applying a learned t
 Evaluation scripts and raw outputs: `scratch/original-audio-learning/evaluation/`. They are local research artifacts, not production app assets. There is no guarantee of perfect accuracy, no new UI, no model-weight training, no enabling of vocabulary boosting, and no migration of every legacy voice-training adapter in this patch.
 
 Validation status: scoped service lint is clean. Full-source format and strict lint ran; restoring unrelated formatting left 623 pre-existing lint findings, with none on the changed tracked code lines. The signed private FI build is the local packaging check; it is not a production bridge/release gate.
+
+## Composition regression follow-up
+
+A verified failure showed that `fluid -> Fluid Voice` expanded an already-correct acoustic output into `Fluid Voice Voice`. The text matcher now protects completed occurrences of a rule's own output when that output contains a partial trigger. Ordinary rules retain the existing fast path. Tests cover independent uncorrected occurrences, capitalization, word boundaries, literal replacement text, and a combined sentence where text-only and acoustic-only each miss a different occurrence. This is deterministic composition proof, not a new field-accuracy claim. All 65 affected app tests passed, and the signed private FI build succeeded.
