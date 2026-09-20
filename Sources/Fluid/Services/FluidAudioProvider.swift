@@ -102,6 +102,8 @@ final class FluidAudioProvider: TranscriptionProvider {
     private var incrementalAcceptedSampleCount = 0
     private var recordingGeneration = UUID()
     private var incrementalPronunciationProfiles: [PronunciationDictionaryProfile] = []
+    private var automaticPronunciationProfiles: [PronunciationDictionaryProfile] = []
+    private var didLoadAutomaticPronunciationProfiles = false
 
     private var usesIncrementalDictation: Bool {
         self.effectiveExperimentalUnifiedFinalEnabled || self.effectivePronunciationMatchingEnabled
@@ -157,10 +159,51 @@ final class FluidAudioProvider: TranscriptionProvider {
             ?? SettingsStore.shared.experimentalParakeetUnifiedFinalEnabled
     }
 
-    private var effectivePronunciationMatchingEnabled: Bool {
+    private var explicitPronunciationMatchingEnabled: Bool {
         self.meetingOptions?.pronunciationMatchingEnabled
             ?? self.enhancementOptions?.pronunciationMatchingEnabled
             ?? SettingsStore.shared.pronunciationMatchingEnabled
+    }
+
+    private var automaticPronunciationMatchingEnabled: Bool {
+        self.meetingOptions == nil && self.enhancementOptions == nil
+            && SettingsStore.shared.automaticDictionaryLearningEnabled
+    }
+
+    private var effectivePronunciationMatchingEnabled: Bool {
+        self.explicitPronunciationMatchingEnabled
+            || (self.automaticPronunciationMatchingEnabled && !self.automaticPronunciationProfiles.isEmpty)
+    }
+
+    /// Read the actor-owned store once after capture begins, never on the microphone startup path.
+    private func refreshAutomaticPronunciationProfiles() async throws {
+        guard !self.didLoadAutomaticPronunciationProfiles else { return }
+        let generation = self.recordingGeneration
+        guard self.automaticPronunciationMatchingEnabled, !self.effectiveCustomDictionaryEntries.isEmpty else {
+            self.automaticPronunciationProfiles = []
+            self.didLoadAutomaticPronunciationProfiles = true
+            return
+        }
+        let stored = await self.pronunciationStore.profiles(modelKey: self.pronunciationModelKey)
+        try self.requireCurrentRecording(generation)
+        self.automaticPronunciationProfiles = Self.matchingProfiles(
+            stored, entries: self.effectiveCustomDictionaryEntries, includeManual: false
+        )
+        self.didLoadAutomaticPronunciationProfiles = true
+    }
+
+    static func matchingProfiles(
+        _ stored: [PronunciationDictionaryProfile],
+        entries: [SettingsStore.CustomDictionaryEntry], includeManual: Bool
+    ) -> [PronunciationDictionaryProfile] {
+        let labels = Self.dictionaryLabels(from: entries)
+        return stored.filter { profile in
+            guard profile.isEligibleForMatching,
+                  includeManual || profile.hasOriginalAudio,
+                  let label = labels[profile.dictionaryEntryID]
+            else { return false }
+            return !profile.hasOriginalAudio || profile.label.caseInsensitiveCompare(label) == .orderedSame
+        }
     }
 
     private var effectiveCustomDictionaryEntries: [SettingsStore.CustomDictionaryEntry] {
@@ -306,6 +349,8 @@ final class FluidAudioProvider: TranscriptionProvider {
         self.latestStreamingPreviewSampleCount = 0
         self.latestStreamingPreviewFinishedAt = nil
         self.recordingGeneration = UUID()
+        self.automaticPronunciationProfiles = []
+        self.didLoadAutomaticPronunciationProfiles = false
         self.resetIncrementalSession()
 
         try Task.checkCancellation()
@@ -326,6 +371,8 @@ final class FluidAudioProvider: TranscriptionProvider {
         self.latestStreamingPreviewSampleCount = 0
         self.latestStreamingPreviewFinishedAt = nil
         self.recordingGeneration = UUID()
+        self.automaticPronunciationProfiles = []
+        self.didLoadAutomaticPronunciationProfiles = false
         self.resetIncrementalSession()
     }
 
@@ -339,6 +386,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         }
 
         let generation = self.recordingGeneration
+        try await self.refreshAutomaticPronunciationProfiles()
         let startedAt = Date().timeIntervalSince1970
         let result: ASRResult
         if self.usesIncrementalDictation,
@@ -485,7 +533,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 userInfo: [NSLocalizedDescriptionKey: "ASR manager not initialized"]
             )
         }
-        let shouldCapture = self.effectivePronunciationMatchingEnabled
+        let shouldCapture = self.explicitPronunciationMatchingEnabled
         await manager.setPronunciationCustomizationEnabled(shouldCapture)
         do {
             let result = try await manager.transcribe(samples, source: AudioSource.microphone)
@@ -507,6 +555,7 @@ final class FluidAudioProvider: TranscriptionProvider {
 
     func transcribeFinal(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         let generation = self.recordingGeneration
+        try await self.refreshAutomaticPronunciationProfiles()
         defer {
             let resetStartedAt = ProcessInfo.processInfo.systemUptime
             if self.recordingGeneration == generation { self.resetIncrementalSession() }
@@ -675,9 +724,17 @@ final class FluidAudioProvider: TranscriptionProvider {
 
     private func pronunciationProfiles() async -> [PronunciationDictionaryProfile] {
         guard self.effectivePronunciationMatchingEnabled else { return [] }
-        let labels = Self.dictionaryLabels(from: self.effectiveCustomDictionaryEntries)
-        let stored = await self.pronunciationStore.profiles(modelKey: self.pronunciationModelKey)
-        return stored.filter { $0.isEligibleForMatching && labels[$0.dictionaryEntryID] != nil }
+        let stored: [PronunciationDictionaryProfile]
+        if self.explicitPronunciationMatchingEnabled {
+            stored = await self.pronunciationStore.profiles(modelKey: self.pronunciationModelKey)
+        } else {
+            stored = self.automaticPronunciationProfiles
+        }
+        return Self.matchingProfiles(
+            stored,
+            entries: self.effectiveCustomDictionaryEntries,
+            includeManual: self.explicitPronunciationMatchingEnabled
+        )
     }
 
     private static func pronunciationPrototype(_ profile: PronunciationDictionaryProfile) -> PronunciationEmbedding? {
@@ -703,6 +760,7 @@ final class FluidAudioProvider: TranscriptionProvider {
     }
 
     func transcribeWithWordTimings(_ samples: [Float]) async throws -> (result: ASRTranscriptionResult, words: [ASRWordTiming]) {
+        try await self.refreshAutomaticPronunciationProfiles()
         guard let manager = self.finalAsrManager ?? self.streamingAsrManager else {
             throw NSError(
                 domain: "FluidAudioProvider",
@@ -753,25 +811,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             return try (await self.transcribeIncrementalFinal(samples), nil, true)
         }
         let matchingEnabled = self.effectivePronunciationMatchingEnabled && samples.count <= 16_000 * 15
-        let dictionaryLabels = Self.dictionaryLabels(
-            from: self.effectiveCustomDictionaryEntries
-        )
-        let profiles: [PronunciationDictionaryProfile]
-        if matchingEnabled {
-            let storedProfiles = await self.pronunciationStore.profiles(
-                modelKey: self.pronunciationModelKey
-            )
-            profiles = storedProfiles.compactMap { storedProfile in
-                guard storedProfile.isEligibleForMatching,
-                      let currentLabel = dictionaryLabels[storedProfile.dictionaryEntryID]
-                else { return nil }
-                var profile = storedProfile
-                profile.label = currentLabel
-                return profile
-            }
-        } else {
-            profiles = []
-        }
+        let profiles = matchingEnabled ? await self.pronunciationProfiles() : []
         // Rewritten text leaves timings on the old tokens; realigning would revert corrections.
         let textMayBeCorrected = self.isWordBoostingActive || !profiles.isEmpty
         await manager.setPronunciationCustomizationEnabled(!profiles.isEmpty)
@@ -1029,6 +1069,8 @@ final class FluidAudioProvider: TranscriptionProvider {
     }
 
     func clearCache() async throws {
+        self.automaticPronunciationProfiles = []
+        self.didLoadAutomaticPronunciationProfiles = false
         self.recordingGeneration = UUID()
         self.resetIncrementalSession()
         let baseCacheDir = AsrModels.defaultCacheDirectory().deletingLastPathComponent()

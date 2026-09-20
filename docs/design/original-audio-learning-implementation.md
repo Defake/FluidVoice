@@ -49,3 +49,14 @@ A separate real 60-second speech experiment enrolled the first occurrence and ex
 The experiment also found a concrete false edit: Jensen's scored 0.884 against Jensen and could lose its possessive. Original-audio matching now preserves straight or curly apostrophe possessives unless an approved observed variant explicitly taught their removal. Existing possessive labels are not doubled. This is a narrow English possessive safeguard, not a general inflection model. Tests cover both preservation and explicit removal.
 
 Raw experiment: scratch/original-audio-learning/evaluation/personal-trials.json and Sources/PersonalProof/main.swift. No thresholds were relaxed from this small sample.
+
+
+## Automatic activation follow-up
+
+The final consumer audit found that saved original-audio profiles were still gated by Advanced Preview. Approved original-audio profiles now participate automatically while automatic dictionary learning is enabled, even with Advanced Preview off. Manual-only acoustic profiles remain behind Advanced Preview. Pinned offline options and meeting policy do not inherit automatic matching.
+
+The provider takes a bounded profile snapshot from the store actor on the first transcription call of a recording, after microphone capture has started. Recording reset invalidates that snapshot so a newly approved word is available next time. Empty or ineligible profiles do not switch dictation to the pronunciation path. Short, word-timing and long incremental paths share profile selection; original evidence with a changed intended label is rejected before search, rather than relabelled.
+
+The real-audio approval regression now starts with an empty profile snapshot, approves and learns the correction, resets for the next recording, and verifies actual replacement in short, word-timed and 60-second incremental dictation with Advanced Preview off. It also checks that disabling automatic learning and Advanced Preview restores baseline ASR. This repeated-recording proof is functional validation, not held-out recognition accuracy.
+
+Validation: 76 dictionary/pronunciation and meeting-policy tests passed together, plus the separate production meeting-provider isolation test. Scoped provider lint is clean; full-source formatting and strict lint ran with existing repository violations preserved. The signed private FI build succeeded. Debug pronunciation timings are not treated as optimized latency measurements.

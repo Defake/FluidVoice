@@ -3546,6 +3546,14 @@ extension DictationE2ETests {
             throw XCTSkip("Set the public speech fixture and Parakeet model paths")
         }
         let defaults = UserDefaults.standard
+        let previousAutomatic = SettingsStore.shared.automaticDictionaryLearningEnabled
+        let previousPreview = SettingsStore.shared.pronunciationMatchingEnabled
+        SettingsStore.shared.automaticDictionaryLearningEnabled = true
+        SettingsStore.shared.pronunciationMatchingEnabled = false
+        defer {
+            SettingsStore.shared.automaticDictionaryLearningEnabled = previousAutomatic
+            SettingsStore.shared.pronunciationMatchingEnabled = previousPreview
+        }
         let previousEntries = defaults.object(forKey: self.customDictionaryEntriesKey)
         defer {
             if let previousEntries { defaults.set(previousEntries, forKey: self.customDictionaryEntriesKey) }
@@ -3555,7 +3563,8 @@ extension DictationE2ETests {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let store = PronunciationDictionaryStore(fileURL: folder.appendingPathComponent("profiles.json"))
-        let samples = Array(try AudioConverter().resampleAudioFile(path: path).prefix(160000))
+        let fullSamples = try AudioConverter().resampleAudioFile(path: path)
+        let samples = Array(fullSamples.prefix(160000))
         let models = try await AsrModels.load(from: URL(fileURLWithPath: modelPath), version: .v3)
         let manager = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: AsrModelVersion.v3.blankId), encoderHiddenSize: 1024))
         try await manager.initialize(models: models)
@@ -3574,6 +3583,10 @@ extension DictationE2ETests {
         let session = AutomaticDictionaryTrainingSession(candidate: candidate, asr: AppServices.shared.asr, audioLearning: worker)
         let before = await store.allProfiles()
         XCTAssertTrue(before.isEmpty, "Detection alone cannot activate acoustic learning")
+        let provider = FluidAudioProvider(modelOverride: .parakeetTDT, configureWordBoosting: false, pronunciationStore: store)
+        try await provider.prepare()
+        let beforeApproval = try await provider.transcribeFinal(samples)
+        XCTAssertFalse(beforeApproval.text.contains(intended))
         session.addOnlyCorrection()
         XCTAssertEqual(session.screen, .success)
         let entry = try XCTUnwrap(SettingsStore.shared.customDictionaryEntries.first { $0.replacement == intended })
@@ -3587,6 +3600,37 @@ extension DictationE2ETests {
         XCTAssertEqual(learned.first?.enrollments.first?.sourceRecordingID, recording.id)
         XCTAssertEqual(learned.first?.enrollments.first?.observedText, candidate.heardText)
         XCTAssertEqual(learned.first?.enrollments.count, 1)
+        provider.resetStreamingPreviewCache()
+        let corrected = try await provider.transcribeFinal(samples)
+        XCTAssertTrue(corrected.text.contains(intended), "Approved audio must work without the Advanced Preview switch")
+        provider.resetStreamingPreviewCache()
+        let aligned = try await provider.transcribeWithWordTimings(samples)
+        XCTAssertTrue(aligned.result.text.contains(intended))
+        provider.resetStreamingPreviewCache()
+        _ = try await provider.transcribeStreaming(Array(fullSamples.prefix(320000)))
+        _ = try await provider.transcribeStreaming(fullSamples)
+        let longResult = try await provider.transcribeFinal(fullSamples)
+        XCTAssertTrue(longResult.text.contains(intended), "Automatic evidence also participates in incremental long dictation")
+        SettingsStore.shared.automaticDictionaryLearningEnabled = false
+        provider.resetStreamingPreviewCache()
+        let disabled = try await provider.transcribeFinal(samples)
+        XCTAssertFalse(disabled.text.contains(intended), "Disabling both modes must preserve baseline ASR")
+
+    }
+
+    func testDictionaryAutomaticProfileSelectionPreservesMeaningAndManualOptIn() {
+        let entry = SettingsStore.CustomDictionaryEntry(triggers: ["fluid"], replacement: "Fluid Voice")
+        let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3")
+        let manual = PronunciationDictionaryProfile(dictionaryEntryID: entry.id, label: entry.replacement, modelKey: capture.modelKey, hiddenSize: 2, enrollments: [capture, capture, capture])
+        XCTAssertTrue(FluidAudioProvider.matchingProfiles([manual], entries: [entry], includeManual: false).isEmpty)
+        XCTAssertEqual(FluidAudioProvider.matchingProfiles([manual], entries: [entry], includeManual: true).count, 1)
+        var original = manual
+        original.enrollments[0].originalAudioID = UUID()
+        XCTAssertEqual(FluidAudioProvider.matchingProfiles([original], entries: [entry], includeManual: false).count, 1)
+        original.label = "Different Meaning"
+        XCTAssertTrue(FluidAudioProvider.matchingProfiles([original], entries: [entry], includeManual: false).isEmpty)
+        XCTAssertTrue(FluidAudioProvider.matchingProfiles([original], entries: [entry], includeManual: true).isEmpty)
+        XCTAssertTrue(FluidAudioProvider.matchingProfiles([manual], entries: [], includeManual: true).isEmpty)
     }
     #endif
 }
