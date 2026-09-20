@@ -125,12 +125,19 @@ final class AnalyticsDatabase {
     }
 
     func recordDictationPerformance(
-        asrMilliseconds: Int?,
-        fluidIntelligenceMilliseconds: Int?,
+        asrMilliseconds: Int? = nil,
+        fluidIntelligenceMilliseconds: Int? = nil,
+        fluidModel: AnalyticsFluidIntelligenceModel? = nil,
+        tokensPerSecond: Double? = nil,
         measuredAppVersion: String,
         at date: Date
     ) throws {
-        guard asrMilliseconds != nil || fluidIntelligenceMilliseconds != nil else { return }
+        let validTokensPerSecond = tokensPerSecond.flatMap { value in
+            value.isFinite && value > 0 ? value : nil
+        }
+        guard asrMilliseconds != nil || fluidIntelligenceMilliseconds != nil ||
+            (fluidModel != nil && validTokensPerSecond != nil)
+        else { return }
         try self.finalizeDays(before: date)
         let day = self.dayString(date)
         try self.transaction {
@@ -148,6 +155,14 @@ final class AnalyticsDatabase {
                     measuredAppVersion: measuredAppVersion,
                     metric: "fluid_intelligence",
                     milliseconds: fluidIntelligenceMilliseconds
+                )
+            }
+            if let fluidModel, let validTokensPerSecond {
+                try self.upsertPerformanceMetric(
+                    day: day,
+                    measuredAppVersion: measuredAppVersion,
+                    metric: "\(fluidModel.rawValue)_tps",
+                    milliseconds: Int(min(validTokensPerSecond.rounded(), 60_001))
                 )
             }
         }
@@ -869,16 +884,20 @@ final class AnalyticsDatabase {
         let key: PerformanceSummaryKey
         var asr = PerformanceMetricSummary()
         var fluidIntelligence = PerformanceMetricSummary()
+        var picoTPS = PerformanceMetricSummary()
+        var miniTPS = PerformanceMetricSummary()
 
         var properties: [String: Any] {
             var properties: [String: Any] = [
                 "performance_date": self.key.day,
                 "measured_app_version": self.key.measuredAppVersion,
                 "measured_os_version": self.key.measuredOSVersion,
-                "histogram_schema_version": 1,
+                "histogram_schema_version": 2,
             ]
             Self.add(self.asr, prefix: "asr", to: &properties)
             Self.add(self.fluidIntelligence, prefix: "fluid_intelligence", to: &properties)
+            Self.add(self.picoTPS, prefix: "pico_tps", to: &properties)
+            Self.add(self.miniTPS, prefix: "mini_tps", to: &properties)
             return properties
         }
 
@@ -927,6 +946,18 @@ final class AnalyticsDatabase {
             } else if row[3] == "fluid_intelligence" {
                 Self.mergePerformanceRow(
                     into: &summary.fluidIntelligence,
+                    bucketIndex: bucketIndex,
+                    sampleCount: sampleCount
+                )
+            } else if row[3] == "pico_tps" {
+                Self.mergePerformanceRow(
+                    into: &summary.picoTPS,
+                    bucketIndex: bucketIndex,
+                    sampleCount: sampleCount
+                )
+            } else if row[3] == "mini_tps" {
+                Self.mergePerformanceRow(
+                    into: &summary.miniTPS,
                     bucketIndex: bucketIndex,
                     sampleCount: sampleCount
                 )

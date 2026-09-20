@@ -85,6 +85,60 @@ final class AnalyticsDatabaseTests: XCTestCase {
         XCTAssertNil(summary.properties["window_title"])
     }
 
+    func testBetaPerformanceAggregatesTPSByFluidModelWithoutRawDictationData() throws {
+        let database = try self.makeDatabase()
+        let firstDay = Date(timeIntervalSince1970: 1_735_689_600)
+        let secondDay = firstDay.addingTimeInterval(24 * 60 * 60)
+
+        for tps in [145.0, 201.0, 254.0] {
+            try database.recordDictationPerformance(
+                fluidModel: .mini,
+                tokensPerSecond: tps,
+                measuredAppVersion: "1.6.10-beta.7",
+                at: firstDay
+            )
+        }
+        try database.recordDictationPerformance(
+            fluidModel: .pico,
+            tokensPerSecond: 317,
+            measuredAppVersion: "1.6.10-beta.7",
+            at: firstDay
+        )
+        try database.finalizeDays(before: secondDay)
+
+        let summary = try XCTUnwrap(
+            try self.events(in: database).first {
+                $0.name == AnalyticsEvent.dictationPerformanceDailySummary.rawValue
+            }
+        )
+        XCTAssertEqual(summary.properties["histogram_schema_version"] as? Int, 2)
+        XCTAssertEqual(summary.properties["mini_tps_sample_count"] as? Int, 3)
+        XCTAssertEqual(summary.properties["mini_tps_p50_bucket"] as? String, "300")
+        XCTAssertEqual(summary.properties["mini_tps_p95_bucket"] as? String, "300")
+        XCTAssertEqual(summary.properties["pico_tps_sample_count"] as? Int, 1)
+        XCTAssertEqual(summary.properties["pico_tps_p50_bucket"] as? String, "500")
+        XCTAssertNil(summary.properties["transcript"])
+        XCTAssertNil(summary.properties["output_tokens"])
+        XCTAssertNil(summary.properties["generation_seconds"])
+    }
+
+    func testBetaPerformanceRejectsUnknownModelsAndInvalidTPS() throws {
+        XCTAssertNil(AnalyticsFluidIntelligenceModel(modelID: "custom-model"))
+
+        let database = try self.makeDatabase()
+        let firstDay = Date(timeIntervalSince1970: 1_735_689_600)
+        let secondDay = firstDay.addingTimeInterval(24 * 60 * 60)
+        try database.recordDictationPerformance(
+            fluidModel: .mini,
+            tokensPerSecond: .nan,
+            measuredAppVersion: "1.6.10-beta.7",
+            at: firstDay
+        )
+        try database.finalizeDays(before: secondDay)
+
+        XCTAssertTrue(try self.events(in: database).isEmpty)
+    }
+
     func testDetailedOptOutPreservesAutomaticBetaPerformanceSummary() throws {
         let database = try self.makeDatabase()
         let firstDay = Date(timeIntervalSince1970: 1_735_689_600)

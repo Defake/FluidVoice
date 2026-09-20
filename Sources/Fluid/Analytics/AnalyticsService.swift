@@ -63,15 +63,15 @@ final class AnalyticsService {
         }
     }
 
-    /// Beta builds aggregate these timings locally and emit one summary per day.
+    /// Beta builds aggregate Fluid Intelligence throughput locally and emit one summary per day.
     func recordBetaDictationPerformance(
-        asrMilliseconds: Int?,
-        fluidIntelligenceMilliseconds: Int?
+        fluidModel: AnalyticsFluidIntelligenceModel?,
+        tokensPerSecond: Double?
     ) {
         self.submit { core, context in
             await core.recordBetaDictationPerformance(
-                asrMilliseconds: asrMilliseconds,
-                fluidIntelligenceMilliseconds: fluidIntelligenceMilliseconds,
+                fluidModel: fluidModel,
+                tokensPerSecond: tokensPerSecond,
                 context: context
             )
         }
@@ -338,8 +338,8 @@ private actor AnalyticsCore {
     }
 
     func recordBetaDictationPerformance(
-        asrMilliseconds: Int?,
-        fluidIntelligenceMilliseconds: Int?,
+        fluidModel: AnalyticsFluidIntelligenceModel?,
+        tokensPerSecond: Double?,
         context: AnalyticsContext
     ) async {
         guard context.collectsBetaPerformance,
@@ -348,8 +348,8 @@ private actor AnalyticsCore {
         do {
             let database = try self.database(for: context)
             try database.recordDictationPerformance(
-                asrMilliseconds: asrMilliseconds,
-                fluidIntelligenceMilliseconds: fluidIntelligenceMilliseconds,
+                fluidModel: fluidModel,
+                tokensPerSecond: tokensPerSecond,
                 measuredAppVersion: context.appVersion,
                 at: Date()
             )

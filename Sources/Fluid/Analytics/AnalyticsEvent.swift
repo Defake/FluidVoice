@@ -70,6 +70,23 @@ enum AnalyticsModelRole: String {
     case aiPostProcessing = "ai_post_processing"
 }
 
+enum AnalyticsFluidIntelligenceModel: String {
+    case pico
+    case mini
+
+    init?(modelID: String?) {
+        guard let modelID else { return nil }
+        switch modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "fluid-1-pico-96k-dflash":
+            self = .pico
+        case "fluid-1-mini-96k-dflash":
+            self = .mini
+        default:
+            return nil
+        }
+    }
+}
+
 enum AnalyticsInsertionPath: String {
     case clipboard
     case direct

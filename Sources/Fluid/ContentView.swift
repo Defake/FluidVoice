@@ -3032,7 +3032,6 @@ struct ContentView: View {
         var aiFallbackReason: String?
         var postProcessingModel: String?
         var aiProcessingDurationMilliseconds: Int?
-        var fluidIntelligenceDurationMilliseconds: Int?
         var aiTokensPerSecond: Double?
         var aiFallbackNotificationError: String?
         let appInfo = stopSnapshot?.appInfo ?? self.recordingAppInfo ?? self.getCurrentAppInfo()
@@ -3094,7 +3093,6 @@ struct ContentView: View {
                 finalText = result.text
                 self.appBench("ai_process_return id=\(pipelineID)")
                 aiTokensPerSecond = result.tokensPerSecond
-                fluidIntelligenceDurationMilliseconds = result.fluidIntelligenceLatencyMilliseconds
                 streamPreview.flush()
                 self.appBench("ai_preview_flushed id=\(pipelineID)")
             } catch {
@@ -3168,7 +3166,8 @@ struct ContentView: View {
             readyAt: finalTextReadyAt,
             transcriptionDurationMilliseconds: transcriptionDurationMilliseconds,
             aiProcessingDurationMilliseconds: aiProcessingDurationMilliseconds,
-            fluidIntelligenceDurationMilliseconds: fluidIntelligenceDurationMilliseconds,
+            fluidModel: AnalyticsFluidIntelligenceModel(modelID: postProcessingModel),
+            tokensPerSecond: aiTokensPerSecond,
             outcome: aiFallbackReason == nil ? "success" : "ai_fallback"
         )
         let finalOutputPlan = ASRService.makeDictationLiteralOutputPlan(
@@ -3561,7 +3560,8 @@ struct ContentView: View {
         readyAt: TimeInterval = ProcessInfo.processInfo.systemUptime,
         transcriptionDurationMilliseconds: Int?,
         aiProcessingDurationMilliseconds: Int?,
-        fluidIntelligenceDurationMilliseconds: Int?,
+        fluidModel: AnalyticsFluidIntelligenceModel?,
+        tokensPerSecond: Double?,
         outcome: String
     ) {
         guard route == .normal else { return }
@@ -3576,8 +3576,8 @@ struct ContentView: View {
             source: "AppBenchmark"
         )
         AnalyticsService.shared.recordBetaDictationPerformance(
-            asrMilliseconds: transcriptionDurationMilliseconds,
-            fluidIntelligenceMilliseconds: fluidIntelligenceDurationMilliseconds
+            fluidModel: fluidModel,
+            tokensPerSecond: tokensPerSecond
         )
     }
 
@@ -3587,7 +3587,8 @@ struct ContentView: View {
             pipelineStartedAt: startedAt,
             transcriptionDurationMilliseconds: asrMs,
             aiProcessingDurationMilliseconds: nil,
-            fluidIntelligenceDurationMilliseconds: nil,
+            fluidModel: nil,
+            tokensPerSecond: nil,
             outcome: self.asr.lastStopOutcome == .failed ? "asr_failed" : "empty"
         )
     }
