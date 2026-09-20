@@ -9,22 +9,30 @@ final class DictationPromptTestCoordinator: ObservableObject {
     static let shared = DictationPromptTestCoordinator()
 
     @Published private(set) var isActive: Bool = false
+    private(set) var sessionID = UUID()
     @Published private(set) var draftPromptText: String = ""
     @Published private(set) var draftProviderID: String = ""
     @Published private(set) var draftModel: String = ""
+    private(set) var usesBuiltInPrompt = false
     @Published var isProcessing: Bool = false
 
     @Published var lastTranscriptionText: String = ""
     @Published var lastOutputText: String = ""
     @Published var lastError: String = ""
 
-    private init() {}
+    init() {}
 
-    func activate(draftPromptText: String, providerID: String, model: String) {
+    func acceptsResult(for sessionID: UUID) -> Bool {
+        self.isActive && self.sessionID == sessionID
+    }
+
+    func activate(draftPromptText: String, providerID: String, model: String, usesBuiltInPrompt: Bool = false) {
+        self.sessionID = UUID()
         self.isActive = true
         self.draftPromptText = draftPromptText
         self.draftProviderID = providerID
         self.draftModel = model
+        self.usesBuiltInPrompt = usesBuiltInPrompt
         self.isProcessing = false
         self.lastTranscriptionText = ""
         self.lastOutputText = ""
@@ -32,10 +40,12 @@ final class DictationPromptTestCoordinator: ObservableObject {
     }
 
     func deactivate() {
+        self.sessionID = UUID()
         self.isActive = false
         self.draftPromptText = ""
         self.draftProviderID = ""
         self.draftModel = ""
+        self.usesBuiltInPrompt = false
         self.isProcessing = false
     }
 

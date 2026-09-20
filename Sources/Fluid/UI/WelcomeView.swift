@@ -5,11 +5,10 @@ import SwiftUI
 
 struct WelcomeView: View {
     @EnvironmentObject var appServices: AppServices
-    @ObservedObject private var settings = SettingsStore.shared
     @Binding var selectedSidebarItem: SidebarItem?
-    @Binding var playgroundUsed: Bool
     let accessibilityEnabled: Bool
     let openAccessibilitySettings: () -> Void
+    let openFluidIntelligenceDemo: () -> Void
     let openShortcutSettings: () -> Void
 
     var body: some View {
@@ -18,11 +17,8 @@ struct WelcomeView: View {
             selectedSidebarItem: self.$selectedSidebarItem,
             accessibilityEnabled: self.accessibilityEnabled,
             openAccessibilitySettings: self.openAccessibilitySettings,
-            openShortcutSettings: self.openShortcutSettings,
-            replayOnboarding: {
-                self.settings.resetOnboardingProgress()
-                self.playgroundUsed = false
-            }
+            openFluidIntelligenceDemo: self.openFluidIntelligenceDemo,
+            openShortcutSettings: self.openShortcutSettings
         )
         .task {
             await AudioStartupGate.shared.scheduleOpenAfterInitialUISettled()

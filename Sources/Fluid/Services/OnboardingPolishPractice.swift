@@ -1,4 +1,39 @@
+import Combine
 import Foundation
+
+enum FluidIntelligenceInvitation {
+    static let dismissedKey = "FluidIntelligenceInvitationDismissed"
+    static let usedKey = "HasUsedFluidIntelligence"
+
+    static func shouldShow(available: Bool, dismissed: Bool, hasUsed: Bool) -> Bool {
+        available && !dismissed && !hasUsed
+    }
+
+    static func recordSuccess(output: String, defaults: UserDefaults) {
+        guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        defaults.set(true, forKey: self.usedKey)
+    }
+}
+
+extension SettingsStore {
+    var fluidIntelligenceInvitationDismissed: Bool {
+        get { UserDefaults.standard.bool(forKey: FluidIntelligenceInvitation.dismissedKey) }
+        set {
+            self.objectWillChange.send()
+            UserDefaults.standard.set(newValue, forKey: FluidIntelligenceInvitation.dismissedKey)
+        }
+    }
+
+    var hasUsedFluidIntelligence: Bool {
+        UserDefaults.standard.bool(forKey: FluidIntelligenceInvitation.usedKey)
+    }
+
+    func recordFluidIntelligenceUse(output: String) {
+        guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !self.hasUsedFluidIntelligence else { return }
+        self.objectWillChange.send()
+        FluidIntelligenceInvitation.recordSuccess(output: output, defaults: .standard)
+    }
+}
 
 /// Local practice progress; never writes dictation, provider, or persisted settings.
 struct OnboardingPolishPractice {

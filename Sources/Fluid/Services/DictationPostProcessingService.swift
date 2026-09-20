@@ -256,6 +256,7 @@ final class DictationPostProcessingService {
                     appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
                 )
             )
+            settings.recordFluidIntelligenceUse(output: response.outputText)
             return Result(
                 text: ASRService.applyGAAVFormatting(response.outputText),
                 providerID: resolved.providerID,

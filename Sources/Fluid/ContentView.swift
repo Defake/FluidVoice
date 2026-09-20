@@ -317,6 +317,7 @@ struct ContentView: View {
     @State private var isSettingsBackHovered = false
     @FocusState private var isSettingsSearchFocused: Bool
     @State private var playgroundUsed: Bool = SettingsStore.shared.playgroundUsed
+    @State private var showsFluidIntelligenceDemo = false
     @State private var recordingAppInfo: (name: String, bundleId: String, windowTitle: String)? = nil
     @State private var recordingPrecedingText: String = ""
     @State private var recordingFocusTarget: TypingService.CapturedFocusTarget? = nil
@@ -454,6 +455,21 @@ struct ContentView: View {
                 self.handleSpokenSendPartialTranscription(text)
             }
             .overlay(alignment: .center) {}
+            .sheet(isPresented: self.$showsFluidIntelligenceDemo) {
+                FluidIntelligenceDemoView(
+                    asr: self.asr,
+                    onStart: self.startRecording,
+                    onStop: { await self.stopAndProcessTranscription() },
+                    onCancel: { _ = self.handleCancelShortcut() },
+                    onSetup: {
+                        self.showsFluidIntelligenceDemo = false
+                        self.navigateToApp(.aiEnhancements)
+                    },
+                    runExample: { text, model in
+                        try await self.processTextWithAI(text, overrideProviderID: PrivateAIProviderFeature.shared.providerID, overrideModel: model, dictationSlot: .primary)
+                    }
+                )
+            }
             .alert(
                 self.asr.errorTitle,
                 isPresented: Binding(
@@ -1614,8 +1630,18 @@ struct ContentView: View {
     }
 
     private var helpEntryButton: some View {
-        Button {
-            self.openHelpDocumentation()
+        Menu {
+            Button("Documentation", systemImage: "book") { self.openHelpDocumentation() }
+            if PrivateAIProviderFeature.shared.isAvailable {
+                Button("Try Fluid Intelligence", systemImage: "sparkles") { self.showsFluidIntelligenceDemo = true }
+                    .disabled(self.asr.isRunningOrStarting || NotchContentState.shared.isProcessing || DictationPromptTestCoordinator.shared.isActive)
+            }
+            Button("Replay onboarding", systemImage: "arrow.counterclockwise") {
+                guard !self.asr.isRunning, !self.asr.isStarting, !NotchContentState.shared.isProcessing else { return }
+                self.settings.resetOnboardingProgress()
+                self.playgroundUsed = false
+            }
+            .disabled(self.asr.isRunning || self.asr.isStarting || NotchContentState.shared.isProcessing)
         } label: {
             HStack(spacing: self.theme.metrics.spacing.sm) {
                 Image(systemName: "questionmark.circle")
@@ -1627,7 +1653,7 @@ struct ContentView: View {
 
                 Spacer(minLength: self.theme.metrics.spacing.sm)
 
-                Image(systemName: "arrow.up.right")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.fluidSystem(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
@@ -1636,6 +1662,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
             .contentShape(Rectangle())
         }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
         .buttonStyle(SidebarChromeButtonStyle(
             isHovered: self.isHelpEntryHovered,
             reduceMotion: self.accessibilityReduceMotion
@@ -1643,7 +1671,7 @@ struct ContentView: View {
         .onHover { self.isHelpEntryHovered = $0 }
         .help("Open FluidVoice Help")
         .accessibilityLabel("Help")
-        .accessibilityHint("Opens FluidVoice documentation in your default browser")
+        .accessibilityHint("Documentation, Fluid Intelligence demo, and replay onboarding")
     }
 
     private var modeTransitionAnimation: Animation {
@@ -1826,9 +1854,9 @@ struct ContentView: View {
     private var welcomeView: some View {
         WelcomeView(
             selectedSidebarItem: self.$selectedSidebarItem,
-            playgroundUsed: self.$playgroundUsed,
             accessibilityEnabled: self.accessibilityEnabled,
             openAccessibilitySettings: self.openAccessibilitySettings,
+            openFluidIntelligenceDemo: { self.showsFluidIntelligenceDemo = true },
             openShortcutSettings: { self.openSettings(.shortcuts) }
         )
     }
@@ -2666,6 +2694,7 @@ struct ContentView: View {
                 streamHandler: streamHandler
             )
             self.appBench("ai_private_return")
+            self.settings.recordFluidIntelligenceUse(output: response.outputText)
 
             if self.shouldTracePromptProcessing {
                 self.logDictationPromptTrace("Model answer (A)", value: response.outputText)
@@ -2899,6 +2928,7 @@ struct ContentView: View {
         let activeDictationSlot = self.currentDictationShortcutSlot(for: modeAtStop)
         let promptOverride = self.promptModeOverrideText
         let promptTest = DictationPromptTestCoordinator.shared
+        let promptTestSessionID = promptTest.isActive ? promptTest.sessionID : nil
         var stopSnapshot = route == .normal && !wasRewriteMode && !wasCommandMode && !promptTest.isActive
             ? self.captureDictationStopSnapshot(slot: activeDictationSlot ?? .primary) : nil
         let shouldUseAIOnStop = stopSnapshot?.usesAI ?? activeDictationSlot.map {
@@ -2964,8 +2994,7 @@ struct ContentView: View {
         }
 
         // Prompt Test Mode: reroute dictation hotkey output into the prompt editor (no typing/clipboard/history).
-        if promptTest.isActive {
-            await self.processDictationPromptTest(transcribedText, lifecycleID: expectedOverlayLifecycleID)
+        if await self.routePromptTestResult(transcribedText, sessionID: promptTestSessionID, lifecycleID: expectedOverlayLifecycleID) {
             return
         }
 
@@ -3352,6 +3381,7 @@ struct ContentView: View {
 
     private func processDictationPromptTest(_ transcribedText: String, lifecycleID: UInt64) async {
         let promptTest = DictationPromptTestCoordinator.shared
+        let sessionID = promptTest.sessionID
         promptTest.lastTranscriptionText = transcribedText
         promptTest.lastOutputText = ""
         promptTest.lastError = ""
@@ -3372,14 +3402,15 @@ struct ContentView: View {
             if self.overlayLifecycleID == lifecycleID {
                 self.menuBarManager.setProcessing(false)
             }
-            promptTest.isProcessing = false
+            if promptTest.sessionID == sessionID { promptTest.isProcessing = false }
         }
         do {
             let result = try await self.processTextWithAI(
                 transcribedText,
-                overrideSystemPrompt: promptTest.draftPromptText,
+                overrideSystemPrompt: promptTest.usesBuiltInPrompt ? nil : promptTest.draftPromptText,
                 overrideProviderID: promptTest.draftProviderID,
-                overrideModel: promptTest.draftModel
+                overrideModel: promptTest.draftModel,
+                dictationSlot: promptTest.usesBuiltInPrompt ? .primary : nil
             )
             let appInfo = self.recordingAppInfo ?? self.getCurrentAppInfo()
             let literalFormattedResult = ASRService.applyDictationLiteralFormatting(
@@ -3388,11 +3419,24 @@ struct ContentView: View {
                 bundleID: appInfo.bundleId,
                 windowTitle: appInfo.windowTitle
             )
+            guard promptTest.acceptsResult(for: sessionID) else { return }
             promptTest.lastOutputText = ASRService.applyGAAVFormatting(literalFormattedResult)
         } catch {
+            guard promptTest.acceptsResult(for: sessionID) else { return }
             DebugLogger.shared.error("Prompt test AI call failed: \(error.localizedDescription)", source: "ContentView")
             promptTest.lastError = error.localizedDescription
         }
+    }
+
+    private func routePromptTestResult(_ text: String, sessionID: UUID?, lifecycleID: UInt64) async -> Bool {
+        guard let sessionID else { return false }
+        // A closed/replaced practice session must never fall through to external typing.
+        guard DictationPromptTestCoordinator.shared.acceptsResult(for: sessionID) else {
+            if self.overlayLifecycleID == lifecycleID { self.menuBarManager.setProcessing(false) }
+            return true
+        }
+        await self.processDictationPromptTest(text, lifecycleID: lifecycleID)
+        return true
     }
 
     private func makeAIProcessingFeedback(
@@ -4387,6 +4431,8 @@ struct ContentView: View {
 
     /// Capture app context at start to avoid mismatches if the user switches apps mid-session
     private func startRecording() {
+        // Browsing the demo must not send dictation to a previously focused app.
+        guard !self.showsFluidIntelligenceDemo || (DictationPromptTestCoordinator.shared.isActive && !DictationPromptTestCoordinator.shared.isProcessing) else { return }
         guard !self.presentExclusiveActivityBlockIfNeeded() else { return }
         let model = SettingsStore.shared.selectedSpeechModel
         DebugLogger.shared.info(

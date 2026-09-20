@@ -2669,8 +2669,9 @@ struct BottomOverlayView: View {
     private var promptSelectorDisplayLabel: String {
         if self.activePromptMode?.normalized == .dictate {
             let label = self.selectedPromptLabel
-            guard self.isPillSize, label.count > 18 else { return label }
-            return "\(label.prefix(17))…"
+            let limit = self.isCompactControls ? 12 : 18
+            guard label.count > limit else { return label }
+            return "\(label.prefix(limit - 1))…"
         }
         let selectedLabel = self.selectedPromptLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let label = self.promptSelectorBuiltInLabel ?? selectedLabel
@@ -2727,6 +2728,15 @@ struct BottomOverlayView: View {
 
     private var promptSelectorMaxWidth: CGFloat {
         self.isPillSize ? 220 : self.layout.waveformWidth * 1.75
+    }
+
+    private var promptSelectorTriggerMaxWidth: CGFloat {
+        guard self.layout.showsTopControls else { return 120 }
+        // Trailing controls are overlaid on the waveform row. Reserve the waveform,
+        // an 8pt gap, and the 32pt actions button plus its 8pt spacing.
+        let rowWidth = self.layout.containerWidth - self.layout.hPadding * 2
+        let waveformRight = rowWidth / 2 + self.waveformHorizontalOffset + self.layout.waveformWidth / 2
+        return max(0, rowWidth - waveformRight - 8 - 32 - 8)
     }
 
     private var previewMaxHeight: CGFloat {
@@ -3097,10 +3107,6 @@ struct BottomOverlayView: View {
                 .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(
-                    maxWidth: self.activePromptMode?.normalized == .dictate ? nil : (self.promptSelectorBuiltInLabel == nil ? 72 : nil),
-                    alignment: .leading
-                )
             if self.isAppPromptOverrideActive {
                 Text("App")
                     .font(.fluidSystem(size: max(self.promptSelectorFontSize - 2, 8), weight: .semibold))
@@ -3118,6 +3124,8 @@ struct BottomOverlayView: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, self.promptSelectorVerticalPadding)
+        .frame(maxWidth: self.promptSelectorTriggerMaxWidth, alignment: .trailing)
+        .help(self.selectedPromptLabel)
         .background(
             RoundedRectangle(cornerRadius: self.promptSelectorCornerRadius, style: .continuous)
                 .fill(

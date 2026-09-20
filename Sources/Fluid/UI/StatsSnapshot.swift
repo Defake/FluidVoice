@@ -7,6 +7,7 @@ nonisolated struct StatsSnapshot: Sendable {
     var totalCharacters = 0
     /// Words Fluid Intelligence changed, dropped or added compared with the raw transcript.
     var fluidFixedWords = 0
+    var hasFluidIntelligenceUse = false
     /// Words and recording time from entries that carry a real audio length.
     var timedWords = 0
     var timedMilliseconds = 0
@@ -108,6 +109,7 @@ nonisolated struct StatsSnapshot: Sendable {
             result.longestTranscriptionWords = max(result.longestTranscriptionWords, words)
             if entry.wasAIProcessed { result.aiProcessedCount += 1 }
             if entry.wasAIProcessed, entry.processingModel?.lowercased().hasPrefix("fluid-1") == true {
+                result.hasFluidIntelligenceUse = true
                 result.fluidFixedWords += Self.changedWordCount(raw: entry.rawText, processed: entry.processedText)
             }
         }
