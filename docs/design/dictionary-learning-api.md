@@ -1,6 +1,6 @@
 # Reusable dictionary learning API
 
-Status: proposed contract and implementation plan, not shipped automatic learning. Reviewed against the local FluidVoice long-recording implementation and companion FluidAudio pronunciation-streaming worktree on 2026-09-19. UI entry points and automatic-add policy can be implemented independently after this contract.
+Status: broader proposed contract. The September 20 backend implementation and measured limits are documented in [original-audio-learning-implementation.md](original-audio-learning-implementation.md). The descriptions below record the September 19 baseline and future design, not the current implementation status. Reviewed against the local FluidVoice long-recording implementation and companion FluidAudio pronunciation-streaming worktree on 2026-09-19. UI entry points and automatic-add policy can be implemented independently after this contract.
 
 ## Outcome
 

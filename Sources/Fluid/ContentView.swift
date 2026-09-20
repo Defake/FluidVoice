@@ -2962,6 +2962,7 @@ struct ContentView: View {
         self.appBench("asr_stop_return elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - asrStopStartedAt) * 1000).rounded()))")
         self.completeDictationStopSnapshot(&stopSnapshot)
         let audioSnapshot = self.asr.consumeLastCompletedAudioSnapshot()
+        let dictionaryLearningRecording = self.asr.consumeDictionaryLearningRecording()
         let transcriptionDurationMilliseconds = self.asr.consumeLastFinalTranscriptionDurationMs()
         DebugLogger.shared.info(
             "Stop transcription result | chars=\(transcribedText.count) | empty=\(transcribedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)",
@@ -3345,7 +3346,8 @@ struct ContentView: View {
             if didTypeExternally, !spokenSendAllowed {
                 AutomaticDictionaryCorrectionTracker.shared.beginObservingInsertion(
                     finalOutputPlan.plainText,
-                    targetPID: typingTarget.pid
+                    targetPID: typingTarget.pid,
+                    learningRecording: dictionaryLearningRecording
                 )
                 self.appBench("dictionary_tracking_scheduled afterDeliveryUI=true")
             }

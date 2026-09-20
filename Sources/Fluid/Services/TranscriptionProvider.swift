@@ -110,15 +110,18 @@ struct ASRTranscriptionResult {
     let text: String
     let confidence: Float
     let pronunciationEnrollment: PronunciationEnrollmentCapture?
+    let dictionaryLearningAlignment: DictionaryLearningAlignment?
 
     init(
         text: String,
         confidence: Float = 1.0,
-        pronunciationEnrollment: PronunciationEnrollmentCapture? = nil
+        pronunciationEnrollment: PronunciationEnrollmentCapture? = nil,
+        dictionaryLearningAlignment: DictionaryLearningAlignment? = nil
     ) {
         self.text = text
         self.confidence = confidence
         self.pronunciationEnrollment = pronunciationEnrollment
+        self.dictionaryLearningAlignment = dictionaryLearningAlignment
     }
 }
 
@@ -194,8 +197,9 @@ extension TranscriptionProvider {
     var supportsWordTimings: Bool { false }
 
     func transcribeWithWordTimings(_ samples: [Float]) async throws -> (result: ASRTranscriptionResult, words: [ASRWordTiming]) {
-        (try await self.transcribe(samples), [])
+        try (await self.transcribe(samples), [])
     }
+
     func transcribeStreaming(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         try await self.transcribe(samples)
     }

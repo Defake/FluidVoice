@@ -6,6 +6,13 @@ struct AutomaticDictionaryCorrectionCandidate: Equatable, Identifiable {
     let id = UUID()
     let heardText: String
     let correctedText: String
+    var sourceUTF16Range: NSRange?
+    var audioEvidence: DictionaryLearningAudioEvidence?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.id == rhs.id && lhs.heardText == rhs.heardText && lhs.correctedText == rhs.correctedText
+            && lhs.sourceUTF16Range == rhs.sourceUTF16Range
+    }
 }
 
 struct AutomaticDictionaryTextChange: Equatable {
@@ -115,7 +122,8 @@ enum AutomaticDictionaryCorrectionDetector {
 
         return AutomaticDictionaryCorrectionCandidate(
             heardText: heard,
-            correctedText: corrected
+            correctedText: corrected,
+            sourceUTF16Range: NSRange(location: oldTokenRange.location - insertedRange.location, length: oldTokenRange.length)
         )
     }
 
@@ -401,6 +409,7 @@ final class AutomaticDictionaryCorrectionTracker {
         let pid: pid_t
         let observesSelectionChanges: Bool
         let observesFocusChanges: Bool
+        let learningRecording: DictionaryLearningRecording?
         var lastValue: String
         var insertedRange: NSRange
         var pendingCorrection: PendingCorrection?
@@ -418,10 +427,14 @@ final class AutomaticDictionaryCorrectionTracker {
     private var verificationTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
+    private var evidencePreparationTask: Task<Void, Never>?
+    private var suggestionGeneration = UUID()
 
     private init() {}
 
-    func beginObservingInsertion(_ insertedText: String, targetPID: pid_t?) {
+    func beginObservingInsertion(
+        _ insertedText: String, targetPID: pid_t?, learningRecording: DictionaryLearningRecording? = nil
+    ) {
         self.cancel()
         guard SettingsStore.shared.automaticDictionaryLearningEnabled,
               !insertedText.isEmpty
@@ -442,7 +455,7 @@ final class AutomaticDictionaryCorrectionTracker {
                 )
                 guard !Task.isCancelled, let self else { return }
                 if let seed {
-                    self.installObserver(for: seed)
+                    self.installObserver(for: seed, learningRecording: learningRecording)
                     return
                 }
             }
@@ -450,6 +463,9 @@ final class AutomaticDictionaryCorrectionTracker {
     }
 
     func cancel() {
+        self.suggestionGeneration = UUID()
+        self.evidencePreparationTask?.cancel()
+        self.evidencePreparationTask = nil
         self.verificationTask?.cancel()
         self.verificationTask = nil
         self.timeoutTask?.cancel()
@@ -629,7 +645,7 @@ final class AutomaticDictionaryCorrectionTracker {
         )
     }
 
-    private func installObserver(for seed: InsertionSeed) {
+    private func installObserver(for seed: InsertionSeed, learningRecording: DictionaryLearningRecording?) {
         self.verificationTask = nil
         var createdObserver: AXObserver?
         let createResult = AXObserverCreate(seed.pid, automaticDictionaryAXObserverCallback, &createdObserver)
@@ -665,6 +681,7 @@ final class AutomaticDictionaryCorrectionTracker {
             pid: seed.pid,
             observesSelectionChanges: selectionResult == .success,
             observesFocusChanges: focusResult == .success,
+            learningRecording: learningRecording,
             lastValue: seed.expectedValue,
             insertedRange: seed.insertedRange,
             pendingCorrection: nil
@@ -701,6 +718,18 @@ final class AutomaticDictionaryCorrectionTracker {
             insertedRange: pending.insertedRange,
             allowsInsertionAtEnd: true
         )
+        var context: DictionaryLearningCorrectionContext?
+        if let recording = self.session?.learningRecording, let range = candidate?.sourceUTF16Range {
+            let before = pending.beforeValue as NSString
+            let insertion = pending.insertedRange
+            if insertion.location >= 0, insertion.location <= before.length,
+               insertion.length >= 0, insertion.length <= before.length - insertion.location
+            {
+                context = DictionaryLearningCorrectionContext(
+                    recording: recording, deliveredTextBeforeEdit: before.substring(with: insertion), selectedUTF16Range: range
+                )
+            }
+        }
         self.stopObservation()
 
         guard let candidate,
@@ -717,9 +746,31 @@ final class AutomaticDictionaryCorrectionTracker {
             return
         }
 
-        AutomaticDictionarySuggestionPolicy.shared.markShown(candidate)
-        DictionaryCorrectionOverlayController.shared.show(candidate: candidate) { outcome in
-            AutomaticDictionarySuggestionPolicy.shared.record(outcome, for: candidate)
+        let generation = self.suggestionGeneration
+        self.evidencePreparationTask = Task { @MainActor [weak self, context] in
+            let observedText = candidate.heardText
+            let evidence = await Task.detached(priority: .utility) {
+                guard let context else { return DictionaryLearningAudioEvidence?.none }
+                return try? DictionaryLearningAlignmentResolver.resolve(
+                    recording: context.recording,
+                    deliveredTextBeforeEdit: context.deliveredTextBeforeEdit,
+                    selectedUTF16Range: context.selectedUTF16Range,
+                    observedText: observedText
+                )
+            }.value
+            guard !Task.isCancelled, let self, self.suggestionGeneration == generation,
+                  SettingsStore.shared.automaticDictionaryLearningEnabled,
+                  !SettingsStore.shared.shouldShowOnboarding,
+                  !self.isAlreadySaved(candidate), !AppServices.shared.asr.isRunning,
+                  !DictionaryCorrectionOverlayController.shared.isPresented
+            else { return }
+            var prepared = candidate
+            prepared.audioEvidence = evidence
+            self.evidencePreparationTask = nil
+            AutomaticDictionarySuggestionPolicy.shared.markShown(prepared)
+            DictionaryCorrectionOverlayController.shared.show(candidate: prepared) { outcome in
+                AutomaticDictionarySuggestionPolicy.shared.record(outcome, for: prepared)
+            }
         }
     }
 

@@ -4,6 +4,11 @@ struct PronunciationEnrollmentCapture: Codable, Equatable, Sendable {
     let values: [Float]
     let sourceFrameCount: Int
     let modelKey: String
+    var originalAudioID: UUID?
+    var observedText: String?
+    var sourceRecordingID: UUID?
+    var sourceFocalRange: Range<Int>?
+    var extractorVersion: String?
 }
 
 struct PronunciationDictionaryProfile: Codable, Equatable, Identifiable, Sendable {
@@ -13,14 +18,24 @@ struct PronunciationDictionaryProfile: Codable, Equatable, Identifiable, Sendabl
     let hiddenSize: Int
     var enrollments: [PronunciationEnrollmentCapture]
 
+    var hasOriginalAudio: Bool { self.enrollments.contains { $0.originalAudioID != nil } }
+    var isEligibleForMatching: Bool {
+        (self.enrollments.count >= 3 || self.hasOriginalAudio) && self.enrollments.allSatisfy {
+            $0.extractorVersion == nil || $0.extractorVersion == "parakeet-encoder-mean-l2-v1"
+        }
+    }
+
     var id: String { "\(self.dictionaryEntryID.uuidString):\(self.modelKey)" }
 }
 
 enum PronunciationDictionaryStoreError: LocalizedError, Equatable {
     case inconsistentEnrollment
+    case staleEvidence
 
     var errorDescription: String? {
         switch self {
+        case .staleEvidence:
+            "The dictionary entry changed before audio learning finished."
         case .inconsistentEnrollment:
             "Pronunciation samples must use the same model and embedding size."
         }
@@ -37,11 +52,19 @@ actor PronunciationDictionaryStore {
 
     private let fileURL: URL
     private var document: Document?
+    private var revisions: [UUID: UUID] = [:]
+    private var replacementGeneration = UUID()
 
     init(fileManager: FileManager = .default) {
-        let baseURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let baseURL = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first
             ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let appURL = baseURL.appendingPathComponent("FluidVoice", isDirectory: true)
+        let appURL = baseURL.appendingPathComponent(
+            "FluidVoice",
+            isDirectory: true
+        )
         self.fileURL = appURL.appendingPathComponent("pronunciation-dictionary-v1.json")
     }
 
@@ -59,7 +82,10 @@ actor PronunciationDictionaryStore {
         return self.document?.profiles.filter { $0.modelKey == modelKey } ?? []
     }
 
-    func enrollmentCount(dictionaryEntryID: UUID, modelKey: String) -> Int {
+    func enrollmentCount(
+        dictionaryEntryID: UUID,
+        modelKey: String
+    ) -> Int {
         self.loadIfNeeded()
         return self.document?.profiles.first {
             $0.dictionaryEntryID == dictionaryEntryID && $0.modelKey == modelKey
@@ -100,7 +126,10 @@ actor PronunciationDictionaryStore {
         } else {
             profiles.append(profile)
         }
-        try self.persist(Document(version: 1, profiles: profiles))
+        try self.persist(Document(
+            version: 1,
+            profiles: profiles
+        ))
     }
 
     func replaceAllProfiles(_ profiles: [PronunciationDictionaryProfile]) throws {
@@ -113,10 +142,18 @@ actor PronunciationDictionaryStore {
         }) else {
             throw PronunciationDictionaryStoreError.inconsistentEnrollment
         }
-        try self.persist(Document(version: 1, profiles: profiles))
+        try self.persist(Document(
+            version: 1,
+            profiles: profiles
+        ))
+        self.replacementGeneration = UUID()
     }
 
-    func updateLabel(dictionaryEntryID: UUID, label: String) throws {
+    func updateLabel(
+        dictionaryEntryID: UUID,
+        label: String
+    ) throws {
+        self.revisions[dictionaryEntryID] = UUID()
         self.loadIfNeeded()
         var profiles = self.document?.profiles ?? []
         var changed = false
@@ -125,27 +162,202 @@ actor PronunciationDictionaryStore {
             changed = true
         }
         if changed {
-            try self.persist(Document(version: 1, profiles: profiles))
+            try self.persist(Document(
+                version: 1,
+                profiles: profiles
+            ))
         }
     }
 
     func delete(dictionaryEntryID: UUID) throws {
+        self.revisions[dictionaryEntryID] = UUID()
         self.loadIfNeeded()
         var profiles = self.document?.profiles ?? []
+        let audioIDs = profiles.filter { $0.dictionaryEntryID == dictionaryEntryID }
+            .flatMap(\.enrollments).compactMap(\.originalAudioID)
         profiles.removeAll { $0.dictionaryEntryID == dictionaryEntryID }
-        try self.persist(Document(version: 1, profiles: profiles))
+        try self.persist(Document(
+            version: 1,
+            profiles: profiles
+        ))
+        for id in audioIDs {
+            try? FileManager.default.removeItem(at: self.audioURL(id))
+        }
+    }
+
+    struct Revision: Equatable, Sendable {
+        let entry: UUID
+        let generation: UUID
+    }
+
+    func revision(for entryID: UUID) -> Revision {
+        let revision = self.revisions[entryID] ?? UUID()
+        self.revisions[entryID] = revision
+        return Revision(
+            entry: revision,
+            generation: self.replacementGeneration
+        )
+    }
+
+    /// Audio is written first; only the atomic profile write activates it for matching.
+    /// An interrupted write can leave an inactive audio file, never a partial active enrollment.
+    @discardableResult
+    func learnOriginalAudio(
+        entryID: UUID,
+        label: String,
+        evidenceID: UUID,
+        evidence: DictionaryLearningAudioEvidence,
+        capture: PronunciationEnrollmentCapture,
+        expectedRevision: Revision
+    ) throws -> Bool {
+        guard self.revision(for: entryID) == expectedRevision else {
+            throw PronunciationDictionaryStoreError.staleEvidence
+        }
+        self.loadIfNeeded()
+        guard capture.modelKey == evidence.modelKey, !capture.values.isEmpty,
+              capture.values.allSatisfy(\.isFinite), capture.sourceFrameCount > 0,
+              !evidence.samples.isEmpty, evidence.samples.count <= 238_080,
+              evidence.samples.allSatisfy(\.isFinite),
+              evidence.focalSampleRange.lowerBound >= 0,
+              evidence.focalSampleRange.upperBound <= evidence.samples.count,
+              !evidence.focalSampleRange.isEmpty,
+              evidence.sourceSampleRange.lowerBound >= 0,
+              evidence.sourceSampleRange.upperBound <= DictionaryLearningRecording.maximumSamples,
+              evidence.sourceSampleRange.count == evidence.samples.count
+        else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+        let focalRange = (evidence.sourceSampleRange.lowerBound + evidence.focalSampleRange.lowerBound)..<(evidence.sourceSampleRange.lowerBound + evidence.focalSampleRange.upperBound)
+        for profile in self.document?.profiles ?? [] {
+            if profile.dictionaryEntryID == entryID, profile.label.caseInsensitiveCompare(label) != .orderedSame {
+                throw PronunciationDictionaryStoreError.staleEvidence
+            }
+            for prior in profile.enrollments {
+                let sameOccurrence = prior.sourceRecordingID == evidence.recordingID && prior.sourceFocalRange == focalRange
+                if prior.originalAudioID == evidenceID {
+                    guard profile.dictionaryEntryID == entryID, profile.modelKey == capture.modelKey, sameOccurrence else {
+                        throw PronunciationDictionaryStoreError.inconsistentEnrollment
+                    }
+                    return false
+                }
+                if profile.dictionaryEntryID == entryID, profile.modelKey == capture.modelKey, sameOccurrence { return false }
+            }
+        }
+        let record = OriginalAudioRecord(
+            version: 1,
+            sampleRate: 16_000,
+            encoding: "float32-little-endian",
+            entryID: entryID,
+            intendedText: label,
+            evidenceID: evidenceID,
+            recordingID: evidence.recordingID,
+            modelKey: evidence.modelKey,
+            observedText: evidence.observedText,
+            sourceSampleRange: evidence.sourceSampleRange,
+            focalSampleRange: evidence.focalSampleRange,
+            sourceWordRange: evidence.sourceWordRange,
+            pcmFloat32: evidence.samples.withUnsafeBytes { Data($0) }
+        )
+        let url = self.audioURL(evidenceID)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONEncoder().encode(record).write(
+            to: url,
+            options: .atomic
+        )
+        var enrolled = capture
+        enrolled.extractorVersion = "parakeet-encoder-mean-l2-v1"
+        enrolled.originalAudioID = evidenceID
+        enrolled.observedText = evidence.observedText
+        enrolled.sourceRecordingID = evidence.recordingID
+        enrolled.sourceFocalRange = focalRange
+        do {
+            try self.upsert(
+                dictionaryEntryID: entryID,
+                label: label,
+                modelKey: capture.modelKey,
+                enrollments: [enrolled]
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            throw error
+        }
+        return true
+    }
+
+    func removeOriginalAudio(evidenceID: UUID) throws {
+        self.loadIfNeeded()
+        var profiles = self.document?.profiles ?? []
+        for index in profiles.indices {
+            profiles[index].enrollments.removeAll { $0.originalAudioID == evidenceID }
+        }
+        profiles.removeAll { $0.enrollments.isEmpty }
+        try self.persist(Document(
+            version: 1,
+            profiles: profiles
+        ))
+        try? FileManager.default.removeItem(at: self.audioURL(evidenceID))
+    }
+
+    private struct OriginalAudioRecord: Codable {
+        let version: Int
+        let sampleRate: Int
+        let encoding: String
+        let entryID: UUID
+        let intendedText: String
+        let evidenceID: UUID
+        let recordingID: UUID
+        let modelKey: String
+        let observedText: String
+        let sourceSampleRange: Range<Int>
+        let focalSampleRange: Range<Int>
+        let sourceWordRange: Range<Int>
+        let pcmFloat32: Data
+    }
+
+    private func audioURL(_ id: UUID) -> URL {
+        self.fileURL.deletingLastPathComponent().appendingPathComponent(
+            "pronunciation-audio",
+            isDirectory: true
+        )
+        .appendingPathComponent(id.uuidString).appendingPathExtension("json")
     }
 
     private func loadIfNeeded() {
         guard self.document == nil else { return }
         guard let data = try? Data(contentsOf: self.fileURL),
-              let decoded = try? JSONDecoder().decode(Document.self, from: data),
+              let decoded = try? JSONDecoder().decode(
+                  Document.self,
+                  from: data
+              ),
               decoded.version == 1
         else {
-            self.document = Document(version: 1, profiles: [])
+            self.document = Document(
+                version: 1,
+                profiles: []
+            )
             return
         }
         self.document = decoded
+        self.removeOrphanedAudio()
+    }
+
+    /// A crash before the profile commit leaves an inactive clip; discard it after loading valid metadata.
+    private func removeOrphanedAudio() {
+        let referenced = Set((self.document?.profiles ?? []).flatMap(\.enrollments).compactMap(\.originalAudioID))
+        let directory = self.audioURL(UUID()).deletingLastPathComponent()
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files where file.pathExtension == "json" {
+            guard let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent), !referenced.contains(id) else { continue }
+            // Another app process may be between its audio write and profile commit.
+            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+                  let modified = values.contentModificationDate, modified.timeIntervalSinceNow < -60
+            else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     private func persist(_ updated: Document) throws {
@@ -155,7 +367,15 @@ actor PronunciationDictionaryStore {
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        try encoder.encode(updated).write(to: self.fileURL, options: .atomic)
+        try encoder.encode(updated).write(
+            to: self.fileURL,
+            options: .atomic
+        )
+        let oldIDs = Set((self.document?.profiles ?? []).flatMap(\.enrollments).compactMap(\.originalAudioID))
         self.document = updated
+        let newIDs = Set(updated.profiles.flatMap(\.enrollments).compactMap(\.originalAudioID))
+        for id in oldIDs.subtracting(newIDs) {
+            try? FileManager.default.removeItem(at: self.audioURL(id))
+        }
     }
 }

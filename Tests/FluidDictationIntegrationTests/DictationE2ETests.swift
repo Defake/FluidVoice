@@ -3086,3 +3086,376 @@ final class SimpleUpdaterTests: XCTestCase {
         XCTAssertTrue(gate.begin())
     }
 }
+
+extension DictationE2ETests {
+    func testDictionaryLearningSelectsCorrectRepeatedOccurrence() throws {
+        let text = "open flued voice now then open flued voice now"
+        let words = text.split(separator: " ").enumerated().map { index, token in
+            let start = Double(index < 5 ? index : index + 100)
+            return ASRWordTiming(text: String(token), start: start, end: start + 0.4)
+        }
+        // Sample IDs verify copying/offsets only; this is not a speech recognition fixture.
+        let samples = (0..<(120 * 16_000)).map { Float($0) }
+        let now = Date(timeIntervalSince1970: 1_000)
+        let recording = try XCTUnwrap(DictionaryLearningRecording(
+            alignment: DictionaryLearningAlignment(modelKey: "parakeet-v3", words: words), samples: samples, now: now
+        ))
+        let selection = (text as NSString).range(of: "flued voice", options: .backwards)
+        let evidence = try DictionaryLearningAlignmentResolver.resolve(
+            recording: recording, deliveredTextBeforeEdit: text, selectedUTF16Range: selection,
+            observedText: "flued voice", now: now
+        )
+        XCTAssertEqual(evidence.recordingID, recording.id)
+        XCTAssertEqual(evidence.sourceWordRange, 6..<8)
+        XCTAssertGreaterThan(evidence.sourceSampleRange.lowerBound, 100 * 16_000)
+        XCTAssertLessThanOrEqual(evidence.samples.count, 238_080)
+        XCTAssertEqual(evidence.samples.first, samples[evidence.sourceSampleRange.lowerBound])
+        XCTAssertEqual(evidence.sourceSampleRange.lowerBound + evidence.focalSampleRange.lowerBound, 106 * 16_000)
+        XCTAssertEqual(evidence.sourceSampleRange.lowerBound + evidence.focalSampleRange.upperBound, Int(107.4 * 16_000))
+    }
+
+    func testDictionaryLearningPreservesFormattingAndRejectsAmbiguousRewrite() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        func receipt(_ text: String) throws -> DictionaryLearningRecording {
+            let words = text.split(separator: " ").enumerated().map { index, token in
+                ASRWordTiming(text: String(token), start: Double(index), end: Double(index) + 0.5)
+            }
+            return try XCTUnwrap(DictionaryLearningRecording(
+                alignment: DictionaryLearningAlignment(modelKey: "parakeet-v3", words: words),
+                samples: [Float](repeating: 0, count: 16_000 * 15), now: now
+            ))
+        }
+        let formatted = "Open, FLUED VOICE now."
+        let evidence = try DictionaryLearningAlignmentResolver.resolve(
+            recording: receipt("open flued voice now"), deliveredTextBeforeEdit: formatted,
+            selectedUTF16Range: (formatted as NSString).range(of: "FLUED VOICE"), observedText: "FLUED VOICE", now: now
+        )
+        XCTAssertEqual(evidence.sourceWordRange, 1..<3)
+
+        let withoutFiller = "please open flued voice now thanks"
+        let anchored = try DictionaryLearningAlignmentResolver.resolve(
+            recording: receipt("um please open flued voice now thanks"), deliveredTextBeforeEdit: withoutFiller,
+            selectedUTF16Range: (withoutFiller as NSString).range(of: "flued voice"), observedText: "flued voice", now: now
+        )
+        XCTAssertEqual(anchored.sourceWordRange, 3..<5)
+
+        let ambiguous = "please open flued voice now"
+        XCTAssertThrowsError(try DictionaryLearningAlignmentResolver.resolve(
+            recording: receipt("well open flued voice now and open flued voice now"), deliveredTextBeforeEdit: ambiguous,
+            selectedUTF16Range: (ambiguous as NSString).range(of: "flued voice"), observedText: "flued voice", now: now
+        )) { XCTAssertEqual($0 as? DictionaryLearningAlignmentError, .ambiguousSource) }
+        let rewritten = "please launch flued voice today"
+        XCTAssertThrowsError(try DictionaryLearningAlignmentResolver.resolve(
+            recording: receipt("open flued voice now"), deliveredTextBeforeEdit: rewritten,
+            selectedUTF16Range: (rewritten as NSString).range(of: "flued voice"), observedText: "flued voice", now: now
+        )) { XCTAssertEqual($0 as? DictionaryLearningAlignmentError, .ambiguousSource) }
+    }
+
+    func testDictionaryLearningRejectsExpiredAndInvalidEvidence() throws {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let words = [ASRWordTiming(text: "hello", start: 0.1, end: 0.5)]
+        let recording = try XCTUnwrap(DictionaryLearningRecording(
+            alignment: DictionaryLearningAlignment(modelKey: "parakeet-v3", words: words),
+            samples: [Float](repeating: 0, count: 16_000), now: now
+        ))
+        XCTAssertThrowsError(try DictionaryLearningAlignmentResolver.resolve(
+            recording: recording, deliveredTextBeforeEdit: "hello", selectedUTF16Range: NSRange(location: 0, length: 5),
+            observedText: "hello", now: recording.expiresAt
+        )) { XCTAssertEqual($0 as? DictionaryLearningAlignmentError, .expired) }
+        XCTAssertThrowsError(try DictionaryLearningAlignmentResolver.resolve(
+            recording: recording, deliveredTextBeforeEdit: "hello", selectedUTF16Range: NSRange(location: Int.max, length: 5),
+            observedText: "hello", now: now
+        )) { XCTAssertEqual($0 as? DictionaryLearningAlignmentError, .invalidSelection) }
+        let invalid = try XCTUnwrap(DictionaryLearningRecording(
+            alignment: DictionaryLearningAlignment(modelKey: "parakeet-v3", words: [ASRWordTiming(text: "hello", start: .nan, end: 0.5)]),
+            samples: [Float](repeating: 0, count: 16_000), now: now
+        ))
+        XCTAssertThrowsError(try DictionaryLearningAlignmentResolver.resolve(
+            recording: invalid, deliveredTextBeforeEdit: "hello", selectedUTF16Range: NSRange(location: 0, length: 5),
+            observedText: "hello", now: now
+        )) { XCTAssertEqual($0 as? DictionaryLearningAlignmentError, .invalidTiming) }
+    }
+}
+
+extension DictationE2ETests {
+    func testDictionaryLearningDurabilityIdempotencyAndDeletion() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("profiles.json")
+        let store = PronunciationDictionaryStore(fileURL: url)
+        let entryID = UUID()
+        let evidenceID = UUID()
+        let evidence = DictionaryLearningAudioEvidence(
+            recordingID: UUID(), modelKey: "parakeet-v3", observedText: "flued voice",
+            sourceWordRange: 1..<3, sourceSampleRange: 0..<3200, focalSampleRange: 1280..<2560,
+            samples: Array(repeating: 0, count: 3200)
+        )
+        let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 1, modelKey: "parakeet-v3")
+        let revision = await store.revision(for: entryID)
+        var inserted: [Bool] = []
+        for id in [evidenceID, evidenceID, UUID()] {
+            inserted.append(try await store.learnOriginalAudio(entryID: entryID, label: "FluidVoice", evidenceID: id, evidence: evidence, capture: capture, expectedRevision: revision))
+        }
+        XCTAssertEqual(inserted, [true, false, false], "Rollback must know whether this call actually inserted evidence")
+        do {
+            try await store.learnOriginalAudio(entryID: entryID, label: "ChangedMeaning", evidenceID: UUID(), evidence: evidence, capture: capture, expectedRevision: revision)
+            XCTFail("A reused dictionary UUID must not relabel old pronunciation evidence")
+        } catch { XCTAssertEqual(error as? PronunciationDictionaryStoreError, .staleEvidence) }
+        let conflictingEntry = UUID()
+        let conflictingRevision = await store.revision(for: conflictingEntry)
+        do {
+            try await store.learnOriginalAudio(entryID: conflictingEntry, label: "AnotherWord", evidenceID: evidenceID, evidence: evidence, capture: capture, expectedRevision: conflictingRevision)
+            XCTFail("An event UUID cannot overwrite another word's audio")
+        } catch { XCTAssertEqual(error as? PronunciationDictionaryStoreError, .inconsistentEnrollment) }
+        let loaded = await PronunciationDictionaryStore(fileURL: url).allProfiles()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.enrollments.count, 1, "Retrying one recording occurrence must not create multiple examples")
+        XCTAssertEqual(loaded.first?.enrollments.first?.observedText, "flued voice")
+        XCTAssertEqual(loaded.first?.isEligibleForMatching, true)
+        XCTAssertEqual(loaded.first?.enrollments.first?.values, capture.values)
+        let audioDirectory = directory.appendingPathComponent("pronunciation-audio")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: audioDirectory.path).count, 1)
+        try await store.delete(dictionaryEntryID: entryID)
+        let deleted = await store.allProfiles()
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: audioDirectory.path).isEmpty)
+        do {
+            try await store.learnOriginalAudio(entryID: entryID, label: "FluidVoice", evidenceID: UUID(), evidence: evidence, capture: capture, expectedRevision: revision)
+            XCTFail("Late extraction must not resurrect a deleted entry")
+        } catch {
+            XCTAssertEqual(error as? PronunciationDictionaryStoreError, .staleEvidence)
+        }
+    }
+
+    func testDictionaryLearningRejectsInvalidCaptureWithoutPartialProfile() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
+        let id = UUID()
+        let revision = await store.revision(for: id)
+        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "test", sourceWordRange: 0..<1, sourceSampleRange: 0..<1, focalSampleRange: 0..<1, samples: [0])
+        do {
+            try await store.learnOriginalAudio(entryID: id, label: "Test", evidenceID: UUID(), evidence: evidence, capture: PronunciationEnrollmentCapture(values: [.nan], sourceFrameCount: 1, modelKey: "parakeet-v3"), expectedRevision: revision)
+            XCTFail("Non-finite embeddings must never be activated")
+        } catch {
+            XCTAssertEqual(error as? PronunciationDictionaryStoreError, .inconsistentEnrollment)
+        }
+        let profiles = await store.allProfiles()
+        XCTAssertTrue(profiles.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        try await store.replaceAllProfiles([])
+        do {
+            try await store.learnOriginalAudio(entryID: id, label: "Test", evidenceID: UUID(), evidence: evidence, capture: PronunciationEnrollmentCapture(values: [1], sourceFrameCount: 1, modelKey: "parakeet-v3"), expectedRevision: revision)
+            XCTFail("Import must invalidate pending original-audio learning")
+        } catch { XCTAssertEqual(error as? PronunciationDictionaryStoreError, .staleEvidence) }
+    }
+
+    #if arch(arm64)
+    func testDictionaryLearningCombinedDecisionAndConflictingLabels() {
+        let id = UUID()
+        let otherID = UUID()
+        let sample = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 5, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "fluid boys")
+        let profile = PronunciationDictionaryProfile(dictionaryEntryID: id, label: "FluidVoice", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [sample])
+        XCTAssertTrue(DictionaryPronunciationDecision.accepts(score: 0.75, heardText: "Fluid boys!", profile: profile))
+        XCTAssertFalse(DictionaryPronunciationDecision.accepts(score: 0.69, heardText: "fluid boys", profile: profile))
+        XCTAssertFalse(DictionaryPronunciationDecision.accepts(score: 0.75, heardText: "other speech", profile: profile))
+        XCTAssertTrue(DictionaryPronunciationDecision.accepts(score: 0.9, heardText: "fluid voice", profile: profile))
+        XCTAssertFalse(DictionaryPronunciationDecision.accepts(score: .nan, heardText: "fluid boys", profile: profile))
+        let result = ASRResult(text: "fluid voice", confidence: 1, duration: 1, processingTime: 0, tokenTimings: [
+            TokenTiming(token: "▁fluid", tokenId: 1, startTime: 0, endTime: 0.24, confidence: 1),
+            TokenTiming(token: "▁voice", tokenId: 2, startTime: 0.24, endTime: 0.48, confidence: 1),
+        ])
+        let match = PronunciationWindowMatch(prototypeIndex: 0, score: 0.9, frameRange: 0..<6)
+        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match], profiles: [profile], labels: [id: "FluidVoice"]), "FluidVoice")
+        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match], profiles: [profile], labels: [id: "ChangedMeaning"]), result.text)
+        var incompatible = profile
+        incompatible.enrollments[0].extractorVersion = "another-vector-space"
+        XCTAssertFalse(incompatible.isEligibleForMatching)
+        let other = PronunciationDictionaryProfile(dictionaryEntryID: otherID, label: "Other", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [sample])
+        let competitor = PronunciationWindowMatch(prototypeIndex: 1, score: 0.88, frameRange: 0..<6)
+        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match, competitor], profiles: [profile, other], labels: [id: "FluidVoice", otherID: "Other"]), result.text)
+    }
+    #endif
+}
+
+private actor DictionaryLearningTestExtractor {
+    var calls = 0
+    let started: XCTestExpectation
+    let cancelled: XCTestExpectation
+    init(started: XCTestExpectation, cancelled: XCTestExpectation) {
+        self.started = started
+        self.cancelled = cancelled
+    }
+    func extract(_ evidence: DictionaryLearningAudioEvidence) async throws -> PronunciationEnrollmentCapture {
+        self.calls += 1
+        if self.calls == 1 {
+            self.started.fulfill()
+            do { try await Task.sleep(for: .seconds(30)) }
+            catch { self.cancelled.fulfill(); throw error }
+        }
+        return PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 1, modelKey: evidence.modelKey)
+    }
+}
+
+extension DictationE2ETests {
+    func testDictionaryLearningDefersToDictationAndRetriesOnce() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
+        let entry = SettingsStore.CustomDictionaryEntry(triggers: ["flued"], replacement: "Fluid")
+        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "flued", sourceWordRange: 0..<1, sourceSampleRange: 0..<1280, focalSampleRange: 0..<1280, samples: Array(repeating: 0, count: 1280))
+        let started = self.expectation(description: "Background extraction started")
+        let cancelled = self.expectation(description: "Dictation cancelled background work")
+        let extractor = DictionaryLearningTestExtractor(started: started, cancelled: cancelled)
+        var idle = true
+        let service = DictionaryAudioLearningService(store: store, extract: { try await extractor.extract($0) }, canProcess: { idle }, isCurrent: { $0 == entry })
+        let eventID = UUID()
+        service.learn(entry: entry, evidenceID: eventID, evidence: evidence)
+        service.learn(entry: entry, evidenceID: eventID, evidence: evidence)
+        await self.fulfillment(of: [started], timeout: 2)
+        XCTAssertEqual(service.pendingCount, 1)
+        idle = false
+        service.cancelForRecording()
+        await self.fulfillment(of: [cancelled], timeout: 2)
+        let duringDictation = await store.allProfiles()
+        XCTAssertTrue(duringDictation.isEmpty)
+        idle = true
+        service.activityDidEnd()
+        for _ in 0..<200 where service.pendingCount > 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(service.pendingCount, 0)
+        let profiles = await store.allProfiles()
+        XCTAssertEqual(profiles.first?.enrollments.count, 1)
+        let calls = await extractor.calls
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testDictionaryLearningQueueIsBoundedAndExpiresWithoutSaving() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
+        let entry = SettingsStore.CustomDictionaryEntry(triggers: ["flued"], replacement: "Fluid")
+        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "flued", sourceWordRange: 0..<1, sourceSampleRange: 0..<1, focalSampleRange: 0..<1, samples: [0])
+        let service = DictionaryAudioLearningService(store: store, lifetime: 0.05, extract: { _ in
+            XCTFail("Busy dictation must not run the background encoder")
+            throw CancellationError()
+        }, canProcess: { false }, isCurrent: { _ in true })
+        for _ in 0..<6 { service.learn(entry: entry, evidenceID: UUID(), evidence: evidence) }
+        XCTAssertEqual(service.pendingCount, 4)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(service.pendingCount, 0)
+        let profiles = await store.allProfiles()
+        XCTAssertTrue(profiles.isEmpty)
+    }
+}
+
+extension DictationE2ETests {
+    #if arch(arm64)
+    func testDictionaryLearningRealAudioRoundTrip() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["FLUIDVOICE_PRONUNCIATION_AUDIO"],
+              let modelPath = environment["FLUIDAUDIO_PARAKEET_MODEL_DIR"]
+        else { throw XCTSkip("Set the public real-speech fixture and local Parakeet model path") }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let samples = Array(try AudioConverter().resampleAudioFile(path: path).prefix(160_000))
+        let models = try await AsrModels.load(from: URL(fileURLWithPath: modelPath), version: .v3)
+        let manager = AsrManager(config: ASRConfig(tdtConfig: TdtConfig(blankId: AsrModelVersion.v3.blankId), encoderHiddenSize: 1024))
+        try await manager.initialize(models: models)
+        let result = try await manager.transcribe(samples, source: .microphone)
+        let words = WordAudioChunkExtractor.words(from: result.tokenTimings ?? [])
+        let selected = try XCTUnwrap(words.first { $0.startTime < 2 && $0.endTime - $0.startTime >= 0.24 && $0.text.count >= 5 })
+        let alignment = DictionaryLearningAlignment(modelKey: "parakeet-v3", words: words.map { ASRWordTiming(text: $0.text, start: $0.startTime, end: $0.endTime) })
+        let recording = try XCTUnwrap(DictionaryLearningRecording(alignment: alignment, samples: samples))
+        let delivered = words.map(\.text).joined(separator: " ")
+        let evidence = try DictionaryLearningAlignmentResolver.resolve(recording: recording, deliveredTextBeforeEdit: delivered, selectedUTF16Range: (delivered as NSString).range(of: selected.text), observedText: selected.text)
+        let entry = SettingsStore.CustomDictionaryEntry(triggers: [selected.text], replacement: "LearnedTarget")
+        let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
+        let service = DictionaryAudioLearningService(store: store, canProcess: { true }, isCurrent: { $0 == entry })
+        let started = ProcessInfo.processInfo.systemUptime
+        service.learn(entry: entry, evidenceID: UUID(), evidence: evidence)
+        for _ in 0..<1000 where service.pendingCount > 0 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(service.pendingCount, 0)
+        let backgroundWallMs = (ProcessInfo.processInfo.systemUptime-started)*1000
+        let profiles = await store.allProfiles()
+        let profile = try XCTUnwrap(profiles.first)
+        let capture = try XCTUnwrap(profile.enrollments.first)
+        XCTAssertEqual(capture.observedText, selected.text)
+        XCTAssertEqual(capture.sourceRecordingID, recording.id)
+        XCTAssertEqual(profile.enrollments.count, 1)
+        await manager.setPronunciationCustomizationEnabled(true)
+        let replay = try await manager.transcribe(evidence.samples, source: .microphone)
+        let captured = await manager.consumePronunciationEncoderFeatures()
+        let features = try XCTUnwrap(captured)
+        let prototype = PronunciationEmbedding(values: capture.values, sourceFrameCount: capture.sourceFrameCount)
+        let matches = PronunciationEmbeddingMatcher.allMatches(prototypes: [prototype], in: features)[0].map {
+            PronunciationWindowMatch(prototypeIndex: 0, score: $0.score, frameRange: $0.frameRange)
+        }
+        let output = FluidAudioProvider.applyPronunciationMatches(result: replay, matches: matches, profiles: profiles, labels: [entry.id: entry.replacement])
+        XCTAssertTrue(output.contains("LearnedTarget"), "The saved original example must be usable by the production matcher")
+        let provider = FluidAudioProvider(
+            modelOverride: .parakeetTDT, configureWordBoosting: false,
+            enhancementOptions: FluidAudioProviderEnhancementOptions(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: false, customDictionaryEntries: []),
+            pronunciationStore: store
+        )
+        try await provider.prepare()
+        let reuseStart = ProcessInfo.processInfo.systemUptime
+        let reused = try await provider.originalAudioEnrollment(evidence)
+        XCTAssertEqual(reused?.values, capture.values, "Warm encoder reuse must preserve the exact embedding")
+        print("ORIGINAL_AUDIO_ENCODER_REUSE ms=\((ProcessInfo.processInfo.systemUptime-reuseStart)*1000)")
+        let afterReuse = try await provider.transcribeFinal(evidence.samples)
+        XCTAssertEqual(afterReuse.text, replay.text, "Background enrollment must not change later transcription")
+        print("ORIGINAL_AUDIO_ROUNDTRIP backgroundWallMs=\(backgroundWallMs) samples=\(evidence.samples.count)")
+        await manager.cleanup()
+    }
+    #endif
+}
+
+extension DictationE2ETests {
+    #if arch(arm64)
+    func testDictionaryLearningComplementaryRecoveryWithControlledASRErrors() {
+        let id = UUID()
+        let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "fluid boys")
+        let profile = PronunciationDictionaryProfile(dictionaryEntryID: id, label: "FluidVoice", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [capture])
+        defer { ASRService.invalidateDictionaryCache() }
+        self.withRestoredDefaults(keys: [self.customDictionaryEntriesKey]) {
+            SettingsStore.shared.customDictionaryEntries = [.init(id: id, triggers: ["fluid boys"], replacement: "FluidVoice")]
+            ASRService.invalidateDictionaryCache()
+            // Explicit fault injection checks fallback wiring, not real-speech accuracy.
+            for (text, score, expected) in [("fluid boys", Float(0.2), "FluidVoice"), ("fluent voice", Float(0.95), "FluidVoice"), ("other words", Float(0.3), "other words")] {
+                let parts = text.split(separator: " ")
+                let result = ASRResult(text: text, confidence: 1, duration: 1, processingTime: 0, tokenTimings: [
+                    TokenTiming(token: "▁" + parts[0], tokenId: 1, startTime: 0, endTime: 0.24, confidence: 1),
+                    TokenTiming(token: "▁" + parts[1], tokenId: 2, startTime: 0.24, endTime: 0.48, confidence: 1),
+                ])
+                let acoustic = FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 0, score: score, frameRange: 0..<6)], profiles: [profile], labels: [id: "FluidVoice"])
+                XCTAssertEqual(ASRService.applyCustomDictionary(acoustic), expected)
+                if text == "fluid boys" { XCTAssertEqual(acoustic, text, "Text fallback must recover an acoustic miss") }
+                if text == "fluent voice" { XCTAssertEqual(ASRService.applyCustomDictionary(text), text, "Audio must recover a text-rule miss") }
+            }
+        }
+    }
+
+    func testDictionaryLearningReconciliationCostAtScale() {
+        let wordCount = 1200
+        let result = ASRResult(text: Array(repeating: "spoken", count: wordCount).joined(separator: " "), confidence: 1, duration: 600, processingTime: 0, tokenTimings: (0..<wordCount).map { index in
+            TokenTiming(token: "▁spoken", tokenId: 1, startTime: Double(index)*0.48, endTime: Double(index+1)*0.48, confidence: 1)
+        })
+        for count in [1, 10, 1000] {
+            let profiles = (0..<count).map { index in
+                PronunciationDictionaryProfile(dictionaryEntryID: UUID(), label: "Target\(index)", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "spoken")])
+            }
+            let labels = Dictionary(uniqueKeysWithValues: profiles.map { ($0.dictionaryEntryID, $0.label) })
+            let matches = (0..<count).map { PronunciationWindowMatch(prototypeIndex: $0, score: 0.95, frameRange: ($0*6)..<(($0+1)*6)) }
+            var durations: [Double] = []
+            for run in 0..<6 {
+                let start = ProcessInfo.processInfo.systemUptime
+                let output = FluidAudioProvider.applyPronunciationMatches(result: result, matches: matches, profiles: profiles, labels: labels)
+                let elapsed = (ProcessInfo.processInfo.systemUptime-start)*1000
+                XCTAssertTrue(output.contains("Target0"))
+                if run > 0 { durations.append(elapsed) }
+            }
+            print("LEARNING_RECONCILIATION profiles=\(count) audioSeconds=600 meanMs=\(durations.reduce(0,+)/Double(durations.count)) maxMs=\(durations.max()!)")
+        }
+    }
+    #endif
+}

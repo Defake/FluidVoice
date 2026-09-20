@@ -462,6 +462,21 @@ final class FluidAudioProvider: TranscriptionProvider {
         }
     }
 
+    /// Reuse the loaded unboosted encoder; the library API owns and releases only its prepared handles.
+    func originalAudioEnrollment(_ evidence: DictionaryLearningAudioEvidence) async throws -> PronunciationEnrollmentCapture? {
+        guard self.isReady, evidence.modelKey == self.pronunciationModelKey,
+              let manager = self.streamingAsrManager else { return nil }
+        let embedding = try await manager.pronunciationEmbedding(
+            audioSamples: evidence.samples,
+            focalSampleRange: evidence.focalSampleRange
+        )
+        return PronunciationEnrollmentCapture(
+            values: embedding.values,
+            sourceFrameCount: embedding.sourceFrameCount,
+            modelKey: evidence.modelKey
+        )
+    }
+
     func transcribeDictionaryTraining(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         guard let manager = self.streamingAsrManager else {
             throw NSError(
@@ -623,7 +638,9 @@ final class FluidAudioProvider: TranscriptionProvider {
                 "finishMs=\(Self.milliseconds(from: appendFinishedAt, to: finishFinishedAt))",
             source: "ASRBenchmark"
         )
-        return ASRTranscriptionResult(text: text, confidence: result.confidence)
+        return ASRTranscriptionResult(
+            text: text, confidence: result.confidence, dictionaryLearningAlignment: self.learningAlignment(for: result)
+        )
     }
 
     private static func milliseconds(from start: TimeInterval, to end: TimeInterval) -> String {
@@ -660,7 +677,7 @@ final class FluidAudioProvider: TranscriptionProvider {
         guard self.effectivePronunciationMatchingEnabled else { return [] }
         let labels = Self.dictionaryLabels(from: self.effectiveCustomDictionaryEntries)
         let stored = await self.pronunciationStore.profiles(modelKey: self.pronunciationModelKey)
-        return stored.filter { $0.enrollments.count >= 3 && labels[$0.dictionaryEntryID] != nil }
+        return stored.filter { $0.isEligibleForMatching && labels[$0.dictionaryEntryID] != nil }
     }
 
     private static func pronunciationPrototype(_ profile: PronunciationDictionaryProfile) -> PronunciationEmbedding? {
@@ -720,6 +737,13 @@ final class FluidAudioProvider: TranscriptionProvider {
         }
     }
 
+    private func learningAlignment(for result: ASRResult) -> DictionaryLearningAlignment? {
+        guard SettingsStore.shared.automaticDictionaryLearningEnabled, !self.isWordBoostingActive,
+              let timings = result.tokenTimings, !timings.isEmpty
+        else { return nil }
+        return DictionaryLearningAlignment(modelKey: self.pronunciationModelKey, words: Self.makeWordTimings(from: timings))
+    }
+
     private func transcribeFinalResult(
         _ samples: [Float], manager: AsrManager
     ) async throws -> (result: ASRTranscriptionResult, tokenTimings: [TokenTiming]?, textMayBeCorrected: Bool) { // swiftlint:disable:this discouraged_optional_collection
@@ -738,7 +762,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 modelKey: self.pronunciationModelKey
             )
             profiles = storedProfiles.compactMap { storedProfile in
-                guard storedProfile.enrollments.count >= 3,
+                guard storedProfile.isEligibleForMatching,
                       let currentLabel = dictionaryLabels[storedProfile.dictionaryEntryID]
                 else { return nil }
                 var profile = storedProfile
@@ -756,7 +780,7 @@ final class FluidAudioProvider: TranscriptionProvider {
             let features = await manager.consumePronunciationEncoderFeatures()
             await manager.setPronunciationCustomizationEnabled(false)
             guard let features, !profiles.isEmpty else {
-                return (ASRTranscriptionResult(text: result.text, confidence: result.confidence), result.tokenTimings, textMayBeCorrected)
+                return (ASRTranscriptionResult(text: result.text, confidence: result.confidence, dictionaryLearningAlignment: self.learningAlignment(for: result)), result.tokenTimings, textMayBeCorrected)
             }
             let startedAt = Date().timeIntervalSince1970
             let corrected = self.applyPronunciationMatches(result: result, features: features, profiles: profiles)
@@ -765,7 +789,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 "PRONUNCIATION_MATCH profiles=\(profiles.count) elapsedMs=\(elapsedMs) changed=\(corrected != result.text)",
                 source: "PronunciationMatching"
             )
-            return (ASRTranscriptionResult(text: corrected, confidence: result.confidence), result.tokenTimings, textMayBeCorrected)
+            return (ASRTranscriptionResult(text: corrected, confidence: result.confidence, dictionaryLearningAlignment: self.learningAlignment(for: result)), result.tokenTimings, textMayBeCorrected)
         } catch {
             _ = await manager.consumePronunciationEncoderFeatures()
             await manager.setPronunciationCustomizationEnabled(false)
@@ -835,6 +859,8 @@ final class FluidAudioProvider: TranscriptionProvider {
         let words = WordAudioChunkExtractor.words(from: timings)
         guard !words.isEmpty else { return result.text }
 
+        let wordIndex = WordAudioOverlapIndex(words: words)
+
         struct Candidate {
             let label: String
             let score: Float
@@ -849,23 +875,48 @@ final class FluidAudioProvider: TranscriptionProvider {
             else { continue }
             let startTime = Double(match.frameRange.lowerBound) * 0.08
             let endTime = Double(match.frameRange.upperBound) * 0.08
-            let indices = WordAudioChunkExtractor.substantiallyOverlappingWordIndices(
-                in: words,
+            let indices = wordIndex.substantiallyOverlappingWordIndices(
                 startTime: startTime,
                 endTime: endTime
             )
             guard !indices.isEmpty else { continue }
+            let profile = profiles[match.prototypeIndex]
+            if profile.hasOriginalAudio {
+                guard profile.label.caseInsensitiveCompare(label) == .orderedSame else { continue }
+                let heard = indices.map { words[$0].text }.joined(separator: " ")
+                guard DictionaryPronunciationDecision.accepts(
+                    score: match.score, heardText: heard, profile: profile
+                ) else { continue }
+            }
             candidates.append(Candidate(label: label, score: match.score, wordIndices: indices))
         }
 
-        var claimed = Set<Int>()
-        var accepted: [Candidate] = []
-        for candidate in candidates.sorted(by: {
+        var leaders: [Int: [(label: String, score: Float)]] = [:]
+        let sortedCandidates = candidates.sorted {
             if $0.score != $1.score { return $0.score > $1.score }
             if $0.wordIndices.first != $1.wordIndices.first { return ($0.wordIndices.first ?? 0) < ($1.wordIndices.first ?? 0) }
             return $0.label < $1.label
-        }) {
+        }
+        // Only the two strongest distinct labels per word are needed for a confidence margin.
+        for candidate in sortedCandidates {
+            let label = candidate.label.lowercased()
+            for index in candidate.wordIndices {
+                var top = leaders[index] ?? []
+                if top.count < 2, !top.contains(where: { $0.label == label }) {
+                    top.append((label, candidate.score))
+                    leaders[index] = top
+                }
+            }
+        }
+        var claimed = Set<Int>()
+        var accepted: [Candidate] = []
+        for candidate in sortedCandidates {
             guard candidate.wordIndices.allSatisfy({ !claimed.contains($0) }) else { continue }
+            let label = candidate.label.lowercased()
+            let ambiguous = candidate.wordIndices.contains { index in
+                (leaders[index] ?? []).contains { $0.label != label && $0.score > candidate.score - 0.05 }
+            }
+            guard !ambiguous else { continue }
             accepted.append(candidate)
             claimed.formUnion(candidate.wordIndices)
             DebugLogger.shared.info(

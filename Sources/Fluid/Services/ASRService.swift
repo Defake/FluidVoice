@@ -644,6 +644,7 @@ final class ASRService: ObservableObject {
 
     func acquireExclusiveActivity(_ activity: ASRExclusiveActivity) throws -> ASRActivityLease {
         guard let activeActivityLease = self.activeActivityLease else {
+            DictionaryAudioLearningService.shared.cancelForRecording()
             let lease = ASRActivityLease(id: UUID(), activity: activity)
             self.activeActivityLease = lease
             self.activeExclusiveActivity = activity
@@ -665,6 +666,7 @@ final class ASRService: ObservableObject {
         #endif
         self.activeActivityLease = nil
         self.activeExclusiveActivity = nil
+        DictionaryAudioLearningService.shared.activityDidEnd()
 
         guard self.providerResetPending else { return }
         self.providerResetPending = false
@@ -1906,6 +1908,8 @@ final class ASRService: ObservableObject {
     // during long sessions where reallocation occurs frequently.
     private let audioBuffer = ThreadSafeAudioBuffer()
     private var lastCompletedAudioSnapshot: DictationAudioSnapshot?
+    private var lastDictionaryLearningRecording: DictionaryLearningRecording?
+    private var dictionaryLearningExpiryTask: Task<Void, Never>?
 
     // Streaming transcription state (no VAD)
     private let streamingTaskLifecycle = StreamingTaskLifecycle()
@@ -1946,6 +1950,35 @@ final class ASRService: ObservableObject {
     }
 
     private var lastAudioLevelSentAt: TimeInterval = 0
+
+    private func retainDictionaryLearningRecording(_ recording: DictionaryLearningRecording?) {
+        self.dictionaryLearningExpiryTask?.cancel()
+        self.dictionaryLearningExpiryTask = nil
+        self.lastDictionaryLearningRecording = recording
+        guard let id = recording?.id else { return }
+        self.dictionaryLearningExpiryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(DictionaryLearningRecording.lifetime))
+            guard !Task.isCancelled, let self, self.lastDictionaryLearningRecording?.id == id else { return }
+            self.lastDictionaryLearningRecording = nil
+            self.dictionaryLearningExpiryTask = nil
+        }
+    }
+
+    func originalAudioEnrollment(_ evidence: DictionaryLearningAudioEvidence) async throws -> PronunciationEnrollmentCapture {
+        try Task.checkCancellation()
+        guard self.activeExclusiveActivity == nil else { throw CancellationError() }
+        #if arch(arm64)
+        if let provider = self.fluidAudioProvider,
+           let capture = try await provider.originalAudioEnrollment(evidence)
+        { return capture }
+        #endif
+        return try await OriginalAudioEmbeddingExtractor.extract(evidence)
+    }
+
+    func consumeDictionaryLearningRecording() -> DictionaryLearningRecording? {
+        defer { self.retainDictionaryLearningRecording(nil) }
+        return self.lastDictionaryLearningRecording
+    }
 
     func consumeLastCompletedAudioSnapshot() -> DictationAudioSnapshot? {
         let snapshot = self.lastCompletedAudioSnapshot
@@ -2567,6 +2600,7 @@ final class ASRService: ObservableObject {
             DebugLogger.shared.warning("START() blocked - \(message)", source: "ASRService")
             return .failed
         }
+        self.retainDictionaryLearningRecording(nil)
         self.audioCaptureStartGeneration &+= 1
         let startGeneration = self.audioCaptureStartGeneration
         self.isStarting = true
@@ -3200,6 +3234,7 @@ final class ASRService: ObservableObject {
             self.lastDictionaryTrainingResult = nil
         }
         self.lastCompletedAudioSnapshot = nil
+        self.retainDictionaryLearningRecording(nil)
         let stopStartedAt = Date().timeIntervalSince1970
         let traceStartedAt = ProcessInfo.processInfo.systemUptime
         var tracePreviousAt = traceStartedAt
@@ -3519,6 +3554,12 @@ final class ASRService: ObservableObject {
             }
 
             // Do not update self.finalText here to avoid instant binding insert in playground
+            if !useDictionaryTrainingPath, SettingsStore.shared.automaticDictionaryLearningEnabled,
+               let alignment = result.dictionaryLearningAlignment
+            {
+                self.retainDictionaryLearningRecording(DictionaryLearningRecording(alignment: alignment, samples: capturedPCM))
+            }
+
             let textWithoutFillers = ASRService.removeFillerWords(result.text)
             let dictionaryText = useDictionaryTrainingPath
                 ? textWithoutFillers

@@ -358,6 +358,14 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             replacement: self.intendedText,
             triggers: triggers
         )
+        if let evidence = self.candidate.audioEvidence, let entry = mergedEntries.first(where: {
+            $0.replacement.caseInsensitiveCompare(self.intendedText) == .orderedSame
+        }) {
+            // Scheduled work runs after this synchronous text save returns.
+            DictionaryAudioLearningService.shared.learn(
+                entry: entry, evidenceID: self.candidate.id, evidence: evidence
+            )
+        }
         guard mergedEntries != currentEntries else {
             self.completeSave(title: "Already in Dictionary")
             return
