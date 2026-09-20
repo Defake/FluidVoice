@@ -60,3 +60,10 @@ The provider takes a bounded profile snapshot from the store actor on the first 
 The real-audio approval regression now starts with an empty profile snapshot, approves and learns the correction, resets for the next recording, and verifies actual replacement in short, word-timed and 60-second incremental dictation with Advanced Preview off. It also checks that disabling automatic learning and Advanced Preview restores baseline ASR. This repeated-recording proof is functional validation, not held-out recognition accuracy.
 
 Validation: 76 dictionary/pronunciation and meeting-policy tests passed together, plus the separate production meeting-provider isolation test. Scoped provider lint is clean; full-source formatting and strict lint ran with existing repository violations preserved. The signed private FI build succeeded. Debug pronunciation timings are not treated as optimized latency measurements.
+
+
+## Reproducible evaluation
+
+The evaluation executables, comparison script, commands and machine-readable baseline now live in tools/DictionaryLearningEvaluation. A fresh Release run of both executables reproduced the saved results exactly. Model files, audio and large acoustic vectors remain external local inputs.
+
+The later real Huang occurrence was transcribed as Hong Kong and produced no acoustic hit above 0.70 from its earlier enrollment. This is an important unresolved example of the mean-pooled encoder's limitations; no threshold was lowered to make it pass. The multilingual combined result still equals text-only (19 true, 2 false substitutions) rather than exceeding it. Improvement on held-out personalized names remains an open acceptance gate, despite functional approval-to-reuse and composition regression tests passing.
