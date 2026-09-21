@@ -1410,8 +1410,8 @@ struct ContentView: View {
                 self.sidebarNavigationLink(.fileTranscription, title: "File Transcription", systemImage: "doc.text.fill")
                 self.sidebarNavigationLink(
                     .meetingTranscription,
-                    title: "Fluid Notes",
-                    systemImage: "note.text"
+                    title: "Meet Assist",
+                    systemImage: "person.2.fill"
                 )
             } header: {
                 self.sidebarSectionHeader("Use")
@@ -5662,7 +5662,7 @@ private enum SidebarSymbolCache {
         "text.book.closed.fill",
         "terminal.fill",
         "doc.text.fill",
-        "note.text",
+        "person.2.fill",
         "clock.arrow.circlepath",
         "chart.bar.fill",
         "house.fill",

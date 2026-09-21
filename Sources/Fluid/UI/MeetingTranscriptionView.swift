@@ -432,9 +432,9 @@ struct MeetingTranscriptionView: View {
             let trackCount = MeetingPCMStoragePolicy.trackCount(for: self.setupDraft.mode)
             blockingMessage = "Free at least \(MeetingPCMStoragePolicy.requiredFreeSpaceDescription(trackCount: trackCount)) of storage before recording."
         } else if !CPUArchitecture.isAppleSilicon {
-            blockingMessage = "Fluid Notes requires an Apple silicon Mac."
+            blockingMessage = "Meet Assist requires an Apple silicon Mac."
         } else if !modelReady {
-            blockingMessage = "Load the supplied speaker separation model in Fluid Notes settings before recording."
+            blockingMessage = "Load the supplied speaker separation model in Meet Assist settings before recording."
         } else {
             blockingMessage = nil
         }
@@ -1299,12 +1299,12 @@ private struct MeetingTranscriptionHeader: View {
 
     var body: some View {
         HStack(spacing: self.theme.metrics.spacing.md) {
-            Image(systemName: "note.text")
+            Image(systemName: "person.2.fill")
                 .font(self.theme.typography.titleIcon)
                 .foregroundStyle(self.theme.palette.accent)
 
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                Text("Fluid Notes")
+                Text("Meet Assist")
                     .font(self.theme.typography.title)
                     .foregroundStyle(self.theme.palette.primaryText)
                 Text("Your conversations, kept close.")
@@ -1327,7 +1327,7 @@ private struct MeetingTranscriptionHeader: View {
 
                 MeetingHeaderIconButton(
                     systemImage: "gearshape",
-                    label: "Fluid Notes settings",
+                    label: "Meet Assist settings",
                     action: self.onOpenMeetingSettings
                 )
                 .disabled(!self.canEditSetup)
@@ -1806,7 +1806,7 @@ private struct MeetingRecordingSettingsSheet: View {
                     .foregroundStyle(self.theme.palette.accent)
 
                 VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                    Text(self.isFirstSetup ? "Set up Fluid Notes" : "Fluid Notes settings")
+                    Text(self.isFirstSetup ? "Set up Meet Assist" : "Meet Assist settings")
                         .font(self.theme.typography.title)
                     Text("Set recording defaults and choose this meeting’s audio source.")
                         .font(self.theme.typography.bodySmall)

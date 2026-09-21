@@ -1,5 +1,5 @@
-@preconcurrency import AVFoundation
 import AudioToolbox
+@preconcurrency import AVFoundation
 import CoreMedia
 import Foundation
 
@@ -19,12 +19,12 @@ nonisolated struct MeetingPCMFormatContract: Equatable, Sendable {
 
     var description: String {
         let layoutDescription: String
-        switch layout {
+        switch self.layout {
         case .mono: layoutDescription = "mono"
         case .stereo: layoutDescription = "stereo"
         case let .explicit(bytes): layoutDescription = "explicit(\(bytes.count) bytes)"
         }
-        return "lpcm-f32 rate=\(sampleRate) channels=\(channelCount) layout=\(layoutDescription)"
+        return "lpcm-f32 rate=\(self.sampleRate) channels=\(self.channelCount) layout=\(layoutDescription)"
     }
 
     init(audioFormat: AVAudioFormat) throws {
@@ -56,7 +56,8 @@ nonisolated struct MeetingPCMFormatContract: Equatable, Sendable {
         } else {
             let expectedBytes = UInt64(asbd.mChannelsPerFrame) * 4
             guard UInt64(asbd.mBytesPerFrame) == expectedBytes,
-                  UInt64(asbd.mBytesPerPacket) == expectedBytes else {
+                  UInt64(asbd.mBytesPerPacket) == expectedBytes
+            else {
                 throw MeetingPCMFormatContractError.unsupported("invalid interleaved Float32 byte layout")
             }
         }
@@ -73,14 +74,23 @@ nonisolated struct MeetingPCMFormatContract: Equatable, Sendable {
         }
         if channelCount == 1,
            tag == nil || tag == kAudioChannelLayoutTag_Mono ||
-           tag == (kAudioChannelLayoutTag_DiscreteInOrder | UInt32(channelCount)) {
+           tag == (kAudioChannelLayoutTag_DiscreteInOrder | UInt32(channelCount))
+        {
             return .mono
         }
         if channelCount == 2,
-           tag == nil || tag == kAudioChannelLayoutTag_Stereo {
+           tag == nil || tag == kAudioChannelLayoutTag_Stereo
+        {
             return .stereo
         }
-        return .explicit(layoutData ?? Data())
+        if let layoutData { return .explicit(layoutData) }
+        // CoreAudio can expose a built-in microphone array as layout-less multichannel LPCM.
+        // Treat those channels as discrete-in-order so the capture description and the safe
+        // AVAudioFormat fallback below share one stable contract.
+        let discreteLayout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(channelCount)
+        )
+        return .explicit(Self.layoutData(discreteLayout) ?? Data())
     }
 
     static func layoutData(_ layout: AVAudioChannelLayout?) -> Data? {
@@ -98,6 +108,36 @@ nonisolated struct MeetingPCMFormatContract: Equatable, Sendable {
         var size = 0
         guard let ptr = CMAudioFormatDescriptionGetChannelLayout(desc, sizeOut: &size), size > 0 else { return nil }
         return Data(bytes: ptr, count: size)
+    }
+}
+
+/// Builds an AVAudioFormat without trusting the imported CM initializer's nonoptional type.
+/// On macOS 27 it can return a null object for layout-less three-channel LPCM.
+nonisolated enum MeetingPCMFormatResolver {
+    static func resolve(_ description: CMFormatDescription) throws -> AVAudioFormat {
+        guard let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(description),
+              streamDescription.pointee.mChannelsPerFrame > 0
+        else {
+            throw MeetingPCMFormatContractError.unsupported("missing LPCM stream description")
+        }
+
+        let describedFormat: AVAudioFormat? = AVAudioFormat(cmAudioFormatDescription: description)
+        if let describedFormat { return describedFormat }
+
+        let channels = streamDescription.pointee.mChannelsPerFrame
+        guard let layout = AVAudioChannelLayout(
+            layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels
+        ),
+            let discreteFormat = AVAudioFormat(
+                streamDescription: streamDescription,
+                channelLayout: layout
+            )
+        else {
+            throw MeetingPCMFormatContractError.unsupported(
+                "cannot construct audio format for \(channels) layout-less channels"
+            )
+        }
+        return discreteFormat
     }
 }
 

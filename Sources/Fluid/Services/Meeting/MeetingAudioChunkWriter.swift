@@ -589,7 +589,7 @@ final nonisolated class MeetingAudioChunkWriter: @unchecked Sendable {
                     "layoutBytes=\(diagnosticLayoutSize) layoutTag=\(layout?.pointee.mChannelLayoutTag ?? 0) " +
                     "frames=\(CMSampleBufferGetNumSamples(sampleBuffer))")
         }
-        let clientFormat = AVAudioFormat(cmAudioFormatDescription: formatDescription)
+        let clientFormat = try MeetingPCMFormatResolver.resolve(formatDescription)
         if DebugLogger.diagnosticsEnabled {
             FileLogger.shared.appendSync(line: "[MeetingPCMProbe] after-format track=\(self.track.kind.rawValue) chunk=\(sequence)")
         }
@@ -892,10 +892,16 @@ final nonisolated class MeetingAudioChunkWriter: @unchecked Sendable {
         let delta = presentationTime - original
         for index in timings.indices {
             if timings[index].presentationTimeStamp.isValid {
-                timings[index].presentationTimeStamp = timings[index].presentationTimeStamp + delta
+                timings[index].presentationTimeStamp = CMTimeAdd(
+                    timings[index].presentationTimeStamp,
+                    delta
+                )
             }
             if timings[index].decodeTimeStamp.isValid {
-                timings[index].decodeTimeStamp = timings[index].decodeTimeStamp + delta
+                timings[index].decodeTimeStamp = CMTimeAdd(
+                    timings[index].decodeTimeStamp,
+                    delta
+                )
             }
         }
         var copy: CMSampleBuffer?

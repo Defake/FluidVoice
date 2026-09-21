@@ -16,6 +16,56 @@ private final class MeetingPCMFailureCounter: @unchecked Sendable {
 /// P1a's sink fixtures intentionally use real ready CMSampleBuffers.  These tests stay in the
 /// integration target because the sink is an internal harness type, not a package product.
 final class MeetingAudioChunkSinkTests: XCTestCase {
+    func testLayoutlessThreeChannelMicrophoneResolvesCopiesConvertsAndWrites() async throws {
+        let root = try self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sample = try self.makeRawSampleBuffer(channelCount: 3, layoutTag: nil, frameCount: 512, pts: 1.25)
+        let description = try XCTUnwrap(CMSampleBufferGetFormatDescription(sample))
+        XCTAssertNil(MeetingPCMFormatContract.layoutData(description))
+
+        let format = try MeetingPCMFormatResolver.resolve(description)
+        XCTAssertEqual(format.channelCount, 3)
+        XCTAssertNotNil(format.channelLayout)
+
+        let copied = try XCTUnwrap(MeetingLiveSampleCopy.copy(sample))
+        XCTAssertEqual(copied.buffer.format.channelCount, 1)
+        XCTAssertEqual(copied.buffer.frameLength, 512)
+        XCTAssertEqual(copied.pts.seconds, 1.25, accuracy: 0.000_001)
+        let copiedSamples = Array(UnsafeBufferPointer(
+            start: try XCTUnwrap(copied.buffer.floatChannelData?[0]),
+            count: Int(copied.buffer.frameLength)
+        ))
+        XCTAssertTrue(copiedSamples.allSatisfy { abs($0 - 0.25) < 0.000_001 })
+
+        let mono = try self.convertToMono(copied.buffer)
+        XCTAssertEqual(mono.format.channelCount, 1)
+        XCTAssertEqual(mono.format.sampleRate, 16_000)
+        XCTAssertGreaterThan(mono.frameLength, 0)
+
+        let track = MeetingAudioTrack(
+            id: UUID(), kind: .microphone, sourceIdentifier: "test", sourceDisplayName: "Test",
+            format: nil,
+            timebase: MeetingTimebaseMetadata(
+                startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1,
+                firstPresentationTime: nil
+            ),
+            health: .waiting, chunks: []
+        )
+        let failures = MeetingPCMFailureCounter()
+        let writer = try MeetingAudioChunkWriter(
+            track: track, sessionDirectory: root, chunkDuration: 60
+        ) { event in
+            if case .interrupted(.writerFailure, _, _) = event { failures.increment() }
+        }
+        writer.enqueue(sample)
+        let result = await writer.stop()
+        let chunk = try XCTUnwrap(result.chunks.first)
+        XCTAssertEqual(chunk.finalizationState, .finalized)
+        XCTAssertEqual(chunk.captureAnalysisAsset?.channelCount, 3)
+        XCTAssertEqual(chunk.captureAnalysisAsset?.frameCount, 512)
+        XCTAssertEqual(failures.value(), 0)
+    }
+
     func testWriterAcceptsEquivalentRawMonoLayoutsWithoutRotatingOrFailing() async throws {
         let root = try self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -246,6 +296,34 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         let partials = try FileManager.default.contentsOfDirectory(atPath: root.path)
             .filter { $0.contains(".partial.") }
         XCTAssertTrue(partials.isEmpty)
+    }
+
+    private func convertToMono(_ source: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        let monoFormat = try XCTUnwrap(AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        ))
+        let converter = try XCTUnwrap(AVAudioConverter(from: source.format, to: monoFormat))
+        let capacity = AVAudioFrameCount(
+            (Double(source.frameLength) * monoFormat.sampleRate / source.format.sampleRate).rounded(.up)
+        ) + 16
+        let output = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: capacity))
+        var supplied = false
+        var conversionError: NSError?
+        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+            if supplied {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            supplied = true
+            inputStatus.pointee = .haveData
+            return source
+        }
+        if let conversionError { throw conversionError }
+        XCTAssertNotEqual(status, .error)
+        return output
     }
 
     private func makeDirectory() throws -> URL {

@@ -122,7 +122,6 @@ nonisolated enum MeetingLiveBubbleComposer {
         }
         return rows
     }
-
 }
 
 nonisolated enum MeetingLiveTimeConversion {
@@ -145,8 +144,9 @@ final nonisolated class MeetingLiveOriginBox: @unchecked Sendable {
         self.lock.lock()
         defer { self.lock.unlock() }
         if let existing = self.origin {
-            if pts < existing { self.origin = pts }
-            return self.origin!
+            let earliest = min(pts, existing)
+            self.origin = earliest
+            return earliest
         }
         self.origin = pts
         return pts
@@ -193,8 +193,7 @@ nonisolated enum MeetingLiveSampleCopy {
     static func copy(_ sampleBuffer: CMSampleBuffer) -> Sample? {
         guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else { return nil }
         guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
-              let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription),
-              let sourceFormat = AVAudioFormat(streamDescription: streamDescription)
+              let sourceFormat = try? MeetingPCMFormatResolver.resolve(formatDescription)
         else { return nil }
 
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
@@ -211,13 +210,70 @@ nonisolated enum MeetingLiveSampleCopy {
         )
         guard status == noErr else { return nil }
 
+        let copiedBuffer: AVAudioPCMBuffer
+        if sourceFormat.channelCount > 2,
+           MeetingPCMFormatContract.layoutData(formatDescription) == nil
+        {
+            guard let mono = self.downmixLayoutlessMultichannel(buffer) else { return nil }
+            copiedBuffer = mono
+        } else {
+            copiedBuffer = buffer
+        }
+
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard pts.isValid, pts.isNumeric else { return nil }
 
         var duration = CMSampleBufferGetDuration(sampleBuffer)
         if !duration.isValid || !duration.isNumeric || duration <= .zero {
-            duration = CMTime(value: CMTimeValue(frameCount), timescale: CMTimeScale(sourceFormat.sampleRate.rounded()))
+            duration = CMTime(value: CMTimeValue(frameCount), timescale: CMTimeScale(copiedBuffer.format.sampleRate.rounded()))
         }
-        return Sample(buffer: buffer, pts: pts, duration: duration)
+        return Sample(buffer: copiedBuffer, pts: pts, duration: duration)
+    }
+
+    private static func downmixLayoutlessMultichannel(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let channelCount = Int(source.format.channelCount)
+        guard channelCount > 1,
+              source.format.commonFormat == .pcmFormatFloat32,
+              let monoFormat = AVAudioFormat(
+                  commonFormat: .pcmFormatFloat32,
+                  sampleRate: source.format.sampleRate,
+                  channels: 1,
+                  interleaved: false
+              ),
+              let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: source.frameLength),
+              let destination = mono.floatChannelData?[0]
+        else { return nil }
+
+        let frameCount = Int(source.frameLength)
+        let buffers = UnsafeMutableAudioBufferListPointer(source.mutableAudioBufferList)
+        if source.format.isInterleaved {
+            guard buffers.count == 1,
+                  buffers[0].mNumberChannels == source.format.channelCount,
+                  let data = buffers[0].mData?.assumingMemoryBound(to: Float.self)
+            else { return nil }
+            for frame in 0..<frameCount {
+                var sum: Double = 0
+                let offset = frame * channelCount
+                for channel in 0..<channelCount {
+                    sum += Double(data[offset + channel])
+                }
+                destination[frame] = Float(sum / Double(channelCount))
+            }
+        } else {
+            guard buffers.count == channelCount,
+                  buffers.allSatisfy({ $0.mNumberChannels == 1 && $0.mData != nil })
+            else { return nil }
+            let channelData = buffers.compactMap { $0.mData?.assumingMemoryBound(to: Float.self) }
+            guard channelData.count == channelCount else { return nil }
+            for frame in 0..<frameCount {
+                var sum: Double = 0
+                for channel in 0..<channelCount {
+                    sum += Double(channelData[channel][frame])
+                }
+                destination[frame] = Float(sum / Double(channelCount))
+            }
+        }
+        mono.frameLength = source.frameLength
+        return mono
     }
 }
