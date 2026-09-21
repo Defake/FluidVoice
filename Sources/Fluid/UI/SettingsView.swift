@@ -1593,6 +1593,12 @@ struct SettingsView: View {
 
                         Divider().padding(.vertical, 4)
 
+                        DictionaryMatcherExperimentSettings()
+                            .disabled(self.asr.isRunningOrStarting)
+                            .settingsSearchTarget(.dictionaryMatcherExperiments)
+
+                        Divider().padding(.vertical, 4)
+
                         self.settingsToggleRow(
                             title: "Faster Long Dictation",
                             description: "For long recordings, reuse completed live windows and process only the remaining tail when you stop.",

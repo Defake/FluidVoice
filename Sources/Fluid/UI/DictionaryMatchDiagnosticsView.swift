@@ -26,7 +26,11 @@ struct DictionaryMatchDiagnosticsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-
+            if DictionaryMatcherExperiment.positiveEnabled || DictionaryMatcherExperiment.compareNegatives {
+                Text("Experimental comparisons are enabled. Replay scores below show the original matcher; use live dictation to compare results. This cutoff controls fallback matching.")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+            }
             HStack {
                 Text(self.running ? "Checking this recording…" : "Pronunciation match")
                     .font(self.theme.typography.bodyStrong)

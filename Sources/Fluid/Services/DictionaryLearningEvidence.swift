@@ -4,6 +4,8 @@ import Foundation
 nonisolated struct DictionaryLearningAlignment: Sendable {
     let modelKey: String
     let words: [ASRWordTiming]
+    var acousticOutput: String? = nil
+    var acousticEvidence: [DictionaryAcousticEvidence] = []
 }
 
 /// Short-lived ownership of original PCM, independent from the consume-once history snapshot.
@@ -21,6 +23,7 @@ nonisolated struct DictionaryLearningRecording: Sendable {
         id: UUID = UUID(),
         alignment: DictionaryLearningAlignment,
         samples: [Float],
+        retainAudio: Bool = true,
         now: Date = Date()
     ) {
         guard !samples.isEmpty, samples.count <= Self.maximumSamples,
@@ -29,7 +32,8 @@ nonisolated struct DictionaryLearningRecording: Sendable {
         self.id = id
         self.expiresAt = now.addingTimeInterval(Self.lifetime)
         self.alignment = alignment
-        self.samples = samples
+        // Negative confirmation needs only accepted-word features, not the full recording PCM.
+        self.samples = retainAudio ? samples : []
     }
 }
 

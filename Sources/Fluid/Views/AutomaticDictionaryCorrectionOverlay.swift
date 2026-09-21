@@ -667,16 +667,21 @@ private struct AutomaticDictionaryCorrectionOverlayView: View {
 
     private var choiceContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            self.header(title: "Learn this word?", allowsBack: false)
+            self.header(title: self.session.candidate.negativeCorrection == nil ? "Learn this word?" : "Was this a wrong match?", allowsBack: false)
 
             self.correctionPair
 
-            Text("Save only this correction, or teach FluidVoice other pronunciations.")
+            Text(self.session.candidate.negativeCorrection == nil ? "Save only this correction, or teach FluidVoice other pronunciations." : "Confirm only if you said a different word, not a spelling change.")
                 .font(.fluidSystem(size: 11))
                 .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
 
             HStack(spacing: 8) {
+                if self.session.candidate.negativeCorrection != nil {
+                    CorrectionOverlayActionButton(title: "That Was a Wrong Match", systemImage: "xmark.circle", style: .accent, accent: self.accent, action: self.session.confirmWrongMatch)
+                        .disabled(self.session.capturePhase != .idle)
+                    CorrectionOverlayActionButton(title: "Ignore", systemImage: "minus", style: .secondary, accent: self.accent, action: self.onIgnore)
+                } else {
                 CorrectionOverlayActionButton(
                     title: "Train by Voice",
                     systemImage: "mic.fill",
@@ -694,6 +699,10 @@ private struct AutomaticDictionaryCorrectionOverlayView: View {
                 )
 
                 self.moreOptionsMenu
+                }
+            }
+            if self.session.hasError {
+                Text(self.session.statusMessage).font(.fluidSystem(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }
         .transition(.opacity)

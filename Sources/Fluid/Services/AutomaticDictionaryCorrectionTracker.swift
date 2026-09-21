@@ -8,6 +8,7 @@ struct AutomaticDictionaryCorrectionCandidate: Equatable, Identifiable {
     let correctedText: String
     var sourceUTF16Range: NSRange?
     var audioEvidence: DictionaryLearningAudioEvidence?
+    var negativeCorrection: DictionaryNegativeCorrection?
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.id == rhs.id && lhs.heardText == rhs.heardText && lhs.correctedText == rhs.correctedText
@@ -29,7 +30,6 @@ enum AutomaticDictionaryCorrectionDetector {
     )
     private static let maxCandidateLength = 40
     private static let maxCombinedLength = 70
-    private static let maxWords = 3
 
     static func textChange(before: String, after: String) -> AutomaticDictionaryTextChange? {
         guard before != after else { return nil }
@@ -217,7 +217,7 @@ enum AutomaticDictionaryCorrectionDetector {
         }
 
         let words = value.split(whereSeparator: { $0.isWhitespace })
-        return !words.isEmpty && words.count <= self.maxWords
+        return !words.isEmpty && words.count <= 3
     }
 
     private static func isMeaningfulCorrection(heard: String, corrected: String) -> Bool {
@@ -436,7 +436,7 @@ final class AutomaticDictionaryCorrectionTracker {
         _ insertedText: String, targetPID: pid_t?, learningRecording: DictionaryLearningRecording? = nil
     ) {
         self.cancel()
-        guard SettingsStore.shared.automaticDictionaryLearningEnabled,
+        guard SettingsStore.shared.automaticDictionaryLearningEnabled || DictionaryMatcherExperiment.collectNegatives,
               !insertedText.isEmpty
         else {
             return
@@ -731,6 +731,17 @@ final class AutomaticDictionaryCorrectionTracker {
             }
         }
         self.stopObservation()
+
+        if let candidate, let context, DictionaryMatcherExperiment.collectNegatives,
+           !SettingsStore.shared.shouldShowOnboarding, !AppServices.shared.asr.isRunning,
+           !DictionaryCorrectionOverlayController.shared.isPresented,
+           let negative = DictionaryNegativeEvidenceResolver.resolve(context: context, heard: candidate.heardText, corrected: candidate.correctedText)
+        {
+            var prepared = candidate
+            prepared.negativeCorrection = negative
+            DictionaryCorrectionOverlayController.shared.show(candidate: prepared) { _ in }
+            return
+        }
 
         guard let candidate,
               SettingsStore.shared.automaticDictionaryLearningEnabled,

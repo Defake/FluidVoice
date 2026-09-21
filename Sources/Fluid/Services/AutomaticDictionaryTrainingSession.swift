@@ -155,12 +155,66 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     func addOnlyCorrection() {
+        guard !self.isCancelled, self.capturePhase == .idle else { return }
         self.persist(triggers: [self.candidate.heardText])
     }
 
+    func confirmWrongMatch() {
+        guard !self.isCancelled, self.capturePhase == .idle,
+              let correction = self.candidate.negativeCorrection else { return }
+        self.onInteraction?()
+        self.capturePhase = .processing
+        self.statusMessage = "Saving wrong match…"
+        Task { @MainActor in
+            defer { self.capturePhase = .idle }
+            let store = DictionaryNegativeExampleStore.shared
+            let revision = await store.revision()
+            let evidence = correction.evidence
+            func entryIsCurrent() -> Bool {
+                SettingsStore.shared.customDictionaryEntries.contains { $0.id == evidence.entryID && $0.replacement == evidence.label }
+            }
+            do {
+                let profiles = await PronunciationDictionaryStore.shared.profiles(modelKey: evidence.modelKey)
+                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives, entryIsCurrent(),
+                      correction.expiresAt > Date(), profiles.contains(where: {
+                          $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) == evidence.profileKey
+                      }) else { throw PronunciationDictionaryStoreError.staleEvidence }
+                try await store.save(correction, expectedRevision: revision)
+                let latest = await PronunciationDictionaryStore.shared.profiles(modelKey: evidence.modelKey)
+                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives, entryIsCurrent(),
+                      await store.revision() == revision,
+                      latest.contains(where: { $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) == evidence.profileKey })
+                else {
+                    try await store.remove(id: evidence.id)
+                    throw PronunciationDictionaryStoreError.staleEvidence
+                }
+                self.completeSave(title: "Wrong Match Saved")
+            } catch {
+                guard !self.isCancelled else { return }
+                self.hasError = true
+                self.statusMessage = "Couldn’t save this example. It may have expired or the word changed."
+            }
+        }
+    }
+
     func addTrainedReplacement() {
-        guard self.canSave else { return }
-        self.persist(triggers: self.variants)
+        guard self.canSave, !self.isCancelled else { return }
+        self.isAutomaticCaptureEnabled = false
+        self.capturePhase = .processing
+        let variants = self.variants
+        Task { @MainActor in
+            let filtered = await VoiceTrainingAliasFilter.filter(variants)
+            self.capturePhase = .idle
+            guard !self.isCancelled else { return }
+            guard !filtered.accepted.isEmpty else {
+                self.hasError = true
+                self.statusMessage = filtered.lookupAvailable
+                    ? "These recordings contain everyday words. Try again, or add the correction manually."
+                    : "Couldn't check these words. Try saving again, or add the correction manually."
+                return
+            }
+            self.persist(triggers: filtered.accepted)
+        }
     }
 
     func removeVariant(_ variant: String) {

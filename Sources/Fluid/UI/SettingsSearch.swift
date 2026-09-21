@@ -68,6 +68,7 @@ enum SettingsSearchTarget: Hashable {
     case experimental
     case returnToStartingField
     case fasterLongDictation
+    case dictionaryMatcherExperiments
     case historyPerformance
 
     var section: SettingsSection {
@@ -124,7 +125,7 @@ enum SettingsSearchTarget: Hashable {
         case .dataAndDiagnostics, .backupAndRestore, .debugLogs:
             return .dataAndDiagnostics
 
-        case .experimental, .returnToStartingField, .fasterLongDictation, .historyPerformance:
+        case .experimental, .returnToStartingField, .fasterLongDictation, .dictionaryMatcherExperiments, .historyPerformance:
             return .experimental
         }
     }
@@ -438,6 +439,11 @@ enum SettingsSearchIndex {
             target: .experimental,
             title: "Experimental",
             terms: ["preview early access optional features"]
+        ),
+        .init(
+            target: .dictionaryMatcherExperiments,
+            title: "Dictionary Matching Experiments",
+            terms: ["pronunciation positive negative false match correction learn examples clear experimental"]
         ),
         .init(
             target: .historyPerformance,

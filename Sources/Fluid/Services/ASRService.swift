@@ -722,7 +722,7 @@ final class ASRService: ObservableObject {
         guard self.activeActivityLease == lease, lease.activity == .meeting else { return }
 
         let taskID = UUID()
-        let handbackTask = Task { @MainActor [weak self] () -> Void in
+        let handbackTask = Task { @MainActor [weak self] () in
             guard let self else { return }
             await self.performMeetingAudioHandback(lease)
         }
@@ -3578,10 +3578,14 @@ final class ASRService: ObservableObject {
             }
 
             // Do not update self.finalText here to avoid instant binding insert in playground
-            if !isolatedDictionaryCapture, SettingsStore.shared.automaticDictionaryLearningEnabled,
+            if !isolatedDictionaryCapture, SettingsStore.shared.automaticDictionaryLearningEnabled || DictionaryMatcherExperiment.collectNegatives,
                let alignment = result.dictionaryLearningAlignment
             {
-                self.retainDictionaryLearningRecording(DictionaryLearningRecording(alignment: alignment, samples: capturedPCM))
+                self.retainDictionaryLearningRecording(DictionaryLearningRecording(
+                    alignment: alignment,
+                    samples: capturedPCM,
+                    retainAudio: SettingsStore.shared.automaticDictionaryLearningEnabled
+                ))
             }
 
             let textWithoutFillers = ASRService.removeFillerWords(result.text)
