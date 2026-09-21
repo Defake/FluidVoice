@@ -120,11 +120,6 @@ extension VoiceEngineSettingsView {
                                 )
                                 .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
                         )
-
-                        Divider().padding(.vertical, 4)
-
-                        // Filler Words Section
-                        self.fillerWordsSection
                     }
                 }
             }
@@ -753,32 +748,6 @@ extension VoiceEngineSettingsView {
         .background(RoundedRectangle(cornerRadius: 8)
             .fill(self.theme.palette.cardBackground.opacity(0.8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)))
-    }
-
-    var fillerWordsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Remove Filler Words")
-                        .font(self.theme.typography.bodyStrong)
-                        .foregroundStyle(self.voiceEngineTitleText)
-                    Text("Automatically remove filler sounds like 'um', 'uh', 'er' from transcriptions")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.voiceEngineSecondaryText)
-                }
-                Spacer()
-                Toggle("", isOn: self.$viewModel.removeFillerWordsEnabled)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .onChange(of: self.viewModel.removeFillerWordsEnabled) { _, newValue in
-                        self.settings.removeFillerWordsEnabled = newValue
-                    }
-            }
-
-            if self.viewModel.removeFillerWordsEnabled {
-                FillerWordsEditor()
-            }
-        }
     }
 
     // MARK: - Speech Model Logo View

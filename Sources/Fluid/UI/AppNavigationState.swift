@@ -26,6 +26,7 @@ enum SidebarItem: Hashable {
 enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
     case general
     case dictation
+    case dictationFormatting
     case shortcuts
     case notifications
     case audio
@@ -41,6 +42,7 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return "General"
         case .dictation: return "Dictation"
+        case .dictationFormatting: return "Dictation Formatting"
         case .shortcuts: return "Shortcuts"
         case .notifications: return "Notifications"
         case .audio: return "Audio"
@@ -54,6 +56,7 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .general: return "gearshape"
         case .dictation: return "mic"
+        case .dictationFormatting: return "textformat"
         case .shortcuts: return "keyboard"
         case .notifications: return "bell"
         case .audio: return "speaker.wave.2"

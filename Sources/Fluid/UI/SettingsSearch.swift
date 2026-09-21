@@ -41,6 +41,8 @@ enum SettingsSearchTarget: Hashable {
     case dictionarySuggestions
     case accessibilityPermission
     case textFormatting
+    case spokenFormatting
+    case fillerWords
 
     case notifications
     case aiEnhancementFailures
@@ -93,9 +95,11 @@ enum SettingsSearchTarget: Hashable {
              .skipSilentRecordings,
              .pauseMedia,
              .dictionarySuggestions,
-             .accessibilityPermission,
-             .textFormatting:
+             .accessibilityPermission:
             return .dictation
+
+        case .textFormatting, .spokenFormatting, .fillerWords:
+            return .dictationFormatting
 
         case .shortcuts, .globalHotkey, .primaryDictationShortcuts,
              .commandModeShortcut, .editModeShortcut, .cancelRecordingShortcut,
@@ -131,6 +135,7 @@ extension SettingsSection {
         switch self {
         case .general: return .general
         case .dictation: return .dictation
+        case .dictationFormatting: return .textFormatting
         case .shortcuts: return .shortcuts
         case .notifications: return .notifications
         case .audio: return .audio
@@ -335,11 +340,13 @@ enum SettingsSearchIndex {
             target: .textFormatting,
             title: "Text Formatting",
             terms: [
-                "Lowercase First Letter Remove Trailing Period Slash Commands @ Formatting",
+                "Dictation Formatting Lowercase First Letter Remove Trailing Period Slash Commands @ Formatting",
                 "Space Between Dictations Smart Capitalization punctuation uppercase symbols mentions",
             ]
         ),
 
+        .init(target: .spokenFormatting, title: "Spoken Formatting", terms: ["punctuation start word symbols new line paragraph"]),
+        .init(target: .fillerWords, title: "Remove Filler Words", terms: ["um uh er filler sounds cleanup"]),
         .init(target: .notifications, title: "Notifications", terms: ["alerts warnings"]),
         .init(
             target: .aiEnhancementFailures,

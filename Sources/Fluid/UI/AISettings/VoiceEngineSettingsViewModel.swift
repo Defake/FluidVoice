@@ -44,14 +44,11 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
         self.asr.isCancellingModelDownload
     }
 
-    @Published var removeFillerWordsEnabled: Bool
-
     init(settings: SettingsStore, appServices: AppServices) {
         self.settings = settings
         self.appServices = appServices
         self.previewSpeechModel = settings.selectedSpeechModel
         self.selectedSpeechProvider = settings.selectedSpeechModel.provider
-        self.removeFillerWordsEnabled = settings.removeFillerWordsEnabled
         appServices.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor in
@@ -64,7 +61,6 @@ final class VoiceEngineSettingsViewModel: ObservableObject {
     func onAppear() {
         self.previewSpeechModel = self.settings.selectedSpeechModel
         self.selectedSpeechProvider = self.settings.selectedSpeechModel.provider
-        self.removeFillerWordsEnabled = self.settings.removeFillerWordsEnabled
 
         Task {
             await self.asr.checkIfModelsExistAsync()

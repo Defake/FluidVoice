@@ -114,7 +114,7 @@ final class SettingsNavigationStateTests: XCTestCase {
     func testSettingsSectionsHaveStableTitlesAndIcons() {
         XCTAssertEqual(
             SettingsSection.allCases.map(\.title),
-            ["General", "Dictation", "Shortcuts", "Notifications", "Audio", "Overlay", "Data & Diagnostics", "Experimental"]
+            ["General", "Dictation", "Dictation Formatting", "Shortcuts", "Notifications", "Audio", "Overlay", "Data & Diagnostics", "Experimental"]
         )
         XCTAssertTrue(SettingsSection.allCases.allSatisfy { !$0.systemImage.isEmpty })
         XCTAssertEqual(SettingsSection.overlay.systemImage, "rectangle.on.rectangle")
@@ -128,6 +128,15 @@ final class SettingsNavigationStateTests: XCTestCase {
         state.present(.shortcuts, returningTo: .cleanupStyles)
         XCTAssertTrue(state.isLeaving(.shortcuts, for: .dictation))
         XCTAssertEqual(state.dismiss(), .cleanupStyles)
+    }
+
+    func testFormattingSearchRoutesToDedicatedSection() {
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Dictation Formatting").first?.section, .dictationFormatting)
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Text Formatting").first?.section, .dictationFormatting)
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Spoken Formatting").first?.section, .dictationFormatting)
+        XCTAssertEqual(SettingsSearchIndex.results(for: "Remove Filler Words").first?.section, .dictationFormatting)
+        XCTAssertEqual(SettingsSearchTarget.copyToClipboard.section, .dictation)
+        XCTAssertEqual(SettingsSearchTarget.inputDevicePriority.section, .audio)
     }
 
     func testSettingsSearchRanksExactTitleAheadOfRelatedTerms() {
