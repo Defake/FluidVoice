@@ -1298,7 +1298,7 @@
 			repositoryURL = "https://github.com/altic-dev/FluidAudio.git";
 			requirement = {
 				kind = revision;
-				revision = 932842b7eb9728597b69750270e0d8896668dbd4;
+				revision = 667e780bba2cc36fc1cb8e95c361752f90d6a5b3;
 			};
 		};
 
