@@ -21,6 +21,33 @@ struct FileTranscriptionView: View {
     @State private var showingCopyConfirmation = false
     @State private var isDropTargeted = false
     @State private var dropErrorMessage: String?
+    @State private var searchQuery = ""
+    @State private var transcriptListWidth: CGFloat = 320
+    @State private var splitterDragStart: CGFloat?
+    @State private var isSplitterHovered = false
+    @State private var pendingDeleteEntry: FileTranscriptionEntry?
+    @State private var showingClearConfirmation = false
+
+    private struct RowMetadata {
+        let preview: String
+        let relativeDate: String
+        let fullDate: String
+    }
+
+    @State private var rowMetadata: [UUID: RowMetadata] = [:]
+    @State private var filteredEntries: [FileTranscriptionEntry] = []
+
+    private func updateSearchResults(entries: [FileTranscriptionEntry]) {
+        let query = self.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.filteredEntries = query.isEmpty ? entries : entries.filter {
+            $0.fileName.localizedStandardContains(query) || $0.text.localizedStandardContains(query)
+        }
+    }
+
+    private var selectedEntry: FileTranscriptionEntry? {
+        let entries = self.filteredEntries
+        return entries.first { $0.id == self.fileHistoryStore.selectedEntryID } ?? entries.first
+    }
 
     enum ExportFormat: String, CaseIterable {
         case text = "Text (.txt)"
@@ -52,72 +79,51 @@ struct FileTranscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 8) {
-                Image(systemName: "waveform.circle.fill")
-                    .font(.fluidSystem(size: 48))
-                    .foregroundStyle(Color.fluidGreen.gradient)
-
-                Text("File Transcription")
-                    .font(.fluidSystem(.title2))
-                    .fontWeight(.semibold)
-
-                Text("Choose an audio or video file to transcribe")
-                    .font(.fluidSystem(.subheadline))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.top, 40)
-            .padding(.bottom, 30)
-
-            // Main Content Area
-            ScrollView {
-                VStack(spacing: 24) {
-                    if let activity = self.conflictingActivity {
-                        self.activityConflictCard(activity: activity)
-                    }
-
-                    // File Selection Card
-                    self.fileSelectionCard
-
-                    // Progress Card (only show when transcribing)
-                    if self.transcriptionService.isTranscribing {
-                        self.progressCard
-                    }
-
-                    // Results Card (only show when we have results)
-                    if let result = transcriptionService.result {
-                        self.resultsCard(result: result)
-                    }
-
-                    // Error Card (only show when we have an error)
-                    if let error = transcriptionService.error {
-                        self.errorCard(error: error)
-                    }
-
-                    // Drop error (unsupported file type)
-                    if let message = self.dropErrorMessage {
-                        self.dropErrorCard(message: message)
-                    }
-
-                    // Recent transcriptions (persisted history)
-                    if !self.fileHistoryStore.entries.isEmpty {
-                        Divider()
-                            .padding(.vertical, 8)
-                        self.recentTranscriptionsSection
-                    }
+            HStack(spacing: self.theme.metrics.spacing.md) {
+                Image(systemName: "doc.text")
+                    .font(self.theme.typography.titleIcon)
+                    .foregroundStyle(self.theme.palette.accent)
+                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                    Text("File Transcription")
+                        .font(self.theme.typography.title)
+                    Text("Turn audio and video into text.")
+                        .font(self.theme.typography.bodySmall)
+                        .foregroundStyle(self.theme.palette.secondaryText)
                 }
-                .padding(24)
+                Spacer()
             }
+            .padding(self.theme.metrics.spacing.lg)
+            Divider()
+
+            VStack(spacing: self.theme.metrics.spacing.sm) {
+                if let activity = self.conflictingActivity {
+                    self.activityConflictCard(activity: activity)
+                }
+                self.fileSelectionCard
+                if self.transcriptionService.isTranscribing {
+                    self.progressCard
+                }
+                if let error = self.transcriptionService.error {
+                    self.errorCard(error: error)
+                }
+                if let message = self.dropErrorMessage {
+                    self.dropErrorCard(message: message)
+                }
+            }
+            .padding(self.theme.metrics.spacing.lg)
+
+            Divider()
+            self.transcriptBrowser
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(self.theme.palette.windowBackground)
         .overlay(alignment: .topTrailing) {
             if self.showingCopyConfirmation {
                 Text("Copied!")
-                    .font(.fluidSystem(.caption))
+                    .font(self.theme.typography.caption)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.fluidGreen.opacity(0.9))
+                    .background(self.theme.palette.accent.opacity(0.9))
                     .foregroundColor(.white)
                     .cornerRadius(8)
                     .padding()
@@ -142,17 +148,47 @@ struct FileTranscriptionView: View {
             }
             self.exportResult = nil
         }
+        .onReceive(self.fileHistoryStore.$entries) { entries in
+            self.rowMetadata = Dictionary(entries.map { entry in
+                (entry.id, RowMetadata(preview: entry.previewText, relativeDate: entry.relativeTimeString, fullDate: entry.fullDateString))
+            }, uniquingKeysWith: { _, latest in latest })
+            self.updateSearchResults(entries: entries)
+        }
+        .onChange(of: self.searchQuery) { _, _ in
+            self.updateSearchResults(entries: self.fileHistoryStore.entries)
+        }
         .onChange(of: self.transcriptionService.isTranscribing) { _, isTranscribing in
             guard isTranscribing else { return }
             AccessibilityNotification.Announcement("File transcription started").post()
         }
         .onChange(of: self.transcriptionService.result?.id) { _, resultID in
             guard resultID != nil else { return }
+            self.searchQuery = ""
             AccessibilityNotification.Announcement("File transcription complete").post()
         }
         .onChange(of: self.transcriptionService.error) { _, error in
             guard let error, !error.isEmpty else { return }
             AccessibilityNotification.Announcement("File transcription failed. \(error)").post()
+        }
+        .alert("Delete transcript?", isPresented: Binding(
+            get: { self.pendingDeleteEntry != nil },
+            set: { if !$0 { self.pendingDeleteEntry = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { self.pendingDeleteEntry = nil }
+            Button("Delete", role: .destructive) {
+                if let entry = self.pendingDeleteEntry {
+                    self.fileHistoryStore.deleteEntry(id: entry.id)
+                }
+                self.pendingDeleteEntry = nil
+            }
+        } message: {
+            Text("This deletes the saved transcript. Your original audio or video file is kept.")
+        }
+        .alert("Clear all transcripts?", isPresented: self.$showingClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear all", role: .destructive) { self.fileHistoryStore.clearAll() }
+        } message: {
+            Text("All saved file transcripts will be permanently deleted. Original files are kept.")
         }
         .onAppear {
             if self.selectedFileURL == nil {
@@ -166,15 +202,15 @@ struct FileTranscriptionView: View {
             "File transcription is paused while \(activity.displayName) is active.",
             systemImage: activity == .meeting ? "person.2.wave.2.fill" : "waveform.badge.mic"
         )
-        .font(.fluidSystem(.subheadline))
+        .font(self.theme.typography.bodySmall)
         .foregroundStyle(self.theme.palette.secondaryText)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                 .fill(self.theme.palette.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                         .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
                 )
         )
@@ -192,36 +228,61 @@ struct FileTranscriptionView: View {
                 HStack {
                     Image(systemName: "doc.fill")
                         .font(.fluidSystem(.title2))
-                        .foregroundColor(Color.fluidGreen)
+                        .foregroundColor(self.theme.palette.accent)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(fileURL.lastPathComponent)
-                            .font(.fluidSystem(.headline))
+                            .font(self.theme.typography.sectionTitle)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
 
-                        Text(self.formatFileSize(fileURL: fileURL))
-                            .font(.fluidSystem(.caption))
+                        Text(self.selectedFileIsVideo ? "Video file" : "Audio file")
+                            .font(self.theme.typography.caption)
                             .foregroundColor(.secondary)
                     }
 
                     Spacer()
 
-                    Button(action: {
-                        self.selectedFileURL = nil
-                        self.transcriptionService.reset()
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                    FluidGlassControlGroup {
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                self.selectedFileURL = nil
+                                self.transcriptionService.reset()
+                            }) {
+                                Label("Remove", systemImage: "xmark")
+                            }
+                            .fluidGlassAction()
+                            .disabled(self.transcriptionService.isTranscribing)
+                            .help(self.transcriptionService.isTranscribing ? "Wait for transcription to finish" : "Remove file")
+                            Button(action: {
+                                Task {
+                                    await self.transcribeFile()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "waveform")
+                                    Text(self.transcriptionService.isTranscribing ? "Transcribing…" : "Transcribe file")
+                                }
+                            }
+                            .fluidGlassAction(prominent: true)
+                            .disabled(
+                                self.transcriptionService.isTranscribing ||
+                                    self.conflictingActivity != nil
+                            )
+                            .help(
+                                self.conflictingActivity != nil
+                                    ? "Wait for the active transcription to finish"
+                                    : "Transcribe the selected file"
+                            )
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(self.transcriptionService.isTranscribing)
-                    .help(self.transcriptionService.isTranscribing ? "Wait for transcription to finish" : "Remove file")
                 }
                 .padding()
                 .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
                         .fill(self.theme.palette.cardBackground)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
                                 .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
                         )
                 )
@@ -232,106 +293,87 @@ struct FileTranscriptionView: View {
                         Toggle(isOn: self.$settings.fileTranscriptionSpeakerLabelsEnabled) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Label speakers")
-                                    .font(.fluidSystem(.subheadline))
+                                    .font(self.theme.typography.bodySmall)
 
                                 Text(self.selectedFileIsVideo
                                     ? "Available for audio files only"
                                     : "Identify who said what (downloads speaker models on first use)")
-                                    .font(.fluidSystem(.caption))
+                                    .font(self.theme.typography.caption)
                                     .foregroundColor(.secondary)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .toggleStyle(.switch)
+                        .accessibilityLabel("Label speakers")
                         .disabled(self.selectedFileIsVideo || self.transcriptionService.isTranscribing)
 
                         if self.settings.fileTranscriptionSpeakerLabelsEnabled, !self.selectedFileIsVideo {
                             HStack {
                                 Text("Number of speakers")
-                                    .font(.fluidSystem(.subheadline))
+                                    .font(self.theme.typography.bodySmall)
 
                                 Spacer()
 
-                                Picker("", selection: self.$settings.fileTranscriptionExpectedSpeakerCount) {
+                                Picker("Number of speakers", selection: self.$settings.fileTranscriptionExpectedSpeakerCount) {
                                     Text("Auto").tag(0)
                                     ForEach(2...8, id: \.self) { count in
                                         Text("\(count)").tag(count)
                                     }
                                 }
                                 .pickerStyle(.menu)
-                                .labelsHidden()
-                                .frame(width: 90)
+                                .fluidDropdownStyle()
+                                .frame(width: 110)
                                 .disabled(self.transcriptionService.isTranscribing)
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     .padding()
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
                             .fill(self.theme.palette.cardBackground)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
                                     .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
                             )
                     )
                 }
 
-                // Transcribe Button
-                Button(action: {
-                    Task {
-                        await self.transcribeFile()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "waveform")
-                        Text("Transcribe")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    self.transcriptionService.isTranscribing ||
-                        self.conflictingActivity != nil
-                )
-                .help(
-                    self.conflictingActivity != nil
-                        ? "Wait for the active transcription to finish"
-                        : "Transcribe the selected file"
-                )
-
             } else {
-                // File picker button – whole area is tappable; supports drag-and-drop
-                Button(action: {
-                    self.showingFilePicker = true
-                }) {
-                    VStack(spacing: 12) {
-                        Image(systemName: "arrow.up.doc.fill")
-                            .font(.fluidSystem(size: 32))
-
-                        Text("Drag and drop a file here, or click to open")
-                            .font(.fluidSystem(.headline))
-
-                        Text(FileTranscriptionService.supportedFormatsDescription)
-                            .font(.fluidSystem(.caption))
-                            .foregroundColor(.secondary)
+                HStack(spacing: self.theme.metrics.spacing.lg) {
+                    Image(systemName: "doc.badge.plus")
+                        .font(self.theme.typography.titleIcon)
+                        .foregroundStyle(self.theme.palette.accent)
+                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                        Text(self.isDropTargeted ? "Drop to select file" : "Transcribe a file")
+                            .font(self.theme.typography.sectionTitle)
+                        Text("Drop audio or video here, or choose a file.")
+                            .font(self.theme.typography.bodySmall)
+                            .foregroundStyle(self.theme.palette.secondaryText)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(32)
-                    .contentShape(Rectangle())
+                    Spacer(minLength: 8)
+                    Button { self.showingFilePicker = true } label: {
+                        Label("Choose file…", systemImage: "plus")
+                    }
+                    .fluidGlassAction(prominent: true)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .padding(self.theme.metrics.spacing.lg)
+                .contentShape(Rectangle())
+                .help(FileTranscriptionService.supportedFormatsDescription)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                         .fill(self.theme.palette.cardBackground)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                                 .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [8]))
-                        .foregroundColor(Color.fluidGreen.opacity(self.isDropTargeted ? 0.7 : 0.3))
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+                        .allowsHitTesting(false)
+                        .foregroundColor(self.theme.palette.accent.opacity(self.isDropTargeted ? 0.7 : 0.3))
                 )
                 .onDrop(of: [.fileURL], isTargeted: self.$isDropTargeted) { providers in
                     self.handleDrop(providers: providers)
@@ -368,265 +410,318 @@ struct FileTranscriptionView: View {
                     .fixedSize()
 
                 Text(self.transcriptionService.currentStatus)
-                    .font(.fluidSystem(.subheadline))
+                    .font(self.theme.typography.bodySmall)
                     .foregroundColor(.secondary)
             }
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                 .fill(self.theme.palette.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                         .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
                 )
         )
     }
 
-    // MARK: - Results Card
-
-    private func resultsCard(result: TranscriptionResult) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header with stats
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Transcription Complete")
-                        .font(.fluidSystem(.headline))
-
-                    HStack(spacing: 16) {
-                        Label("\(String(format: "%.1f", result.duration))s", systemImage: "clock")
-                        Label("\(String(format: "%.0f%%", result.confidence * 100))", systemImage: "checkmark.circle")
-                        Label(
-                            "\(String(format: "%.1f", result.duration / result.processingTime))x",
-                            systemImage: "speedometer"
-                        )
+    private var transcriptBrowser: some View {
+        GeometryReader { geometry in
+            let available = max(0, geometry.size.width - 10)
+            let minimum = min(240, available / 2)
+            let maximum = max(minimum, available - min(300, available / 2))
+            let width = min(max(self.transcriptListWidth, minimum), maximum)
+            HStack(spacing: 0) {
+                self.transcriptList
+                    .frame(width: width)
+                self.transcriptDivider(width: width, minimum: minimum, maximum: maximum)
+                Group {
+                    if let entry = self.selectedEntry {
+                        self.transcriptDetail(entry: entry)
+                    } else {
+                        self.emptyDetail
                     }
-                    .font(.fluidSystem(.caption))
-                    .foregroundColor(.secondary)
                 }
-
-                Spacer()
-
-                // Action buttons
-                HStack(spacing: 8) {
-                    Button(action: {
-                        self.copyToClipboard(result.text)
-                    }) {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .help("Copy to clipboard")
-
-                    Button(action: {
-                        self.exportResult = result
-                        self.showingExportDialog = true
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .help("Export transcription")
-                }
-                .buttonStyle(.borderless)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-
-            if let notice = result.speakerLabelingNotice ?? transcriptionService.fallbackNotice {
-                Label(notice, systemImage: "exclamationmark.triangle.fill")
-                    .font(.fluidSystem(.caption))
-                    .foregroundColor(.secondary)
-            }
-
-            Divider()
-
-            // Transcription text
-            ScrollView {
-                if !result.speakerSegments.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(result.speakerSegments) { segment in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(segment.speaker)
-                                        .font(.fluidSystem(.caption))
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(Color.fluidGreen)
-
-                                    Text(segment.timestampText)
-                                        .font(.fluidSystem(.caption2))
-                                        .foregroundColor(.secondary)
-                                }
-
-                                Text(segment.text)
-                                    .font(.fluidSystem(.body))
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                } else {
-                    Text(result.text)
-                        .font(.fluidSystem(.body))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-            }
-            .frame(maxHeight: 300)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(self.theme.palette.contentBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                    )
-            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(self.theme.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                )
-        )
     }
 
-    // MARK: - Recent Transcriptions Section
+    private func transcriptDivider(width: CGFloat, minimum: CGFloat, maximum: CGFloat) -> some View {
+        ZStack {
+            self.theme.palette.windowBackground
+            Rectangle()
+                .fill(self.theme.palette.cardBorder)
+                .frame(width: 1)
+            Capsule()
+                .fill(self.isSplitterHovered || self.splitterDragStart != nil
+                    ? self.theme.palette.accent : self.theme.palette.secondaryText.opacity(0.5))
+                .frame(width: 3, height: 28)
+        }
+        .frame(width: 10)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            self.isSplitterHovered = hovering
+            (hovering ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { value in
+                    let start = self.splitterDragStart ?? width
+                    self.splitterDragStart = start
+                    self.transcriptListWidth = min(max(start + value.translation.width, minimum), maximum)
+                }
+                .onEnded { _ in self.splitterDragStart = nil }
+        )
+        .simultaneousGesture(TapGesture(count: 2).onEnded { self.transcriptListWidth = 320 })
+        .help("Drag to resize panes. Double-click to reset.")
+        .accessibilityElement()
+        .accessibilityLabel("Resize transcript panes")
+        .accessibilityValue("File list width \(Int(width)) points")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: self.transcriptListWidth = min(width + 40, maximum)
+            case .decrement: self.transcriptListWidth = max(width - 40, minimum)
+            @unknown default: break
+            }
+        }
+        .onDisappear {
+            if self.isSplitterHovered { NSCursor.arrow.set() }
+            self.isSplitterHovered = false
+            self.splitterDragStart = nil
+        }
+    }
 
-    private var recentTranscriptionsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    // MARK: - Transcript Library
+
+    private var transcriptList: some View {
+        VStack(spacing: 0) {
             HStack {
-                Text("Recent transcriptions")
-                    .font(.fluidSystem(.headline))
+                Text("Transcripts").font(self.theme.typography.sectionTitle)
                 Spacer()
-                if !self.fileHistoryStore.entries.isEmpty {
-                    Button("Clear all") {
-                        self.fileHistoryStore.clearAll()
+                Text("\(self.filteredEntries.count)")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+            }
+            .padding(self.theme.metrics.spacing.lg)
+
+            HStack(spacing: self.theme.metrics.spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                TextField("Search transcripts…", text: self.$searchQuery)
+                    .textFieldStyle(.plain)
+                    .accessibilityLabel("Search filenames and transcript text")
+                if !self.searchQuery.isEmpty {
+                    Button { self.searchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
-                    .font(.fluidSystem(.caption))
+                    .accessibilityLabel("Clear search")
                 }
             }
+            .font(self.theme.typography.bodySmall)
+            .padding(self.theme.metrics.spacing.sm)
+            .background(self.theme.palette.cardBackground, in: RoundedRectangle(cornerRadius: self.theme.metrics.corners.md))
+            .padding(.horizontal, self.theme.metrics.spacing.md)
+            .padding(.bottom, self.theme.metrics.spacing.md)
+            Divider()
 
-            VStack(spacing: 8) {
-                ForEach(self.fileHistoryStore.entries) { entry in
-                    self.recentEntryRow(entry: entry)
+            if self.filteredEntries.isEmpty {
+                VStack(spacing: self.theme.metrics.spacing.sm) {
+                    Text(self.searchQuery.isEmpty ? "No transcripts yet" : "No matching transcripts")
+                        .font(self.theme.typography.bodySmallStrong)
+                    Text(self.searchQuery.isEmpty ? "Transcribe a file to start your library." : "Try a filename or words from the transcript.")
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(self.theme.palette.secondaryText)
                 }
-            }
-
-            if let entry = self.fileHistoryStore.selectedEntry {
-                self.historyDetailCard(entry: entry)
-            }
-        }
-    }
-
-    private func recentEntryRow(entry: FileTranscriptionEntry) -> some View {
-        let isSelected = self.fileHistoryStore.selectedEntryID == entry.id
-        return Button(action: {
-            self.fileHistoryStore.selectedEntryID = entry.id
-        }) {
-            HStack {
-                Image(systemName: "doc.text.fill")
-                    .font(.fluidSystem(.body))
-                    .foregroundColor(Color.fluidGreen)
-                    .frame(width: 24)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.fileName)
-                        .font(.fluidSystem(size: 14, weight: .medium))
-                        .lineLimit(1)
-                    Text(entry.relativeTimeString)
-                        .font(.fluidSystem(.caption))
-                        .foregroundColor(.secondary)
-                    Text(entry.previewText)
-                        .font(.fluidSystem(.caption))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "chevron.right.circle.fill")
-                        .foregroundColor(Color.fluidGreen)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(self.theme.palette.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(isSelected ? Color.fluidGreen.opacity(0.5) : self.theme.palette.cardBorder.opacity(0.3), lineWidth: isSelected ? 2 : 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func historyDetailCard(entry: FileTranscriptionEntry) -> some View {
-        let result = entry.toTranscriptionResult()
-        return VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("From history")
-                        .font(.fluidSystem(.headline))
-                    HStack(spacing: 16) {
-                        Label("\(String(format: "%.1f", entry.duration))s", systemImage: "clock")
-                        Label("\(String(format: "%.0f%%", entry.confidence * 100))", systemImage: "checkmark.circle")
-                        Label(entry.fullDateString, systemImage: "calendar")
+                .multilineTextAlignment(.center)
+                .padding(self.theme.metrics.spacing.lg)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: self.theme.metrics.spacing.xs) {
+                            ForEach(self.filteredEntries) { entry in
+                                self.transcriptRow(entry: entry).id(entry.id)
+                            }
+                        }
+                        .padding(self.theme.metrics.spacing.sm)
                     }
-                    .font(.fluidSystem(.caption))
-                    .foregroundColor(.secondary)
+                    .onChange(of: self.fileHistoryStore.selectedEntryID) { _, id in
+                        if let id { proxy.scrollTo(id, anchor: .top) }
+                    }
                 }
-                Spacer()
-                HStack(spacing: 8) {
-                    Button(action: { self.copyToClipboard(entry.text) }) {
-                        Image(systemName: "doc.on.doc")
-                    }
-                    .help("Copy to clipboard")
-                    Button(action: {
-                        self.exportResult = result
-                        self.showingExportDialog = true
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .help("Export transcription")
-                    Button(action: {
-                        self.fileHistoryStore.deleteEntry(id: entry.id)
-                    }) {
-                        Image(systemName: "trash")
-                    }
-                    .help("Remove from history")
-                }
-                .buttonStyle(.borderless)
             }
             Divider()
-            ScrollView {
-                Text(entry.text)
-                    .font(.fluidSystem(.body))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+            HStack {
+                Text("Saved on this Mac")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                Spacer()
+                Button("Clear all…") { self.showingClearConfirmation = true }
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .buttonStyle(.plain)
+                    .disabled(self.fileHistoryStore.entries.isEmpty)
             }
-            .frame(maxHeight: 300)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(self.theme.palette.contentBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                    )
-            )
+            .padding(self.theme.metrics.spacing.md)
         }
-        .padding()
+        .background(self.theme.palette.contentBackground)
+    }
+
+    private func transcriptRow(entry: FileTranscriptionEntry) -> some View {
+        let isSelected = self.selectedEntry?.id == entry.id
+        return HStack(spacing: self.theme.metrics.spacing.xs) {
+            Button {
+                self.fileHistoryStore.selectedEntryID = entry.id
+            } label: {
+                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                    Text(entry.fileName)
+                        .font(self.theme.typography.bodySmallStrong)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    Text(self.rowMetadata[entry.id]?.relativeDate ?? "")
+                        .font(self.theme.typography.captionSmall)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                    Text(self.rowMetadata[entry.id]?.preview ?? "")
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .lineLimit(1)
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(self.theme.metrics.spacing.md)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            Button { self.copyToClipboard(entry.text) } label: {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Copy transcript")
+            .accessibilityLabel("Copy \(entry.fileName)")
+            .padding(.trailing, self.theme.metrics.spacing.sm)
+        }
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(self.theme.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(self.theme.palette.cardBorder.opacity(0.45), lineWidth: 1)
-                )
+            isSelected ? self.theme.palette.accent.opacity(0.12) : Color.clear,
+            in: RoundedRectangle(cornerRadius: self.theme.metrics.corners.md)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.md)
+                .strokeBorder(isSelected ? self.theme.palette.accent.opacity(0.5) : Color.clear)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var emptyDetail: some View {
+        VStack(spacing: self.theme.metrics.spacing.md) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(self.theme.typography.titleIcon)
+                .foregroundStyle(self.theme.palette.secondaryText)
+            Text(self.searchQuery.isEmpty ? "Your transcript appears here" : "No matching transcript")
+                .font(self.theme.typography.sectionTitle)
+            Text("Select a file on the left to read, copy, or export its transcript.")
+                .font(self.theme.typography.bodySmall)
+                .foregroundStyle(self.theme.palette.secondaryText)
+        }
+        .multilineTextAlignment(.center)
+        .padding(self.theme.metrics.spacing.xxl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func transcriptDetail(entry: FileTranscriptionEntry) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
+                Text(entry.fileName)
+                    .font(self.theme.typography.sectionTitle)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Text(self.rowMetadata[entry.id]?.fullDate ?? "")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                HStack(spacing: self.theme.metrics.spacing.md) {
+                    Label(Duration.seconds(entry.duration).formatted(.time(pattern: .hourMinuteSecond)), systemImage: "clock")
+                    if !entry.speakerSegments.isEmpty {
+                        Label("Speaker labels", systemImage: "person.2")
+                    }
+                }
+                .font(self.theme.typography.caption)
+                .foregroundStyle(self.theme.palette.secondaryText)
+                FluidGlassControlGroup {
+                    HStack(spacing: self.theme.metrics.spacing.sm) {
+                        Button { self.copyToClipboard(entry.text) } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        .fluidGlassAction(prominent: true)
+                        Menu {
+                            ForEach(ExportFormat.allCases, id: \.self) { format in
+                                Button(format.rawValue) {
+                                    self.exportFormat = format
+                                    self.exportResult = entry.toTranscriptionResult()
+                                    self.showingExportDialog = true
+                                }
+                            }
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                        }
+                        .fluidGlassAction()
+                        Button(role: .destructive) { self.pendingDeleteEntry = entry } label: {
+                            Label("Delete", systemImage: "trash")
+                                .foregroundStyle(.red)
+                        }
+                        .fluidGlassAction()
+                        .help("Delete transcript")
+                        .accessibilityLabel("Delete transcript")
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(self.theme.metrics.spacing.lg)
+            Divider()
+            if entry.speakerSegments.isEmpty {
+                if let notice = entry.speakerLabelingNotice {
+                    Label(notice, systemImage: "exclamationmark.triangle")
+                        .font(self.theme.typography.caption)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                        .padding(self.theme.metrics.spacing.lg)
+                }
+                FileTranscriptTextView(entryID: entry.id, text: entry.text)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
+                        if let notice = entry.speakerLabelingNotice {
+                            Label(notice, systemImage: "exclamationmark.triangle")
+                                .font(self.theme.typography.caption)
+                                .foregroundStyle(self.theme.palette.secondaryText)
+                        }
+                        ForEach(entry.speakerSegments) { segment in
+                            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                                HStack {
+                                    Text(segment.speaker).foregroundStyle(self.theme.palette.accent)
+                                    Text(segment.timestampText).foregroundStyle(self.theme.palette.secondaryText)
+                                }
+                                .font(self.theme.typography.captionStrong)
+                                Text(segment.text)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .font(self.theme.typography.body)
+                    .textSelection(.enabled)
+                    .lineSpacing(4)
+                    .padding(self.theme.metrics.spacing.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: .infinity)
+                .id(entry.id)
+            }
+        }
+        .background(self.theme.palette.windowBackground)
     }
 
     // MARK: - Error Card
@@ -637,21 +732,21 @@ struct FileTranscriptionView: View {
                 .foregroundColor(.red)
 
             Text(error)
-                .font(.fluidSystem(.subheadline))
+                .font(self.theme.typography.bodySmall)
 
             Spacer()
 
             Button("Dismiss") {
                 self.transcriptionService.reset()
             }
-            .buttonStyle(.borderless)
+            .fluidGlassAction()
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                 .fill(Color.red.opacity(0.12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                         .stroke(Color.red.opacity(0.4), lineWidth: 1)
                 )
         )
@@ -665,21 +760,21 @@ struct FileTranscriptionView: View {
                 .foregroundColor(.red)
 
             Text(message)
-                .font(.fluidSystem(.subheadline))
+                .font(self.theme.typography.bodySmall)
 
             Spacer()
 
             Button("Dismiss") {
                 self.dropErrorMessage = nil
             }
-            .buttonStyle(.borderless)
+            .fluidGlassAction()
         }
         .padding()
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                 .fill(Color.red.opacity(0.12))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: self.theme.metrics.corners.lg, style: .continuous)
                         .stroke(Color.red.opacity(0.4), lineWidth: 1)
                 )
         )
@@ -723,18 +818,6 @@ struct FileTranscriptionView: View {
         } catch {
             DebugLogger.shared.error("Transcription error: \(error)", source: "FileTranscriptionView")
         }
-    }
-
-    private func formatFileSize(fileURL: URL) -> String {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-              let fileSize = attributes[.size] as? Int64
-        else {
-            return "Unknown size"
-        }
-
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: fileSize)
     }
 
     private func copyToClipboard(_ text: String) {

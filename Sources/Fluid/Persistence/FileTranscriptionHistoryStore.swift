@@ -100,11 +100,12 @@ nonisolated struct FileTranscriptionEntry: Codable, Identifiable, Equatable {
 
     /// Preview text for list display (first 80 chars)
     var previewText: String {
-        let trimmed = self.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count > 80 {
-            return String(trimmed.prefix(77)) + "..."
+        let leadingTrimmed = self.text.drop(while: { $0.isWhitespace })
+        let prefix = leadingTrimmed.prefix(81)
+        if prefix.count > 80, !leadingTrimmed.dropFirst(80).allSatisfy(\.isWhitespace) {
+            return String(prefix.prefix(77)) + "..."
         }
-        return trimmed
+        return String(prefix.prefix(80)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Relative time string for display
