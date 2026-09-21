@@ -164,6 +164,7 @@ protocol TranscriptionProvider {
     /// Transcribe audio captured while training dictionary replacements.
     /// Providers can bypass final-output transforms that would distort the saved phrase.
     func transcribeDictionaryTraining(_ samples: [Float]) async throws -> ASRTranscriptionResult
+    func transcribeDictionaryTraining(_ samples: [Float], capturePronunciation: Bool) async throws -> ASRTranscriptionResult
 
     /// Meeting word alignment only; dictation never calls the method this gates.
     var supportsWordTimings: Bool { get }
@@ -206,6 +207,10 @@ extension TranscriptionProvider {
 
     func transcribeFinal(_ samples: [Float]) async throws -> ASRTranscriptionResult {
         try await self.transcribe(samples)
+    }
+
+    func transcribeDictionaryTraining(_ samples: [Float], capturePronunciation: Bool) async throws -> ASRTranscriptionResult {
+        try await self.transcribeDictionaryTraining(samples)
     }
 
     func transcribeDictionaryTraining(_ samples: [Float]) async throws -> ASRTranscriptionResult {

@@ -9,6 +9,18 @@ struct PronunciationEnrollmentCapture: Codable, Equatable, Sendable {
     var sourceRecordingID: UUID?
     var sourceFocalRange: Range<Int>?
     var extractorVersion: String?
+    var inspectionID: UUID?
+    // nil identifies legacy enrollment; an empty vector is invalid.
+    // swiftlint:disable:next discouraged_optional_collection
+    var edgeEmbedding: [Float]?
+    var edgeFrameCount: Int?
+    // Only held until the profile save. Large evidence is stored separately on disk.
+    var pendingInspection: DictionaryAudioInspection? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case values, sourceFrameCount, modelKey, originalAudioID, observedText
+        case sourceRecordingID, sourceFocalRange, extractorVersion, inspectionID, edgeEmbedding, edgeFrameCount
+    }
 }
 
 struct PronunciationDictionaryProfile: Codable, Equatable, Identifiable, Sendable {
@@ -17,6 +29,8 @@ struct PronunciationDictionaryProfile: Codable, Equatable, Identifiable, Sendabl
     let modelKey: String
     let hiddenSize: Int
     var enrollments: [PronunciationEnrollmentCapture]
+    var automaticMatchingEnabled: Bool? = nil
+    var matchThreshold: Float? = nil
 
     var hasOriginalAudio: Bool { self.enrollments.contains { $0.originalAudioID != nil } }
     var isEligibleForMatching: Bool {
@@ -96,7 +110,8 @@ actor PronunciationDictionaryStore {
         dictionaryEntryID: UUID,
         label: String,
         modelKey: String,
-        enrollments: [PronunciationEnrollmentCapture]
+        enrollments: [PronunciationEnrollmentCapture],
+        automaticMatchingEnabled: Bool = false
     ) throws {
         guard let first = enrollments.first, !first.values.isEmpty else { return }
         guard enrollments.allSatisfy({ $0.modelKey == modelKey && $0.values.count == first.values.count }) else {
@@ -108,7 +123,39 @@ actor PronunciationDictionaryStore {
             $0.dictionaryEntryID == dictionaryEntryID && $0.modelKey == modelKey
         })
         let existingEnrollments = existingIndex.map { profiles[$0].enrollments } ?? []
-        let combinedEnrollments = existingEnrollments + enrollments
+        var prepared = enrollments
+        var writtenInspectionIDs: [UUID] = []
+        do {
+            for index in prepared.indices {
+                guard let evidence = prepared[index].pendingInspection else { continue }
+                guard evidence.isValid, evidence.duration <= 15,
+                      evidence.frames.allSatisfy({ $0.hiddenSize == first.values.count })
+                else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+                let id = UUID()
+                let url = self.inspectionURL(id)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let encoder = PropertyListEncoder()
+                encoder.outputFormat = .binary
+                try encoder.encode(evidence).write(to: url, options: .atomic)
+                writtenInspectionIDs.append(id)
+                prepared[index].inspectionID = id
+                prepared[index].pendingInspection = nil
+            }
+        } catch {
+            for id in writtenInspectionIDs {
+                try? FileManager.default.removeItem(at: self.inspectionURL(id))
+            }
+            throw error
+        }
+        var didPersist = false
+        defer {
+            if !didPersist {
+                for id in writtenInspectionIDs {
+                    try? FileManager.default.removeItem(at: self.inspectionURL(id))
+                }
+            }
+        }
+        let combinedEnrollments = existingEnrollments + prepared
         guard combinedEnrollments.allSatisfy({
             $0.modelKey == modelKey && $0.values.count == first.values.count
         }) else {
@@ -119,7 +166,9 @@ actor PronunciationDictionaryStore {
             label: label,
             modelKey: modelKey,
             hiddenSize: first.values.count,
-            enrollments: Array(combinedEnrollments.suffix(10))
+            enrollments: Array(combinedEnrollments.suffix(10)),
+            automaticMatchingEnabled: automaticMatchingEnabled || existingIndex.map { profiles[$0].automaticMatchingEnabled == true } == true,
+            matchThreshold: existingIndex.flatMap { profiles[$0].matchThreshold }
         )
         if let index = existingIndex {
             profiles[index] = profile
@@ -130,6 +179,44 @@ actor PronunciationDictionaryStore {
             version: 1,
             profiles: profiles
         ))
+        didPersist = true
+        let retained = Set(profile.enrollments.compactMap(\.inspectionID))
+        for id in writtenInspectionIDs where !retained.contains(id) {
+            try? FileManager.default.removeItem(at: self.inspectionURL(id))
+        }
+    }
+
+    /// Reads only the selected example. Legacy profiles explicitly have no evidence.
+    func inspection(for id: UUID) throws -> DictionaryAudioInspection {
+        let url = self.inspectionURL(id)
+        let attributes = try url.resourceValues(forKeys: [.fileSizeKey])
+        guard let size = attributes.fileSize, size <= 24_000_000 else {
+            throw PronunciationDictionaryStoreError.inconsistentEnrollment
+        }
+        let value = try PropertyListDecoder().decode(DictionaryAudioInspection.self, from: Data(contentsOf: url))
+        guard value.isValid else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+        return value
+    }
+
+    private func inspectionURL(_ id: UUID) -> URL {
+        self.fileURL.deletingLastPathComponent().appendingPathComponent("pronunciation-inspection", isDirectory: true)
+            .appendingPathComponent(id.uuidString).appendingPathExtension("plist")
+    }
+
+    /// Updates only this word's matching level; preserves recordings and text rules.
+    func setMatchThreshold(_ threshold: Float, dictionaryEntryID: UUID) throws {
+        guard threshold.isFinite, (0.4...0.95).contains(threshold) else {
+            throw PronunciationDictionaryStoreError.inconsistentEnrollment
+        }
+        self.loadIfNeeded()
+        var profiles = self.document?.profiles ?? []
+        guard profiles.contains(where: { $0.dictionaryEntryID == dictionaryEntryID }) else {
+            throw PronunciationDictionaryStoreError.staleEvidence
+        }
+        for index in profiles.indices where profiles[index].dictionaryEntryID == dictionaryEntryID {
+            profiles[index].matchThreshold = threshold
+        }
+        try self.persist(Document(version: 1, profiles: profiles))
     }
 
     func replaceAllProfiles(_ profiles: [PronunciationDictionaryProfile]) throws {
@@ -340,6 +427,7 @@ actor PronunciationDictionaryStore {
         }
         self.document = decoded
         self.removeOrphanedAudio()
+        self.removeOrphanedInspections()
     }
 
     /// A crash before the profile commit leaves an inactive clip; discard it after loading valid metadata.
@@ -360,6 +448,20 @@ actor PronunciationDictionaryStore {
         }
     }
 
+    private func removeOrphanedInspections() {
+        let referenced = Set((self.document?.profiles ?? []).flatMap(\.enrollments).compactMap(\.inspectionID))
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: self.inspectionURL(UUID()).deletingLastPathComponent(), includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return }
+        for file in files where file.pathExtension == "plist" {
+            guard let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent), !referenced.contains(id),
+                  let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+                  let modified = values.contentModificationDate, modified.timeIntervalSinceNow < -60
+            else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
     private func persist(_ updated: Document) throws {
         try FileManager.default.createDirectory(
             at: self.fileURL.deletingLastPathComponent(),
@@ -372,7 +474,12 @@ actor PronunciationDictionaryStore {
             options: .atomic
         )
         let oldIDs = Set((self.document?.profiles ?? []).flatMap(\.enrollments).compactMap(\.originalAudioID))
+        let oldInspectionIDs = Set((self.document?.profiles ?? []).flatMap(\.enrollments).compactMap(\.inspectionID))
+        let newInspectionIDs = Set(updated.profiles.flatMap(\.enrollments).compactMap(\.inspectionID))
         self.document = updated
+        for id in oldInspectionIDs.subtracting(newInspectionIDs) {
+            try? FileManager.default.removeItem(at: self.inspectionURL(id))
+        }
         let newIDs = Set(updated.profiles.flatMap(\.enrollments).compactMap(\.originalAudioID))
         for id in oldIDs.subtracting(newIDs) {
             try? FileManager.default.removeItem(at: self.audioURL(id))

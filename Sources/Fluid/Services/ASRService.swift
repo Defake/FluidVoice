@@ -1907,6 +1907,11 @@ final class ASRService: ObservableObject {
     // Thread-safe buffer to prevent "Array mutation while enumerating" and memory corruption crashes
     // during long sessions where reallocation occurs frequently.
     private let audioBuffer = ThreadSafeAudioBuffer()
+    // Transient, read-only audio for a focused dictionary test. No history setting or disk write.
+    private let dictionaryTestAudioSubject = PassthroughSubject<[Float], Never>()
+    var dictionaryTestAudioPublisher: AnyPublisher<[Float], Never> {
+        self.dictionaryTestAudioSubject.eraseToAnyPublisher()
+    }
     private var lastCompletedAudioSnapshot: DictationAudioSnapshot?
     private var lastDictionaryLearningRecording: DictionaryLearningRecording?
     private var dictionaryLearningExpiryTask: Task<Void, Never>?
@@ -3187,6 +3192,9 @@ final class ASRService: ObservableObject {
         )
     }
 
+    /// Identifies the protected dictionary capture so a dismissed test cannot stop a newer recording.
+    var dictionaryCaptureToken: Int? { self.isDictionaryTrainingCaptureActive ? self.benchmarkSessionID : nil }
+
     /// Stops the recording session and returns the transcribed text.
     ///
     /// This method performs the complete transcription process:
@@ -3225,8 +3233,11 @@ final class ASRService: ObservableObject {
     func stop(
         onCaptureStopped: (@MainActor () -> Void)? = nil,
         onFinalTranscriptionStarted: (@MainActor () -> Void)? = nil,
-        forDictionaryTraining: Bool = false
+        forDictionaryTraining: Bool = false,
+        captureDictionaryPronunciation: Bool? = nil,
+        forDictionaryTesting: Bool = false
     ) async -> String {
+        guard !forDictionaryTesting || self.isDictionaryTrainingCaptureActive else { return "" }
         DebugLogger.shared.info("🛑 STOP() called - beginning shutdown sequence", source: "ASRService")
         self.lastStopOutcome = .empty
         self.lastFinalTranscriptionDurationMs = nil
@@ -3278,7 +3289,9 @@ final class ASRService: ObservableObject {
             }
         }
         self.stopStreamingScheduler(sessionID: stoppingSessionID)
-        let useDictionaryTrainingPath = forDictionaryTraining || self.isDictionaryTrainingCaptureActive
+        let isolatedDictionaryCapture = forDictionaryTraining || self.isDictionaryTrainingCaptureActive
+        // Tests use normal recognition and saved corrections, but never enroll or retain learning audio.
+        let useDictionaryTrainingPath = isolatedDictionaryCapture && !forDictionaryTesting
         defer {
             self.applyPendingParakeetVocabularyReloadIfNeeded()
             self.isDictionaryTrainingCaptureActive = false
@@ -3477,9 +3490,20 @@ final class ASRService: ObservableObject {
             if useDictionaryTrainingPath {
                 result = try await self.transcriptionExecutor.run { [provider] in
                     self.publishStoppedState(for: stoppingSessionID)
+                    if let captureDictionaryPronunciation {
+                        return try await provider.transcribeDictionaryTraining(pcm, capturePronunciation: captureDictionaryPronunciation)
+                    }
                     return try await provider.transcribeDictionaryTraining(pcm)
                 }
-                self.lastDictionaryTrainingResult = result
+                var enrollment = result.pronunciationEnrollment
+                // Preserve the unpadded boundary alongside the exact model input.
+                enrollment?.pendingInspection?.recordedSampleCount = capturedPCM.count
+                self.lastDictionaryTrainingResult = ASRTranscriptionResult(
+                    text: result.text,
+                    confidence: result.confidence,
+                    pronunciationEnrollment: enrollment,
+                    dictionaryLearningAlignment: result.dictionaryLearningAlignment
+                )
                 finalSource = "dictionaryTraining"
             } else {
                 let vocabularyProvider = provider as? FluidAudioProvider
@@ -3554,7 +3578,7 @@ final class ASRService: ObservableObject {
             }
 
             // Do not update self.finalText here to avoid instant binding insert in playground
-            if !useDictionaryTrainingPath, SettingsStore.shared.automaticDictionaryLearningEnabled,
+            if !isolatedDictionaryCapture, SettingsStore.shared.automaticDictionaryLearningEnabled,
                let alignment = result.dictionaryLearningAlignment
             {
                 self.retainDictionaryLearningRecording(DictionaryLearningRecording(alignment: alignment, samples: capturedPCM))
@@ -3567,12 +3591,12 @@ final class ASRService: ObservableObject {
             let outputText = useDictionaryTrainingPath
                 ? dictionaryText
                 : ASRService.applySpokenPunctuationFormatting(dictionaryText)
-            if !useDictionaryTrainingPath {
+            if !isolatedDictionaryCapture {
                 self.recordWordBoostHitIfAny(transcribedText: outputText)
             }
             DebugLogger.shared.debug("After post-processing: '\(outputText)'", source: "ASRService")
             self.benchmarkLog("stop_end result=success totalMs=\(self.elapsedMilliseconds(since: stopStartedAt)) recordingAgeMs=\(self.elapsedMilliseconds(since: self.benchmarkRecordingStartedAt)) cleanedChars=\(outputText.count)")
-            if !useDictionaryTrainingPath,
+            if !isolatedDictionaryCapture,
                SettingsStore.shared.saveTranscriptionHistory,
                SettingsStore.shared.saveAudioWithTranscriptionHistory,
                !capturedPCM.isEmpty
@@ -3582,6 +3606,10 @@ final class ASRService: ObservableObject {
                     sampleRate: 16_000,
                     channels: 1
                 )
+            }
+
+            if !isolatedDictionaryCapture, capturedPCM.count <= 16_000 * 120 {
+                self.dictionaryTestAudioSubject.send(capturedPCM)
             }
 
             self.lastStopOutcome = outputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -6840,14 +6868,22 @@ final class ASRService: ObservableObject {
     /// Cache for compiled custom dictionary regexes.
     /// Key: trigger word, Value: (compiled regex, escaped replacement template)
     /// Cleared when dictionary entries change.
-    private static var cachedDictionaryPatterns: [(regex: NSRegularExpression, template: String, canonical: NSRegularExpression?)] = []
+    private struct CachedDictionaryPattern {
+        let entryID: UUID
+        let trigger: String
+        let regex: NSRegularExpression
+        let template: String
+        let canonical: NSRegularExpression?
+    }
+
+    private static var cachedDictionaryPatterns: [CachedDictionaryPattern] = []
     private static var dictionaryCacheNeedsRebuild: Bool = true
 
     /// Rebuilds the regex cache if dictionary has changed.
     /// Called lazily on first apply after settings change.
     private static func rebuildDictionaryCache() {
         let entries = SettingsStore.shared.customDictionaryEntries
-        var patterns: [(regex: NSRegularExpression, template: String, canonical: NSRegularExpression?)] = []
+        var patterns: [CachedDictionaryPattern] = []
 
         for entry in entries {
             var canonical: NSRegularExpression?
@@ -6872,7 +6908,13 @@ final class ASRService: ObservableObject {
                 if needsProtection, canonical == nil {
                     canonical = try? NSRegularExpression(pattern: self.dictionaryPattern(for: entry.replacement), options: .caseInsensitive)
                 }
-                patterns.append((regex: regex, template: NSRegularExpression.escapedTemplate(for: entry.replacement), canonical: needsProtection ? canonical : nil))
+                patterns.append(CachedDictionaryPattern(
+                    entryID: entry.id,
+                    trigger: trigger,
+                    regex: regex,
+                    template: NSRegularExpression.escapedTemplate(for: entry.replacement),
+                    canonical: needsProtection ? canonical : nil
+                ))
             }
         }
 
@@ -6933,12 +6975,32 @@ final class ASRService: ObservableObject {
         var result = text
 
         // Apply cached regexes - O(n) where n = number of patterns
+        var replacementCount = 0
         for pattern in self.cachedDictionaryPatterns {
             result = DictionaryReplacementProtection.replacingMatches(
                 in: result,
                 regex: pattern.regex,
                 template: pattern.template,
-                canonical: pattern.canonical
+                canonical: pattern.canonical,
+                onReplacement: { range, heard, replacement in
+                    replacementCount += 1
+                    guard replacementCount <= DictionaryReplacementDiagnostics.maximumEvents else { return }
+                    DebugLogger.shared.debug(
+                        "DICTIONARY_REPLACEMENT stage=exact_rule entryID=\(pattern.entryID) " +
+                            "trigger=\(DictionaryReplacementDiagnostics.quoted(pattern.trigger)) " +
+                            "heard=\(DictionaryReplacementDiagnostics.quoted(heard)) " +
+                            "replacement=\(DictionaryReplacementDiagnostics.quoted(replacement)) " +
+                            "utf16Location=\(range.location) utf16Length=\(range.length)",
+                        source: "CustomDictionary"
+                    )
+                }
+            )
+        }
+        if replacementCount > DictionaryReplacementDiagnostics.maximumEvents {
+            DebugLogger.shared.info(
+                "DICTIONARY_REPLACEMENT_SUMMARY total=\(replacementCount) " +
+                    "omitted=\(replacementCount - DictionaryReplacementDiagnostics.maximumEvents)",
+                source: "CustomDictionary"
             )
         }
 

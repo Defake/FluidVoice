@@ -2,14 +2,29 @@ import Foundation
 
 /// Original corrections provide both text and acoustic evidence for the same intended spelling.
 /// These conservative thresholds are evaluated separately from the legacy three-recording preview.
-enum DictionaryPronunciationDecision {
+nonisolated enum DictionaryPronunciationDecision {
     static func accepts(score: Float, heardText: String, profile: PronunciationDictionaryProfile) -> Bool {
         guard score.isFinite else { return false }
+        return score >= self.requiredScore(heardText: heardText, profile: profile)
+    }
+
+    static func requiredScore(heardText: String, profile: PronunciationDictionaryProfile) -> Float {
+        if let threshold = self.overrideThreshold(profile) { return threshold }
+        guard profile.hasOriginalAudio else { return 0.70 }
         let heard = self.normalized(heardText)
         let knownVariant = profile.enrollments.contains {
             $0.observedText.map(self.normalized) == heard
         }
-        return score >= (knownVariant ? 0.70 : 0.85)
+        return knownVariant ? 0.70 : 0.85
+    }
+
+    static func overrideThreshold(_ profile: PronunciationDictionaryProfile) -> Float? {
+        guard let value = profile.matchThreshold, value.isFinite, (0.4...0.95).contains(value) else { return nil }
+        return value
+    }
+
+    static func minimumSearchScore(profiles: [PronunciationDictionaryProfile]) -> Float {
+        profiles.reduce(Float(0.70)) { min($0, self.overrideThreshold($1) ?? 0.70) }
     }
 
     /// A new spoken possessive is still the enrolled name. Preserve its grammatical ending,

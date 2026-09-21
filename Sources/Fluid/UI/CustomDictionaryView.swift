@@ -13,6 +13,11 @@ import UniformTypeIdentifiers
 // This legacy screen still owns several dictionary editors; split them into standalone views incrementally.
 // swiftlint:disable:next type_body_length
 struct CustomDictionaryView: View {
+    var formattingOnly = false
+    @State private var isWordDrawerPresented = false
+    @State private var wordSearch = ""
+    @State private var isDrawerActionsPresented = false
+    @State private var drawerDeletion: SettingsStore.CustomDictionaryEntry?
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appServices: AppServices
@@ -34,7 +39,10 @@ struct CustomDictionaryView: View {
     @State private var boostTermText = ""
     @State private var boostTermStrength: BoostStrengthPreset = .balanced
 
+    @State private var wizardStep: DictionaryWordWizardStep = .spelling
+    @State private var wizardSavedWord = ""
     @State private var trainingReplacement = ""
+    @State private var trainingSaveID: UUID?
     @State private var trainingVariants: [String] = []
     @State private var pronunciationMatchingEnabled = SettingsStore.shared.pronunciationMatchingEnabled
     @State private var trainingPronunciationEnrollments: [PronunciationEnrollmentCapture] = []
@@ -75,7 +83,7 @@ struct CustomDictionaryView: View {
     }
 
     private var activePronunciationMatching: Bool {
-        self.pronunciationMatchingEnabled && SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching
+        SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching
     }
 
     private var pronunciationMatchingBinding: Binding<Bool> {
@@ -116,9 +124,7 @@ struct CustomDictionaryView: View {
         if self.activePronunciationMatching {
             return self.trainingPronunciationEnrollments.count >= CustomDictionaryTrainingMerge.readyCoveredCount
         }
-        return !self.trainingAlreadyCorrectWithoutReplacement &&
-            self.trainingOutputIsCovered &&
-            self.consecutiveCoveredCaptures >= CustomDictionaryTrainingMerge.readyCoveredCount
+        return self.trainingSampleCount >= CustomDictionaryTrainingMerge.readyCoveredCount
     }
 
     private var trainingAlreadyCorrectWithoutReplacement: Bool {
@@ -250,19 +256,57 @@ struct CustomDictionaryView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-                self.pageHeader
+        Group {
+            if self.formattingOnly {
+                self.punctuationDictionarySection
+            } else {
+                HStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
+                            self.pageHeader
+                            self.trainReplacementSection
+                        }
+                        .frame(maxWidth: 860, alignment: .leading)
+                        .padding(self.theme.metrics.spacing.xl)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xxl) {
-                    self.trainReplacementSection
-                    self.yourDictionarySection
-                    self.punctuationDictionarySection
-                    self.aiPostProcessingSection
+                    self.wordDrawer
+                        .frame(width: 240)
+                        .frame(maxHeight: .infinity)
+                        .transaction { $0.animation = nil }
+                        .frame(width: self.isWordDrawerPresented ? 240 : 0, alignment: .trailing)
+                        .clipped()
+                        .background {
+                            Rectangle()
+                                .fill(self.theme.materials.sidebar)
+                                .ignoresSafeArea(.container, edges: [.top, .bottom])
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                        .overlay(alignment: .leading) {
+                            Divider()
+                                .ignoresSafeArea(.container, edges: [.top, .bottom])
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                        .allowsHitTesting(self.isWordDrawerPresented)
+                        .disabled(!self.isWordDrawerPresented)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityHidden(!self.isWordDrawerPresented)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(self.drawerAnimation, value: self.isWordDrawerPresented)
             }
-            .frame(maxWidth: 860, alignment: .leading)
-            .padding(self.theme.metrics.spacing.xl)
+        }
+        .overlay(alignment: .topTrailing) {
+            if !self.formattingOnly {
+                self.dictionaryDrawerToggle
+                    .offset(x: self.isWordDrawerPresented ? -40 : 0)
+                    .animation(self.drawerAnimation, value: self.isWordDrawerPresented)
+                    .padding(.trailing, self.theme.metrics.spacing.xl)
+                    .padding(.top, self.theme.metrics.spacing.xl)
+            }
         }
         .dismissTextFocusOnBackgroundTap()
         .task(id: self.revealTarget) {
@@ -301,20 +345,24 @@ struct CustomDictionaryView: View {
             }
         }
         .onAppear {
-            self.entries = SettingsStore.shared.customDictionaryEntries
-            self.loadBoostTerms()
-            self.pronunciationMatchingEnabled = SettingsStore.shared.pronunciationMatchingEnabled
-            if !SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching {
-                self.pronunciationMatchingEnabled = false
-                SettingsStore.shared.pronunciationMatchingEnabled = false
+            if !self.formattingOnly {
+                self.entries = SettingsStore.shared.customDictionaryEntries
+                self.loadBoostTerms()
+                self.pronunciationMatchingEnabled = SettingsStore.shared.pronunciationMatchingEnabled
             }
             self.punctuationAutoConvertEnabled = SettingsStore.shared.autoConvertPunctuationEnabled
             self.formattingActionRules = SettingsStore.shared.spokenFormattingActionRules
         }
         .onReceive(NotificationCenter.default.publisher(for: .parakeetVocabularyDidChange)) { _ in
+            guard !self.formattingOnly else { return }
             self.entries = SettingsStore.shared.customDictionaryEntries
         }
         .onDisappear {
+            guard !self.formattingOnly else { return }
+            if self.trainingSaveID != nil {
+                self.trainingSaveID = nil
+                self.isTrainingProcessing = false
+            }
             self.isAutomaticTrainingEnabled = false
             DictionaryTrainingEndpointMonitor.shared.stop()
             guard self.isTrainingRecording else { return }
@@ -333,24 +381,167 @@ struct CustomDictionaryView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Custom Dictionary")
                     .font(self.theme.typography.title)
-                Text("Correct recurring mistakes and teach the voice engine the words you use.")
+                Text("Your words, recognised your way.")
                     .font(self.theme.typography.bodySmall)
                     .foregroundStyle(self.theme.palette.secondaryText)
             }
 
             Spacer(minLength: self.theme.metrics.spacing.md)
 
-            HStack(spacing: self.theme.metrics.spacing.sm) {
-                Button(action: self.importDictionary) {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .fluidButton(.compact, size: .compact)
+            Color.clear.frame(width: self.isWordDrawerPresented ? 0 : 150, height: 32).accessibilityHidden(true)
+        }
+    }
 
-                Button(action: self.exportDictionary) {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .fluidButton(.compact, size: .compact)
+    private var drawerAnimation: Animation? {
+        self.reduceMotion ? nil : .timingCurve(0.22, 0.8, 0.25, 1, duration: 0.34)
+    }
+
+    private var dictionaryDrawerToggle: some View {
+        Button {
+            self.isDrawerActionsPresented = false
+            self.isWordDrawerPresented.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "sidebar.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(self.isWordDrawerPresented ? self.theme.palette.accent : self.theme.palette.primaryText)
+                    .frame(width: 20, height: 20)
+                Text("Your Dictionary")
             }
+        }
+        .fluidGlassAction()
+        .accessibilityLabel(self.isWordDrawerPresented ? "Collapse your dictionary" : "Expand your dictionary")
+        .help(self.isWordDrawerPresented ? "Collapse your dictionary" : "Expand your dictionary")
+    }
+
+    private var drawerEntries: [SettingsStore.CustomDictionaryEntry] {
+        self.entries.filter {
+            self.wordSearch.isEmpty || $0.replacement.localizedCaseInsensitiveContains(self.wordSearch)
+                || $0.triggers.contains { $0.localizedCaseInsensitiveContains(self.wordSearch) }
+        }
+    }
+
+    private var wordDrawer: some View {
+        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
+            HStack(alignment: .center, spacing: 8) {
+                Color.clear.frame(width: 150, height: 32).accessibilityHidden(true)
+                Spacer()
+                Button { self.isDrawerActionsPresented.toggle() } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 20, height: 20)
+                }
+                .fluidGlassAction(circular: true)
+                .accessibilityLabel("Dictionary actions")
+                .popover(isPresented: self.$isDrawerActionsPresented) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("Import…") {
+                            self.isDrawerActionsPresented = false
+                            self.importDictionary()
+                        }.fluidGlassAction()
+                        Button("Export…") {
+                            self.isDrawerActionsPresented = false
+                            self.exportDictionary()
+                        }.fluidGlassAction()
+                        Divider()
+                        Button("Custom Words (Advanced)…") {
+                            self.isDrawerActionsPresented = false
+                            self.presentCustomWords()
+                        }.fluidGlassAction()
+                    }
+                    .padding(16)
+                }
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                TextField("Search words", text: self.$wordSearch)
+                    .textFieldStyle(.plain)
+            }
+            .font(self.theme.typography.bodySmall)
+            .padding(10)
+            .background(self.theme.palette.contentBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(self.theme.palette.cardBorder.opacity(0.4)))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
+                    ForEach(self.drawerEntries) { entry in
+                        HStack(alignment: .center, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.replacement).font(self.theme.typography.bodyStrong)
+                                Text(entry.triggers.joined(separator: ", "))
+                                    .font(self.theme.typography.caption)
+                                    .foregroundStyle(self.theme.palette.secondaryText)
+                                    .lineLimit(3)
+                                Button("Test word") {
+                                    self.wizardSavedWord = entry.replacement
+                                    self.wizardStep = .saved
+                                    self.isWordDrawerPresented = false
+                                }.fluidGlassAction()
+                                    .disabled(self.asr.isRunning || self.isTrainingStarting || self.isTrainingProcessing)
+                                    .accessibilityLabel("Test \(entry.replacement)")
+                            }
+                            Spacer()
+                            Button { self.editingEntry = entry } label: {
+                                FluidPencilShape()
+                                    .stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                                    .frame(width: 20, height: 20)
+                                    .frame(width: 22, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .fluidGlassAction(circular: true)
+                            .help("Edit word")
+                            .accessibilityLabel("Edit \(entry.replacement)")
+                            Button(role: .destructive) { self.drawerDeletion = entry } label: {
+                                Image(systemName: "trash")
+                                    .font(.fluidSystem(size: 15, weight: .regular))
+                                    .frame(width: 22, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .fluidGlassAction(circular: true)
+                            .help("Delete word")
+                            .accessibilityLabel("Delete \(entry.replacement)")
+                        }
+                        .contextMenu {
+                            Button("Edit…") { self.editingEntry = entry }
+                            Button("Remove word", role: .destructive) { self.drawerDeletion = entry }
+                        }
+                        Divider().opacity(0.3)
+                    }
+                    if self.drawerEntries.isEmpty {
+                        Text(self.wordSearch.isEmpty ? "Add a word to see it here." : "No matching words.")
+                            .font(self.theme.typography.bodySmall)
+                            .foregroundStyle(self.theme.palette.secondaryText)
+                            .padding(.vertical, self.theme.metrics.spacing.lg)
+                    }
+                }
+            }
+            Text("\(self.entries.count) saved words")
+                .font(self.theme.typography.caption)
+                .foregroundStyle(self.theme.palette.secondaryText)
+        }
+        .padding(self.theme.metrics.spacing.lg)
+        .padding(.top, 8)
+        .alert("Remove word?", isPresented: Binding(
+            get: { self.drawerDeletion != nil },
+            set: { if !$0 { self.drawerDeletion = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { self.drawerDeletion = nil }
+            Button("Remove", role: .destructive) {
+                if let entry = self.drawerDeletion { self.deleteEntry(entry) }
+                self.drawerDeletion = nil
+            }
+        } message: {
+            Text("This removes the saved corrections and pronunciation for this word.")
+        }
+        .popover(isPresented: self.$isCustomWordsPresented) {
+            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
+                Toggle("Custom Words Boosting", isOn: self.$vocabBoostingEnabled)
+                    .onChange(of: self.vocabBoostingEnabled) { _, enabled in
+                        SettingsStore.shared.vocabularyBoostingEnabled = enabled
+                    }
+                self.customWordsPopover
+            }
+            .padding(self.theme.metrics.spacing.md)
         }
     }
 
@@ -378,34 +569,73 @@ struct CustomDictionaryView: View {
         .frame(width: 34, height: 34)
     }
 
-    // MARK: - Teach Words
-
     private var trainReplacementSection: some View {
         ThemedCard(style: .standard, hoverEffect: false) {
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-                HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-                    self.settingsIconTile(systemName: "mic.fill")
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Teach Words")
-                            .font(self.theme.typography.sectionTitle)
-                        Text("Show FluidVoice the right spelling, by voice or by typing.")
-                            .font(self.theme.typography.caption)
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                    }
+            if self.wizardStep == .manual {
+                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
+                    Button { self.wizardStep = .recording } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }.fluidGlassAction()
+                    Text("Add a correction").font(self.theme.typography.sectionTitle)
+                    Text("When FluidVoice types the wrong version, we’ll change it to your word.")
+                        .font(self.theme.typography.bodySmall)
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                    self.manualReplacementComposer
                 }
-
-                self.dictionaryComposerModePicker
-
-                Group {
-                    switch self.composerMode {
-                    case .train:
-                        self.trainReplacementComposer
-                    case .manual:
-                        self.manualReplacementComposer
-                    }
+            } else {
+                DictionaryWordWizard(
+                    word: self.$trainingReplacement,
+                    step: self.wizardStep,
+                    count: self.activePronunciationMatching ? self.trainingPronunciationEnrollments.count : self.trainingSampleCount,
+                    heard: self.lastTrainingOutput,
+                    variants: self.trainingVariants,
+                    busy: self.isTrainingRecording || self.isTrainingProcessing || self.isTrainingStarting,
+                    recording: self.isTrainingRecording,
+                    processing: self.isTrainingProcessing || self.isTrainingStarting,
+                    starting: self.isTrainingStarting,
+                    error: self.trainingHasError ? self.trainingStatusMessage : nil,
+                    voiceSupported: self.activePronunciationMatching,
+                    alreadyCorrect: self.trainingAlreadyCorrectWithoutReplacement,
+                    savedWord: self.wizardSavedWord,
+                    onContinue: {
+                        let captures = self.activePronunciationMatching ? self.trainingPronunciationEnrollments.count : self.trainingSampleCount
+                        self.wizardStep = captures >= 3 ? .review : .recording
+                    },
+                    onRecord: {
+                        self.wizardStep = .recording
+                        Task { await self.toggleAutomaticTraining() }
+                    },
+                    onSave: {
+                        if self.trainingAlreadyCorrectWithoutReplacement {
+                            self.wizardSavedWord = self.normalizedTrainingReplacement
+                            self.resetTraining()
+                            self.wizardStep = .saved
+                        } else {
+                            Task { await self.addTrainedReplacement() }
+                        }
+                    },
+                    onBack: { self.wizardStep = .spelling },
+                    onNewWord: { self.resetTraining(); self.wizardStep = .spelling },
+                    onManual: {
+                        self.manualReplacement = self.normalizedTrainingReplacement
+                        self.wizardStep = .manual
+                    },
+                    onPracticeMore: {
+                        self.trainingReplacement = self.wizardSavedWord
+                        self.wizardStep = .recording
+                    },
+                    onRedo: {
+                        guard !self.isTrainingRecording, !self.isTrainingProcessing, !self.isTrainingStarting else { return }
+                        self.resetTraining(keepingWord: true)
+                        self.wizardStep = .recording
+                    },
+                    automaticCaptureActive: self.isAutomaticTrainingEnabled,
+                    audioLevels: self.asr.audioLevelPublisher
+                )
+                .onChange(of: self.trainingReplacement) { oldValue, newValue in
+                    self.handleTrainingReplacementChange(oldValue: oldValue, newValue: newValue)
                 }
-                .frame(minHeight: 315, alignment: .topLeading)
+                .task { await DictionaryTrainingEndpointMonitor.shared.prepare() }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -556,11 +786,9 @@ struct CustomDictionaryView: View {
             Button {
                 self.addManualReplacementIfValid()
             } label: {
-                Label("Add Replacement", systemImage: "plus")
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 38)
+                Label("Save correction", systemImage: "checkmark")
             }
-            .fluidButton(.accent, size: .small)
+            .fluidGlassAction(prominent: true, tone: self.theme.palette.accent)
             .disabled(!self.canAddManualReplacement)
             .opacity(self.canAddManualReplacement ? 1 : 0.45)
         }
@@ -568,7 +796,7 @@ struct CustomDictionaryView: View {
 
     private var manualTriggerField: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-            Text("When FluidVoice hears")
+            Text("What FluidVoice types wrong")
                 .font(self.theme.typography.captionStrong)
 
             TextField("fluid voice, fluid boys", text: self.$manualTriggerDraft)
@@ -583,7 +811,7 @@ struct CustomDictionaryView: View {
 
     private var manualReplacementField: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-            Text("Change it to")
+            Text("What it should type")
                 .font(self.theme.typography.captionStrong)
             TextField("FluidVoice", text: self.$manualReplacement)
                 .dictionaryInputChrome()
@@ -839,10 +1067,8 @@ struct CustomDictionaryView: View {
                 self.presentYourDictionary()
             } label: {
                 Label("Modify", systemImage: "slider.horizontal.3")
-                    .frame(width: Self.DictionaryHeaderControlLayout.actionButtonLabelWidth)
             }
-            .frame(width: Self.DictionaryHeaderControlLayout.actionButtonWidth)
-            .fluidButton(.compact, size: .medium)
+            .fluidGlassAction()
             .help("Modify dictionary replacements")
             .popover(isPresented: self.$isYourDictionaryPresented, arrowEdge: .top) {
                 self.yourDictionaryPopover
@@ -967,7 +1193,7 @@ struct CustomDictionaryView: View {
                 if self.entries.isEmpty {
                     self.dictionaryEmptyState(
                         title: "No replacements yet",
-                        detail: "Use Teach Words above to create your first one."
+                        detail: "Add your first word using the guided steps."
                     )
                 } else {
                     ScrollView(.vertical, showsIndicators: true) {
@@ -983,7 +1209,7 @@ struct CustomDictionaryView: View {
 
     private var yourDictionaryHelpNote: some View {
         Label {
-            Text("Use the Teach Words area above to add dictionary entries by voice or manually.")
+            Text("Add a word using the guided steps. You can record your voice or enter a known mistake.")
                 .font(self.theme.typography.caption)
                 .foregroundStyle(self.theme.palette.secondaryText)
         } icon: {
@@ -1038,10 +1264,8 @@ struct CustomDictionaryView: View {
                 self.presentCustomWords()
             } label: {
                 Label("Modify", systemImage: "slider.horizontal.3")
-                    .frame(width: Self.DictionaryHeaderControlLayout.actionButtonLabelWidth)
             }
-            .frame(width: Self.DictionaryHeaderControlLayout.actionButtonWidth)
-            .fluidButton(.compact, size: .medium)
+            .fluidGlassAction()
             .disabled(!self.vocabBoostingEnabled)
             .opacity(self.vocabBoostingEnabled ? 1 : 0.45)
             .help(self.vocabBoostingEnabled ? "Modify custom words" : "Turn on Boosting to modify custom words.")
@@ -1072,7 +1296,7 @@ struct CustomDictionaryView: View {
                     Text("Custom Words")
                         .font(self.theme.typography.sectionTitle)
 
-                    Text("Add names, products, and uncommon terms for Parakeet to recognize.")
+                    Text("Best for rare names and terms that sound different from everyday words.")
                         .font(self.theme.typography.caption)
                         .foregroundStyle(self.theme.palette.secondaryText)
                 }
@@ -1086,8 +1310,18 @@ struct CustomDictionaryView: View {
                         .font(.fluidSystem(size: 11, weight: .bold))
                         .frame(width: 28, height: 28)
                 }
-                .buttonStyle(SquareIconButtonStyle())
+                .fluidGlassAction(circular: true)
                 .help("Close")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Use cautiously")
+                    .font(self.theme.typography.captionStrong)
+                    .foregroundStyle(self.theme.palette.primaryText)
+                Text("FluidVoice may sometimes use these words when you meant something similar.")
+                    .font(self.theme.typography.caption)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if self.isBoostWordEditorPresented {
@@ -1099,7 +1333,7 @@ struct CustomDictionaryView: View {
                     } label: {
                         Label("Add Word", systemImage: "plus")
                     }
-                    .fluidButton(.accent, size: .small)
+                    .fluidGlassAction(prominent: true, tone: self.theme.palette.accent)
 
                     Spacer()
                 }
@@ -1192,19 +1426,19 @@ struct CustomDictionaryView: View {
                 Button("Clear") {
                     self.clearBoostTermFields()
                 }
-                .fluidButton(.compact, size: .compact)
+                .fluidGlassAction()
 
                 Spacer()
 
                 Button("Cancel") {
                     self.dismissBoostTermEditor()
                 }
-                .fluidButton(.compact, size: .compact)
+                .fluidGlassAction()
 
                 Button("Save Word") {
                     self.saveBoostTermIfValid()
                 }
-                .fluidButton(.accent, size: .small)
+                .fluidGlassAction(prominent: true, tone: self.theme.palette.accent)
                 .disabled(!self.canSaveBoostTerm)
                 .opacity(self.canSaveBoostTerm ? 1 : 0.45)
             }
@@ -1745,6 +1979,8 @@ struct CustomDictionaryView: View {
             replacement: self.sanitizedManualReplacement
         )
         self.addReplacementEntry(entry)
+        self.wizardSavedWord = entry.replacement
+        self.wizardStep = .saved
         self.manualTriggerDraft = ""
         self.manualReplacement = ""
     }
@@ -2060,8 +2296,14 @@ struct CustomDictionaryView: View {
         self.trainingHasError = false
         self.trainingStatusMessage = ""
 
-        let transcript = await self.asr.stop(forDictionaryTraining: true)
+        let transcript = await self.asr.stop(forDictionaryTraining: true, captureDictionaryPronunciation: self.activePronunciationMatching)
         self.isTrainingProcessing = false
+        guard !CustomDictionaryTrainingMerge.isOversizedResponse(transcript, intendedReplacement: self.normalizedTrainingReplacement) else {
+            self.isAutomaticTrainingEnabled = false
+            self.trainingHasError = true
+            self.trainingStatusMessage = "That was longer than expected. Say only “\(self.normalizedTrainingReplacement)”, then pause. This try wasn’t saved."
+            return
+        }
         if self.activePronunciationMatching,
            CustomDictionaryTrainingMerge.normalizedTrigger(transcript) != nil,
            let enrollment = self.asr.lastDictionaryTrainingResult?.pronunciationEnrollment
@@ -2069,6 +2311,14 @@ struct CustomDictionaryView: View {
             self.trainingPronunciationEnrollments.append(enrollment)
         }
         self.addTrainingVariant(from: transcript)
+        if self.trainingHasError {
+            self.isAutomaticTrainingEnabled = false
+            return
+        }
+        if self.trainingFinalOutputIsReady || self.trainingAlreadyCorrectWithoutReplacement {
+            self.isAutomaticTrainingEnabled = false
+            self.wizardStep = .review
+        }
         await self.continueAutomaticTrainingIfNeeded()
     }
 
@@ -2168,27 +2418,48 @@ struct CustomDictionaryView: View {
     private func addTrainedReplacement() async {
         guard self.canAddTrainedReplacement else { return }
         self.isTrainingProcessing = true
-        let replacementText = self.normalizedTrainingReplacement
-        let updatesExisting = self.entries.contains {
-            $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
+        let saveID = UUID()
+        self.trainingSaveID = saveID
+        defer {
+            if self.trainingSaveID == saveID {
+                self.trainingSaveID = nil
+                self.isTrainingProcessing = false
+            }
         }
+        let replacementText = self.normalizedTrainingReplacement
+        let enrollments = self.trainingPronunciationEnrollments
+        let savePronunciation = self.activePronunciationMatching
+        let filtered = await VoiceTrainingAliasFilter.filter(self.trainingVariants)
+        guard self.trainingSaveID == saveID, !Task.isCancelled else { return }
+        DebugLogger.shared.info(
+            "VOICE_TRAINING_ALIAS_FILTER accepted=\(filtered.accepted.count) rejected=\(filtered.rejected.count) available=\(filtered.lookupAvailable)",
+            source: "CustomDictionary"
+        )
+        guard savePronunciation || !filtered.accepted.isEmpty else {
+            self.trainingHasError = true
+            self.trainingStatusMessage = filtered.lookupAvailable
+                ? "These recordings contain everyday words. Try again, or add a replacement manually."
+                : "Couldn't check these words. Try saving again, or add a replacement manually."
+            return
+        }
+
         let updatedEntries = CustomDictionaryTrainingMerge.mergedEntries(
-            current: self.entries,
+            current: SettingsStore.shared.customDictionaryEntries,
             replacement: replacementText,
-            triggers: self.trainingVariants,
-            savePronunciation: self.activePronunciationMatching
+            triggers: filtered.accepted,
+            savePronunciation: savePronunciation
         )
         let entry = updatedEntries.first {
             $0.replacement.caseInsensitiveCompare(replacementText) == .orderedSame
         }
-        let enrollments = self.trainingPronunciationEnrollments
-        if self.activePronunciationMatching, let entry, let modelKey = enrollments.first?.modelKey {
+        if savePronunciation, let entry, let modelKey = enrollments.first?.modelKey {
             do {
                 try await PronunciationDictionaryStore.shared.upsert(
                     dictionaryEntryID: entry.id,
                     label: replacementText,
                     modelKey: modelKey,
-                    enrollments: enrollments
+                    enrollments: enrollments,
+                    automaticMatchingEnabled: true
                 )
             } catch {
                 self.isTrainingProcessing = false
@@ -2201,16 +2472,12 @@ struct CustomDictionaryView: View {
                 return
             }
         }
-        let savedPronunciation = self.activePronunciationMatching
+        guard self.trainingSaveID == saveID, !Task.isCancelled else { return }
         self.entries = updatedEntries
         self.saveEntries()
+        self.wizardSavedWord = replacementText
         self.resetTraining()
-        self.showReplacementConfirmation(
-            title: savedPronunciation ? "Word saved" : (updatesExisting ? "Replacement updated" : "Recorded"),
-            detail: savedPronunciation
-                ? "Spelling and pronunciation samples saved. Try the word in a sentence."
-                : (updatesExisting ? "Your variants are ready." : "Replacement added at the top.")
-        )
+        self.wizardStep = .saved
     }
 
     private func removeTrainingVariant(_ variant: String) {
@@ -2238,10 +2505,11 @@ struct CustomDictionaryView: View {
         }
     }
 
-    private func resetTraining(statusMessage: String = "Type the correct text.") {
+    private func resetTraining(statusMessage: String = "Type the correct text.", keepingWord: Bool = false) {
+        self.trainingSaveID = nil
         self.isAutomaticTrainingEnabled = false
         DictionaryTrainingEndpointMonitor.shared.stop()
-        self.trainingReplacement = ""
+        if !keepingWord { self.trainingReplacement = "" }
         self.trainingVariants = []
         self.trainingPronunciationEnrollments = []
         self.trainingSampleCount = 0
@@ -2261,6 +2529,11 @@ struct CustomDictionaryView: View {
         let oldKey = CustomDictionaryTrainingMerge.normalizedReplacement(oldValue).lowercased()
         let newKey = CustomDictionaryTrainingMerge.normalizedReplacement(newValue).lowercased()
         guard oldKey != newKey else { return }
+
+        if self.trainingSaveID != nil {
+            self.trainingSaveID = nil
+            self.isTrainingProcessing = false
+        }
 
         self.trainingVariants = self.existingTrainingVariants(for: newValue)
         self.trainingPronunciationEnrollments = []
@@ -2925,6 +3198,13 @@ enum CustomDictionaryTrainingMerge {
 
     private static let edgePunctuation = CharacterSet(charactersIn: ".,!?;:\"'“”‘’")
 
+    /// Conservative length guard, not a sentence classifier. ASR may split a single name into several words.
+    static func isOversizedResponse(_ transcript: String, intendedReplacement: String) -> Bool {
+        let targetCount = intendedReplacement.split(whereSeparator: { $0.isWhitespace }).count
+        let heardCount = transcript.split(whereSeparator: { $0.isWhitespace }).count
+        return heardCount > max(5, targetCount + 3)
+    }
+
     static func normalizedReplacement(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -3473,106 +3753,76 @@ struct AddDictionaryEntrySheet: View {
                     .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
-                    .fluidOutlinedButton()
+                    .fluidGlassAction()
+                    .keyboardShortcut(.cancelAction)
             }
 
             Divider()
 
-            // Triggers input
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Misheard Words (triggers)")
-                    .font(.fluidSystem(.subheadline).weight(.medium))
-                Text("Add one version per line. Commas can be saved too.")
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(.secondary)
-                TextEditor(text: self.$triggersText)
-                    .font(.fluidSystem(.body))
-                    .frame(minHeight: 54, maxHeight: 76)
-                    .scrollContentBackground(.hidden)
-                    .dictionaryInputChrome(minHeight: 54)
-
-                // Duplicate warning
-                if !self.duplicateTriggers.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
-                            .foregroundStyle(.orange)
-                    }
-                    .font(.fluidSystem(.caption))
-                }
-            }
-
-            // Replacement input
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Correct Spelling (replacement)")
-                    .font(.fluidSystem(.subheadline).weight(.medium))
-                Text("This is what will appear in the final transcription.")
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(.secondary)
-                TextField("FluidVoice", text: self.$replacement)
-                    .dictionaryInputChrome()
-                    .onSubmit { self.saveIfValid() }
-            }
-
-            Spacer()
-
-            // Preview
-            if !self.triggersText.isEmpty && !self.replacement.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Preview")
-                        .font(.fluidSystem(.caption).weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    FlowLayout(spacing: 6) {
-                        ForEach(self.parseTriggers(), id: \.self) { trigger in
-                            Text(trigger)
-                                .font(.fluidSystem(.caption))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4).fill(
-                                        self.duplicateTriggers.contains(trigger)
-                                            ? AnyShapeStyle(Color.orange.opacity(0.3))
-                                            : AnyShapeStyle(.quaternary)
-                                    )
-                                )
-                        }
-
-                        Image(systemName: "arrow.right")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Triggers input
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Misheard Words (triggers)")
+                            .font(.fluidSystem(.subheadline).weight(.medium))
+                        Text("Add one version per line. Commas can be saved too.")
                             .font(.fluidSystem(.caption))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: self.$triggersText)
+                            .font(.fluidSystem(.body))
+                            .frame(minHeight: 54, maxHeight: 76)
+                            .scrollContentBackground(.hidden)
+                            .dictionaryInputChrome(minHeight: 54)
 
-                        Text(self.replacement)
-                            .font(.fluidSystem(.caption).weight(.medium))
-                            .foregroundStyle(self.theme.palette.accent)
+                        // Duplicate warning
+                        if !self.duplicateTriggers.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
+                                    .foregroundStyle(.orange)
+                            }
+                            .font(.fluidSystem(.caption))
+                        }
+                    }
+
+                    // Replacement input
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Correct Spelling (replacement)")
+                            .font(.fluidSystem(.subheadline).weight(.medium))
+                        Text("This is what will appear in the final transcription.")
+                            .font(.fluidSystem(.caption))
+                            .foregroundStyle(.secondary)
+                        TextField("FluidVoice", text: self.$replacement)
+                            .dictionaryInputChrome()
+                            .onSubmit { self.saveIfValid() }
+                    }
+
+                    if !self.parseTriggers().isEmpty && !self.replacement.isEmpty {
+                        DictionaryReplacementPreview(
+                            triggers: self.parseTriggers(),
+                            replacement: self.replacement,
+                            duplicateTriggers: self.duplicateTriggers
+                        )
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(self.theme.palette.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                        )
-                )
+                .padding(2)
             }
+            .frame(minHeight: 0, maxHeight: .infinity)
 
+            Divider()
             // Save button
             HStack {
                 Spacer()
                 Button("Add Replacement") { self.saveIfValid() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(self.theme.palette.accent)
+                    .fluidGlassAction(prominent: true, tone: self.theme.palette.accent)
                     .disabled(!self.canSave)
                     .keyboardShortcut(.return, modifiers: [])
             }
         }
         .padding(20)
-        .frame(minWidth: 400, idealWidth: 450, maxWidth: 500)
-        .frame(minHeight: 350, idealHeight: 400, maxHeight: 450)
+        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+        .frame(minHeight: 360, idealHeight: 500, maxHeight: 600)
         .dismissTextFocusOnBackgroundTap()
     }
 
@@ -3591,6 +3841,64 @@ struct AddDictionaryEntrySheet: View {
         )
         self.onSave(entry)
         self.dismiss()
+    }
+}
+
+private struct DictionaryReplacementPreview: View {
+    @Environment(\.theme) private var theme
+
+    let triggers: [String]
+    let replacement: String
+    let duplicateTriggers: [String]
+
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+            GridRow(alignment: .firstTextBaseline) {
+                Text("Misheard")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Color.clear
+                    .gridCellUnsizedAxes([.horizontal, .vertical])
+                    .accessibilityHidden(true)
+                Text("Corrected")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.fluidSystem(.caption))
+            .foregroundStyle(self.theme.palette.secondaryText)
+
+            GridRow(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(self.triggers, id: \.self) { trigger in
+                        Text(trigger)
+                            .font(.fluidSystem(.body))
+                            .foregroundStyle(
+                                self.duplicateTriggers.contains(trigger)
+                                    ? Color.orange : self.theme.palette.primaryText
+                            )
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "arrow.right")
+                    .font(.fluidSystem(.body).weight(.medium))
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .accessibilityHidden(true)
+
+                Text(CustomDictionaryManualEntry.replacementDisplayText(
+                    CustomDictionaryManualEntry.sanitizedReplacement(self.replacement)
+                ))
+                .font(.fluidSystem(.body).weight(.semibold))
+                .foregroundStyle(self.theme.palette.accent)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(self.theme.palette.primaryText.opacity(0.035))
+        )
     }
 }
 
@@ -3625,108 +3933,76 @@ struct EditDictionaryEntrySheet: View {
                     .font(.fluidSystem(.headline))
                 Spacer()
                 Button("Cancel") { self.dismiss() }
-                    .fluidOutlinedButton()
+                    .fluidGlassAction()
+                    .keyboardShortcut(.cancelAction)
             }
 
             Divider()
 
-            // Triggers input
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Misheard Words (triggers)")
-                    .font(.fluidSystem(.subheadline).weight(.medium))
-                Text("Add one version per line. Commas can be saved too.")
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(.secondary)
-                TextEditor(text: self.$triggersText)
-                    .font(.fluidSystem(.body))
-                    .frame(minHeight: 54, maxHeight: 76)
-                    .scrollContentBackground(.hidden)
-                    .dictionaryInputChrome(minHeight: 54)
-
-                // Duplicate warning
-                if !self.duplicateTriggers.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
-                            .foregroundStyle(.orange)
-                    }
-                    .font(.fluidSystem(.caption))
-                }
-            }
-
-            // Replacement input
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Correct Spelling (replacement)")
-                    .font(.fluidSystem(.subheadline).weight(.medium))
-                Text("This is what will appear in the final transcription.")
-                    .font(.fluidSystem(.caption))
-                    .foregroundStyle(.secondary)
-                TextField("FluidVoice", text: self.$replacement)
-                    .dictionaryInputChrome()
-                    .onSubmit { self.saveIfValid() }
-            }
-
-            Spacer()
-
-            // Preview
-            if !self.triggersText.isEmpty && !self.replacement.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Preview")
-                        .font(.fluidSystem(.caption).weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    FlowLayout(spacing: 6) {
-                        ForEach(self.parseTriggers(), id: \.self) { trigger in
-                            Text(trigger)
-                                .font(.fluidSystem(.caption))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4).fill(
-                                        self.duplicateTriggers.contains(trigger)
-                                            ? AnyShapeStyle(Color.orange.opacity(0.3))
-                                            : AnyShapeStyle(.quaternary)
-                                    )
-                                )
-                        }
-
-                        Image(systemName: "arrow.right")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Triggers input
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Misheard Words (triggers)")
+                            .font(.fluidSystem(.subheadline).weight(.medium))
+                        Text("Add one version per line. Commas can be saved too.")
                             .font(.fluidSystem(.caption))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: self.$triggersText)
+                            .font(.fluidSystem(.body))
+                            .frame(minHeight: 54, maxHeight: 76)
+                            .scrollContentBackground(.hidden)
+                            .dictionaryInputChrome(minHeight: 54)
 
-                        Text(CustomDictionaryManualEntry.replacementDisplayText(
-                            CustomDictionaryManualEntry.sanitizedReplacement(self.replacement)
-                        ))
-                        .font(.fluidSystem(.caption).weight(.medium))
-                        .foregroundStyle(self.theme.palette.accent)
+                        // Duplicate warning
+                        if !self.duplicateTriggers.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                Text("Duplicate triggers: \(self.duplicateTriggers.joined(separator: ", "))")
+                                    .foregroundStyle(.orange)
+                            }
+                            .font(.fluidSystem(.caption))
+                        }
+                    }
+
+                    // Replacement input
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Correct Spelling (replacement)")
+                            .font(.fluidSystem(.subheadline).weight(.medium))
+                        Text("This is what will appear in the final transcription.")
+                            .font(.fluidSystem(.caption))
+                            .foregroundStyle(.secondary)
+                        TextField("FluidVoice", text: self.$replacement)
+                            .dictionaryInputChrome()
+                            .onSubmit { self.saveIfValid() }
+                    }
+
+                    if !self.parseTriggers().isEmpty && !self.replacement.isEmpty {
+                        DictionaryReplacementPreview(
+                            triggers: self.parseTriggers(),
+                            replacement: self.replacement,
+                            duplicateTriggers: self.duplicateTriggers
+                        )
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(self.theme.palette.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(self.theme.palette.cardBorder.opacity(0.5), lineWidth: 1)
-                        )
-                )
+                .padding(2)
             }
+            .frame(minHeight: 0, maxHeight: .infinity)
 
+            Divider()
             // Save button
             HStack {
                 Spacer()
                 Button("Save Changes") { self.saveIfValid() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(self.theme.palette.accent)
+                    .fluidGlassAction(prominent: true, tone: self.theme.palette.accent)
                     .disabled(!self.canSave)
                     .keyboardShortcut(.return, modifiers: [])
             }
         }
         .padding(20)
-        .frame(minWidth: 400, idealWidth: 450, maxWidth: 500)
-        .frame(minHeight: 320, idealHeight: 380, maxHeight: 420)
+        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+        .frame(minHeight: 360, idealHeight: 500, maxHeight: 600)
         .dismissTextFocusOnBackgroundTap()
         .onAppear {
             self.triggersText = self.entry.triggers.joined(separator: "\n")
