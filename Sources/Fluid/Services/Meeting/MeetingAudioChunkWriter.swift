@@ -577,7 +577,22 @@ final nonisolated class MeetingAudioChunkWriter: @unchecked Sendable {
         )
         let sink = MeetingAudioFilePCMChunkSink(sessionDirectory: self.sessionDirectory)
         let relativePath = "tracks/\(self.track.kind.rawValue)/\(stem).caf"
+        // Temporary, metadata-only diagnostics for the remote capture crash. This runs on
+        // the writer queue once per chunk, never on the capture callback or UI thread.
+        if DebugLogger.diagnosticsEnabled {
+            var diagnosticLayoutSize = 0
+            let layout = CMAudioFormatDescriptionGetChannelLayout(formatDescription, sizeOut: &diagnosticLayoutSize)
+            FileLogger.shared.appendSync(line:
+                "[MeetingPCMProbe] before-format track=\(self.track.kind.rawValue) chunk=\(sequence) " +
+                    "rate=\(asbd.mSampleRate) channels=\(asbd.mChannelsPerFrame) flags=\(asbd.mFormatFlags) " +
+                    "bits=\(asbd.mBitsPerChannel) bytesPerFrame=\(asbd.mBytesPerFrame) bytesPerPacket=\(asbd.mBytesPerPacket) " +
+                    "layoutBytes=\(diagnosticLayoutSize) layoutTag=\(layout?.pointee.mChannelLayoutTag ?? 0) " +
+                    "frames=\(CMSampleBufferGetNumSamples(sampleBuffer))")
+        }
         let clientFormat = AVAudioFormat(cmAudioFormatDescription: formatDescription)
+        if DebugLogger.diagnosticsEnabled {
+            FileLogger.shared.appendSync(line: "[MeetingPCMProbe] after-format track=\(self.track.kind.rawValue) chunk=\(sequence)")
+        }
         try sink.begin(relativeFilePath: relativePath, format: clientFormat, contract: formatContract)
         let id = UUID()
         do {
