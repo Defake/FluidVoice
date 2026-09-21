@@ -32,14 +32,18 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         self.expect(DictionaryExperimentalMatcher.negativeAllows(query: positive, references: refs, negatives: [negative]), "Unrelated negative is inert")
         let now = Date(), entry = UUID()
         let evidence = DictionaryAcousticEvidence(id: UUID(), entryID: entry, label: "Manimekalai", profileKey: "profile", modelKey: "parakeet-v2", sourceWordRange: 1..<2, frames: positive)
+        // nil selects the default evidence; an empty array tests missing evidence.
+        // swiftlint:disable:next discouraged_optional_collection
         func context(_ text: String = "Hello Manimekalai today", events: [DictionaryAcousticEvidence]? = nil, date: Date? = nil, selected: String = "Manimekalai") -> DictionaryLearningCorrectionContext {
             let alignment = DictionaryLearningAlignment(modelKey: "parakeet-v2", words: [.init(text: "raw", start: 0, end: 1)], acousticOutput: text, acousticEvidence: events ?? [evidence])
-            let recording = DictionaryLearningRecording(alignment: alignment, samples: [0.1, 0.1], now: date ?? now)!
+            guard let recording = DictionaryLearningRecording(alignment: alignment, samples: [0.1, 0.1], now: date ?? now) else { preconditionFailure("Missing fixture: recording") }
             return .init(recording: recording, deliveredTextBeforeEdit: text, selectedUTF16Range: (text as NSString).range(of: selected))
         }
-        let correction = DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "another", now: now)!
+        guard let correction = DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "another", now: now) else { preconditionFailure("Missing fixture: correction") }
         self.expect(correction.evidence.id == evidence.id, "Keep exact accepted occurrence")
-        let featureOnly = DictionaryLearningRecording(alignment: context().recording.alignment, samples: [0.1], retainAudio: false, now: now)!
+        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "better Manimekalai", now: now) == nil, "Added words never become negatives")
+        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "Manimekalais", now: now) == nil, "Plural edits never become negatives")
+        guard let featureOnly = DictionaryLearningRecording(alignment: context().recording.alignment, samples: [0.1], retainAudio: false, now: now) else { preconditionFailure("Missing fixture: featureOnly") }
         self.expect(featureOnly.samples.isEmpty && featureOnly.alignment.acousticEvidence.count == 1, "Negative-only observation does not retain full PCM")
         let punctuated = context("Hello Manimekalai.")
         let punctuationContext = DictionaryLearningCorrectionContext(recording: punctuated.recording, deliveredTextBeforeEdit: punctuated.deliveredTextBeforeEdit, selectedUTF16Range: NSRange(location: 6, length: 12))
@@ -106,8 +110,8 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         let expected = Dictionary(uniqueKeysWithValues: report.decisions.map { ($0.id, $0) })
         for q in input.queries {
             let refs = input.enrollments.filter { $0.word == q.word }.map { DictionaryMatchFrames(hiddenSize: 1024, values: $0.values) }
-            let d = DictionaryExperimentalMatcher.positive(query: .init(hiddenSize: 1024, values: q.values), references: refs)!
-            let e = expected[q.id]!
+            guard let d = DictionaryExperimentalMatcher.positive(query: .init(hiddenSize: 1024, values: q.values), references: refs) else { preconditionFailure("Missing fixture: d") }
+            guard let e = expected[q.id] else { preconditionFailure("Missing fixture: e") }
             self.expect(d.accepted == e.combinedAccepted, "Production scorer parity \(q.id)")
             self.expect(abs(d.meanRelative - e.meanRelative) < 0.00_001 && abs(d.lowerRelative - e.lowerRelative) < 0.00_001, "Production score tolerance \(q.id)")
         }

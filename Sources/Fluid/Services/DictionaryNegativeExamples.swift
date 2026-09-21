@@ -25,6 +25,7 @@ nonisolated enum DictionaryNegativeEvidenceResolver {
     /// Only an unchanged delivered utterance and a unique, complete inserted label qualify.
     /// Repeated names, AI rewrites, partial selections, and stale audio are deliberately ignored.
     static func resolve(context: DictionaryLearningCorrectionContext, heard: String, corrected: String, now: Date = Date()) -> DictionaryNegativeCorrection? {
+        guard DictionaryCorrectionEditPolicy.allows(heard: heard, corrected: corrected) else { return nil }
         let alignment = context.recording.alignment
         guard now < context.recording.expiresAt, alignment.acousticOutput == context.deliveredTextBeforeEdit,
               !self.normalized(corrected).isEmpty, self.normalized(heard) != self.normalized(corrected) else { return nil }
