@@ -855,6 +855,20 @@ private final nonisolated class RecoveryInput: DirectCoreAudioInputControlling, 
 
 #if canImport(FluidVoice_Debug)
 final class AudioRouteRecoveryIntegrationTests: XCTestCase {
+
+    // Pronunciation features are opt-in in the app; these tests exercise the enabled paths.
+    private var priorSharedFeaturesFlag: Any?
+
+    override func setUp() {
+        super.setUp()
+        self.priorSharedFeaturesFlag = UserDefaults.standard.object(forKey: "DictionarySharedFeatureMatcherEnabled")
+        UserDefaults.standard.set(true, forKey: "DictionarySharedFeatureMatcherEnabled")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.set(self.priorSharedFeaturesFlag, forKey: "DictionarySharedFeatureMatcherEnabled")
+        super.tearDown()
+    }
     @MainActor
     func testStartupTriesNewMicrophoneMissingFromDeviceCache() async throws {
         try await withASRRecoveryFixture(queryDelay: 0) { fixture in

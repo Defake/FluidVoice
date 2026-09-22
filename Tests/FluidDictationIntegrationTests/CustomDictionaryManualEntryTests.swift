@@ -9,6 +9,20 @@ import FluidAudio
 
 @MainActor
 final class CustomDictionaryManualEntryTests: XCTestCase {
+
+    // Pronunciation features are opt-in in the app; these tests exercise the enabled paths.
+    private var priorSharedFeaturesFlag: Any?
+
+    override func setUp() {
+        super.setUp()
+        self.priorSharedFeaturesFlag = UserDefaults.standard.object(forKey: "DictionarySharedFeatureMatcherEnabled")
+        UserDefaults.standard.set(true, forKey: "DictionarySharedFeatureMatcherEnabled")
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.set(self.priorSharedFeaturesFlag, forKey: "DictionarySharedFeatureMatcherEnabled")
+        super.tearDown()
+    }
     func testVoiceTrainingKeepsPronunciationWithoutEverydayTextAliases() async {
         let filtered = await VoiceTrainingAliasFilter.filter(["but", "now", "right now"]) { _ in .checked([]) }
         let entries = CustomDictionaryTrainingMerge.mergedEntries(
