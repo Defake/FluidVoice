@@ -14,6 +14,7 @@ private final class FakeClock: MeetingClockProviding {
 @MainActor
 private final class FakeWorkspaceEvents: WorkspaceEventsProviding {
     var onEvent: ((WorkspaceEvent) -> Void)?
+    var frontmostProcessID: Int32?
     func start(isRegistryApp: @escaping (String) -> Bool, onBackfill: @escaping ([WorkspaceEvent]) -> Void) {}
     func stop() {}
 }
@@ -92,6 +93,7 @@ private final class DetectorHarness {
     let flags = ToggleFlags()
     let audioProcessActivity = FakeAudioProcessActivity()
     let windowProvider = FakeWindowSnapshotProvider()
+    let workspace = FakeWorkspaceEvents()
     var prompts: [MeetingAutoDetector.PromptRequest] = []
     var nudges = 0
     var invalidated: [UUID] = []
@@ -110,7 +112,7 @@ private final class DetectorHarness {
     init() {
         let flags = self.flags
         self.detector = MeetingAutoDetector(
-            workspaceEvents: FakeWorkspaceEvents(),
+            workspaceEvents: self.workspace,
             micActivity: FakeMicActivity(),
             audioProcessActivity: self.audioProcessActivity,
             windowSnapshotProvider: self.windowProvider,
@@ -703,6 +705,39 @@ final class MeetingAutoDetectorTests: XCTestCase {
         )
         h.detector.handleMicEdge(.init(isActive: true), at: h.clock.now())
         XCTAssertTrue(h.prompts.isEmpty, "backfill seeds no frontmost timestamp, so it can never confirm by itself")
+    }
+
+    func testBackfilledBrowserInFrontAtMicEdgeConfirms() {
+        let h = DetectorHarness()
+        h.browserEnabled = true
+        h.workspace.frontmostProcessID = 8
+        h.detector.handleBackfill([.init(kind: .launched, bundleIdentifier: "com.google.Chrome", processID: 8)])
+        h.detector.handleBrowserTabURL(.init(host: "meet.google.com", path: "/abc-defg-hij"), pid: 8, bundleIdentifier: "com.google.Chrome", at: h.clock.now())
+        h.detector.handleMicEdge(.init(isActive: true), at: h.clock.now())
+        XCTAssertEqual(h.prompts.count, 1, "a browser already in front when the mic opens is frontmost evidence; the in-call URL still gates it")
+        XCTAssertEqual(h.prompts.first?.serviceName, "Google Meet")
+    }
+
+    func testBackfilledBrowserInFrontWithoutInCallURLDoesNotConfirm() {
+        let h = DetectorHarness()
+        h.browserEnabled = true
+        h.workspace.frontmostProcessID = 8
+        h.detector.handleBackfill([.init(kind: .launched, bundleIdentifier: "com.google.Chrome", processID: 8)])
+        h.detector.handleBrowserTabURL(.init(host: "meet.google.com", path: "/landing"), pid: 8, bundleIdentifier: "com.google.Chrome", at: h.clock.now())
+        h.detector.handleMicEdge(.init(isActive: true), at: h.clock.now())
+        XCTAssertTrue(h.prompts.isEmpty, "frontmost-now never substitutes for window evidence")
+    }
+
+    func testBackfilledNativeAppInFrontAtMicEdgeStillNeedsActivation() {
+        let h = DetectorHarness()
+        h.workspace.frontmostProcessID = 7
+        h.detector.handleBackfill([.init(kind: .launched, bundleIdentifier: "us.zoom.xos", processID: 7)])
+        h.detector.handleWindowSnapshot(
+            [.init(processID: 7, windowID: 1, title: "Zoom Meeting", layer: 0)],
+            at: h.clock.now()
+        )
+        h.detector.handleMicEdge(.init(isActive: true), at: h.clock.now())
+        XCTAssertTrue(h.prompts.isEmpty, "native apps keep the activation rule; their windows persist all day")
     }
 
     // MARK: Episode dedup + back-to-back re-arm

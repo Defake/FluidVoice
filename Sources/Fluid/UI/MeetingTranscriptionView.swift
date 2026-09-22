@@ -467,7 +467,7 @@ struct MeetingTranscriptionView: View {
             activityStatus: conflictingActivity.map { "Wait for \($0.displayName)" } ?? "Ready",
             activityReady: activityReady,
             showMicrophoneSettingsAction: microphoneStatus == .denied,
-            showScreenRecordingSettingsAction: !meetingAudioReady,
+            showScreenRecordingSettingsAction: self.setupDraft.mode == .onlineCall && !self.cachedScreenCaptureAccess,
             blockingMessage: blockingMessage
         )
     }
@@ -1873,6 +1873,9 @@ private struct MeetingSetupCanvas: View {
     private var planDetail: String {
         if let app = resolvedApplication { return "\(app.identity.displayName) and your mic will be recorded." }
         if self.draft.mode == .inRoom { return "Your mic will record the room." }
+        if self.readiness.showScreenRecordingSettingsAction {
+            return "Your mic will record the room. Allow Screen & System Audio access to capture meeting apps too."
+        }
         if self.applications.isEmpty { return "Your mic will record the room. No meeting apps are available to capture yet." }
         return "Your mic will record the room. If a call is running, pick its app under Change."
     }
@@ -1978,9 +1981,9 @@ private struct MeetingSetupCanvas: View {
                     }
                 }
             }
-            if self.applications.isEmpty {
+            if self.readiness.showScreenRecordingSettingsAction {
                 Divider()
-                Button("No apps found · Allow meeting audio access…", systemImage: "arrow.up.right", action: self.onRepairSetup)
+                Button("Allow meeting audio access…", systemImage: "arrow.up.right", action: self.onRepairSetup)
             }
             Divider()
             Button("More settings…", systemImage: "gearshape", action: self.onEditSetup)
@@ -2048,9 +2051,10 @@ private struct MeetingSetupCanvas: View {
     }
 
     @ViewBuilder private var permissionAction: some View {
-        if !self.canStart, !self.readiness.isCheckingSources,
-           self.readiness.showMicrophoneSettingsAction || self.readiness.showScreenRecordingSettingsAction ||
-           !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil
+        if !self.readiness.isCheckingSources,
+           self.readiness.showScreenRecordingSettingsAction ||
+           (!self.canStart && (self.readiness.showMicrophoneSettingsAction ||
+               !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil))
         {
             Button(
                 self.readiness.showMicrophoneSettingsAction ? "Allow microphone access" :

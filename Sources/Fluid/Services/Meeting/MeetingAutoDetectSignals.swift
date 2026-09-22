@@ -726,6 +726,8 @@ final class AXBrowserTabReader: BrowserTabReading {
     /// groups, scroll area); Chrome and Edge sit shallower. Chrome-side subtrees are skipped by role.
     private static let maxDepth = 9
     private static let maxChildrenPerLevel = 24
+    /// Upper bound on elements visited per read; keeps a sprawling window from stalling the poll loop.
+    private static let maxVisitedElements = 300
     nonisolated private static let skippedRoles: Set<String> = ["AXToolbar", "AXMenuBar", "AXMenu", "AXPopUpButton", "AXButton", "AXTextField", "AXStaticText", "AXImage"]
     private static let circuitBreakerThreshold = 2
 
@@ -789,14 +791,16 @@ final class AXBrowserTabReader: BrowserTabReading {
         }
 
         var timedOut = false
-        if let found = self.breadthFirstFindWebAreaURL(root: windowElement, depth: 0, timedOut: &timedOut) {
+        var budget = Self.maxVisitedElements
+        if let found = self.findWebAreaURL(root: windowElement, depth: 0, budget: &budget, timedOut: &timedOut) {
             return .found(found)
         }
         return timedOut ? .timedOut : .notFound("document=\(document == nil ? "nil" : "set") webarea=miss")
     }
 
-    nonisolated private static func breadthFirstFindWebAreaURL(root: AXUIElement, depth: Int, timedOut: inout Bool) -> BrowserTabURL? {
-        guard depth < Self.maxDepth else { return nil }
+    /// Depth-first over container roles only; each level checks its own children for a web area first.
+    nonisolated private static func findWebAreaURL(root: AXUIElement, depth: Int, budget: inout Int, timedOut: inout Bool) -> BrowserTabURL? {
+        guard depth < Self.maxDepth, budget > 0 else { return nil }
         var childrenValue: CFTypeRef?
         let status = AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenValue)
         if status == .cannotComplete { timedOut = true; return nil }
@@ -804,6 +808,8 @@ final class AXBrowserTabReader: BrowserTabReading {
 
         var containers: [AXUIElement] = []
         for child in children.prefix(Self.maxChildrenPerLevel) {
+            budget -= 1
+            guard budget > 0 else { return nil }
             let role = self.stringAttribute(child, attribute: kAXRoleAttribute as String) ?? ""
             if role == "AXWebArea" {
                 if let urlString = self.stringAttribute(child, attribute: "AXURL"), let url = self.parse(urlString) {
@@ -814,10 +820,10 @@ final class AXBrowserTabReader: BrowserTabReading {
             if !Self.skippedRoles.contains(role) { containers.append(child) }
         }
         for child in containers {
-            if let found = self.breadthFirstFindWebAreaURL(root: child, depth: depth + 1, timedOut: &timedOut) {
+            if let found = self.findWebAreaURL(root: child, depth: depth + 1, budget: &budget, timedOut: &timedOut) {
                 return found
             }
-            if timedOut { return nil }
+            if timedOut || budget <= 0 { return nil }
         }
         return nil
     }

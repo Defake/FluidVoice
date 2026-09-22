@@ -78,7 +78,7 @@ struct MeetingRecordingSettingsSheet: View {
     }
 
     private var canSave: Bool {
-        guard self.draft.selectedMicrophoneID != nil else { return false }
+        guard self.microphones.contains(where: { $0.id == self.draft.selectedMicrophoneID }) else { return false }
         return self.draft.mode == .inRoom
             || self.draft.usesAutomaticApplication
             || self.applications.contains { $0.id == self.draft.selectedApplicationID }
@@ -86,13 +86,15 @@ struct MeetingRecordingSettingsSheet: View {
 
     private var saveHelp: String? {
         guard !self.canSave else { return nil }
-        if let blockingMessage = readiness.blockingMessage {
-            return blockingMessage
-        }
-        if self.draft.selectedMicrophoneID == nil {
+        if !self.microphones.contains(where: { $0.id == self.draft.selectedMicrophoneID }) {
             return "Choose an available microphone to save this setup."
         }
-        return "Choose an available meeting application to save this setup."
+        if self.draft.mode == .onlineCall, !self.draft.usesAutomaticApplication,
+           !self.applications.contains(where: { $0.id == self.draft.selectedApplicationID })
+        {
+            return "Choose an available meeting application to save this setup."
+        }
+        return self.readiness.blockingMessage
     }
 
     var body: some View {

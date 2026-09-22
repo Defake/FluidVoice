@@ -573,7 +573,7 @@ private struct MeetingDetectionPromptContent: View {
                 .menuStyle(.button)
                 .fluidButton(.compact, size: .small)
                 .disabled(self.controller.isStarting)
-                .help("Click to dismiss. Hold for more options.")
+                .help("Click to dismiss. Use the arrow for more options.")
 
                 Button {
                     self.controller.startTapped()

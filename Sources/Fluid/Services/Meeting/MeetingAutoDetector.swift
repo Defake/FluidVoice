@@ -300,8 +300,10 @@ final class MeetingAutoDetector {
         for pid in self.records.keys {
             guard var record = self.records[pid] else { continue }
             // A browser the user has been sitting in for minutes (Calendar → Meet) never re-activates;
-            // being in front at the moment the mic opens is equally strong evidence.
-            if frontmostPID == pid, !self.isFrontmostNearEdge(record, edge: now) {
+            // being in front at the moment the mic opens is equally strong evidence because the tab
+            // URL still gates confirmation. Native apps keep the activation rule: Teams and Webex
+            // windows persist all day and would otherwise confirm on any unrelated mic edge.
+            if record.tier == .browserTier2, frontmostPID == pid, !self.isFrontmostNearEdge(record, edge: now) {
                 record.lastFrontmostAt = now
                 self.records[pid] = record
             }
