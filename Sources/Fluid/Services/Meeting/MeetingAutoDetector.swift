@@ -25,6 +25,19 @@ final class MeetingAutoDetector {
         var pid: Int32
         var tier: MeetingDetectionTier
         var cta: PromptCTA = .record
+        /// Browser tier only: the meeting service behind the tab, e.g. "Google Meet".
+        var serviceName: String? = nil
+    }
+
+    static func serviceName(forEvidenceKey key: String) -> String? {
+        guard key.hasPrefix("url:") else { return nil }
+        let host = key.dropFirst(4).split(separator: "/").first.map(String.init)?.lowercased() ?? ""
+        if host == "meet.google.com" { return "Google Meet" }
+        if host.hasSuffix("zoom.us") { return "Zoom" }
+        if host.hasPrefix("teams.") { return "Microsoft Teams" }
+        if host.contains("whereby.com") { return "Whereby" }
+        if host == "meet.jit.si" { return "Jitsi" }
+        return nil
     }
 
     enum PromptCTA: String, Equatable, Sendable { case record, setup }
@@ -245,8 +258,8 @@ final class MeetingAutoDetector {
         }
     }
 
-    /// Backfill only arms known-running apps; it never seeds mic/frontmost timestamps, so an
-    /// already-in-progress meeting can never be retroactively confirmed from this alone.
+    /// Backfill only arms known-running apps; it never seeds mic/frontmost timestamps. A backfilled
+    /// app is only stamped frontmost later, at a mic edge while it is actually in front.
     func handleBackfill(_ events: [WorkspaceEvent]) {
         for event in events {
             guard let tier = MeetingAppRegistry.tier(forBundleIdentifier: event.bundleIdentifier) else { continue }
@@ -283,8 +296,16 @@ final class MeetingAutoDetector {
             return
         }
         self.lastMicReleaseAt = nil
+        let frontmostPID = self.workspaceEvents.frontmostProcessID
         for pid in self.records.keys {
-            guard let record = self.records[pid], self.isFrontmostNearEdge(record, edge: now) else { continue }
+            guard var record = self.records[pid] else { continue }
+            // A browser the user has been sitting in for minutes (Calendar → Meet) never re-activates;
+            // being in front at the moment the mic opens is equally strong evidence.
+            if frontmostPID == pid, !self.isFrontmostNearEdge(record, edge: now) {
+                record.lastFrontmostAt = now
+                self.records[pid] = record
+            }
+            guard self.isFrontmostNearEdge(record, edge: now) else { continue }
             self.records[pid]?.audioEvidenceAt = now
             self.records[pid]?.audioEvidenceSource = .device
             DebugLogger.shared.log("audio-evidence-begin path=device bundle=\(record.bundleIdentifier)", source: "MeetingAutoDetector")
@@ -495,6 +516,7 @@ final class MeetingAutoDetector {
 
     private func attemptConfirm(pid: Int32, at now: Date) {
         guard let record = self.records[pid],
+              record.tier == .nativeTier1 ? self.isNativeDetectionEnabled() : self.isBrowserDetectionEnabled(),
               let audioEvidenceAt = record.audioEvidenceAt,
               let audioEvidenceSource = record.audioEvidenceSource,
               let windowEvidenceAt = record.windowEvidenceAt,
@@ -555,7 +577,7 @@ final class MeetingAutoDetector {
         DebugLogger.shared.log("confirm-accepted bundle=\(record.bundleIdentifier)", source: "MeetingAutoDetector")
         DebugLogger.shared.log("prompt-requested bundle=\(record.bundleIdentifier)", source: "MeetingAutoDetector")
         let cta: PromptCTA = readiness == .ready ? .record : .setup
-        self.onPromptRequested?(PromptRequest(episodeID: episode.id, bundleIdentifier: episode.bundleIdentifier, pid: pid, tier: episode.tier, cta: cta))
+        self.onPromptRequested?(PromptRequest(episodeID: episode.id, bundleIdentifier: episode.bundleIdentifier, pid: pid, tier: episode.tier, cta: cta, serviceName: Self.serviceName(forEvidenceKey: evidenceKey)))
     }
 
     private func logConfirmRejected(_ reason: String, bundleIdentifier: String) {

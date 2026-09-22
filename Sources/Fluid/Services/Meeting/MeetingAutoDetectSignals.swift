@@ -36,6 +36,12 @@ protocol WorkspaceEventsProviding: AnyObject {
     /// candidates at startup.
     func start(isRegistryApp: @escaping (String) -> Bool, onBackfill: @escaping ([WorkspaceEvent]) -> Void)
     func stop()
+    /// The app in front right now; nil when unknown (tests) or when no app is frontmost.
+    var frontmostProcessID: Int32? { get }
+}
+
+extension WorkspaceEventsProviding {
+    var frontmostProcessID: Int32? { nil }
 }
 
 nonisolated struct MicActivityEdge: Sendable, Equatable {
@@ -178,6 +184,7 @@ extension DetectionActivityGate {
 @MainActor
 final class WorkspaceEventsMonitor: WorkspaceEventsProviding {
     var onEvent: ((WorkspaceEvent) -> Void)?
+    var frontmostProcessID: Int32? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
 
     private var observers: [NSObjectProtocol] = []
 
@@ -715,8 +722,11 @@ final class CGWindowSnapshotProvider: WindowSnapshotProviding {
 @MainActor
 final class AXBrowserTabReader: BrowserTabReading {
     private static let messagingTimeoutSeconds: Float = 0.3
-    private static let maxDepth = 4
+    /// Safari nests its web area about six levels below the window (split group, tab group,
+    /// groups, scroll area); Chrome and Edge sit shallower. Chrome-side subtrees are skipped by role.
+    private static let maxDepth = 9
     private static let maxChildrenPerLevel = 24
+    nonisolated private static let skippedRoles: Set<String> = ["AXToolbar", "AXMenuBar", "AXMenu", "AXPopUpButton", "AXButton", "AXTextField", "AXStaticText", "AXImage"]
     private static let circuitBreakerThreshold = 2
 
     private let queue = DispatchQueue(label: "com.fluidvoice.meeting.autodetect.ax", qos: .utility)
@@ -724,7 +734,10 @@ final class AXBrowserTabReader: BrowserTabReading {
     private var trippedBundleIdentifiers: Set<String> = []
 
     func frontmostTabURL(bundleIdentifier: String, processID: Int32) async -> BrowserTabURL? {
-        guard !self.trippedBundleIdentifiers.contains(bundleIdentifier) else { return nil }
+        guard !self.trippedBundleIdentifiers.contains(bundleIdentifier) else {
+            DebugLogger.shared.log("browser-url-read outcome=tripped bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
+            return nil
+        }
 
         let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<ReadOutcome, Never>) in
             self.queue.async {
@@ -735,8 +748,11 @@ final class AXBrowserTabReader: BrowserTabReading {
         switch outcome {
         case let .found(url):
             self.timeoutCounts[bundleIdentifier] = 0
+            let inCall = MeetingInCallURLMatcher.isInCallURL(host: url.host, path: url.path)
+            DebugLogger.shared.log("browser-url-read outcome=found host=\(inCall ? url.host : "other") in-call=\(inCall) bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
             return url
-        case .notFound:
+        case let .notFound(detail):
+            DebugLogger.shared.log("browser-url-read outcome=not-found detail=\(detail) trusted=\(AXIsProcessTrusted()) bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
             return nil
         case .timedOut:
             let count = (self.timeoutCounts[bundleIdentifier] ?? 0) + 1
@@ -744,13 +760,14 @@ final class AXBrowserTabReader: BrowserTabReading {
             if count >= Self.circuitBreakerThreshold {
                 self.trippedBundleIdentifiers.insert(bundleIdentifier)
             }
+            DebugLogger.shared.log("browser-url-read outcome=timed-out count=\(count) bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
             return nil
         }
     }
 
     private enum ReadOutcome {
         case found(BrowserTabURL)
-        case notFound
+        case notFound(String)
         case timedOut
     }
 
@@ -762,11 +779,12 @@ final class AXBrowserTabReader: BrowserTabReading {
         var windowValue: CFTypeRef?
         let windowStatus = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowValue)
         guard windowStatus != .cannotComplete else { return .timedOut }
-        guard windowStatus == .success, let window = windowValue else { return .notFound }
+        guard windowStatus == .success, let window = windowValue else { return .notFound("focused-window status=\(windowStatus.rawValue)") }
         // swiftlint:disable:next force_cast
         let windowElement = window as! AXUIElement
 
-        if let urlString = self.stringAttribute(windowElement, attribute: "AXDocument"), let url = self.parse(urlString) {
+        let document = self.stringAttribute(windowElement, attribute: "AXDocument")
+        if let document, let url = self.parse(document) {
             return .found(url)
         }
 
@@ -774,7 +792,7 @@ final class AXBrowserTabReader: BrowserTabReading {
         if let found = self.breadthFirstFindWebAreaURL(root: windowElement, depth: 0, timedOut: &timedOut) {
             return .found(found)
         }
-        return timedOut ? .timedOut : .notFound
+        return timedOut ? .timedOut : .notFound("document=\(document == nil ? "nil" : "set") webarea=miss")
     }
 
     nonisolated private static func breadthFirstFindWebAreaURL(root: AXUIElement, depth: Int, timedOut: inout Bool) -> BrowserTabURL? {
@@ -784,18 +802,22 @@ final class AXBrowserTabReader: BrowserTabReading {
         if status == .cannotComplete { timedOut = true; return nil }
         guard status == .success, let children = childrenValue as? [AXUIElement] else { return nil }
 
+        var containers: [AXUIElement] = []
         for child in children.prefix(Self.maxChildrenPerLevel) {
-            if let role = self.stringAttribute(child, attribute: kAXRoleAttribute as String), role == "AXWebArea",
-               let urlString = self.stringAttribute(child, attribute: "AXURL"),
-               let url = self.parse(urlString)
-            {
-                return url
+            let role = self.stringAttribute(child, attribute: kAXRoleAttribute as String) ?? ""
+            if role == "AXWebArea" {
+                if let urlString = self.stringAttribute(child, attribute: "AXURL"), let url = self.parse(urlString) {
+                    return url
+                }
+                continue
             }
+            if !Self.skippedRoles.contains(role) { containers.append(child) }
         }
-        for child in children.prefix(Self.maxChildrenPerLevel) {
+        for child in containers {
             if let found = self.breadthFirstFindWebAreaURL(root: child, depth: depth + 1, timedOut: &timedOut) {
                 return found
             }
+            if timedOut { return nil }
         }
         return nil
     }
