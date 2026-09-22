@@ -24,6 +24,7 @@ final class MeetingRecoveryTests: XCTestCase {
     }
 
     func testNotesCanvasStatesRenderWithoutInvokingActions() throws {
+        let preferences = MeetingUIPreferences()
         var session = self.makeCorrectionSession(state: .completed).session
         session.title = "Design review"
         session.transcriptSegments[0].text = "The meeting workspace should keep recording sources visible and make the transcript easy to read."
@@ -96,6 +97,255 @@ final class MeetingRecoveryTests: XCTestCase {
             }
         }
         XCTAssertEqual(actionCount, 0, "Rendering must not start capture, persist settings, export or modify a transcript")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Rendering must not change saved meeting or audio-device preferences")
+    }
+
+    func testFluidMeetSetupReadinessStatesRenderWithoutSideEffects() throws {
+        let preferences = MeetingUIPreferences()
+        let actions = MeetingUIActionRecorder()
+        let fixture = self.makeMeetingUISetupFixture()
+
+        var waitingDraft = fixture.draft
+        waitingDraft.selectedApplicationID = nil
+
+        var microphoneDenied = fixture.readiness
+        microphoneDenied.microphoneReady = false
+        microphoneDenied.microphoneStatus = "Access denied"
+        microphoneDenied.showMicrophoneSettingsAction = true
+        microphoneDenied.blockingMessage = "Allow microphone access, then refresh sources."
+
+        var meetingAudioDenied = fixture.readiness
+        meetingAudioDenied.meetingAudioReady = false
+        meetingAudioDenied.meetingAudioStatus = "Access required"
+        meetingAudioDenied.showScreenRecordingSettingsAction = true
+        meetingAudioDenied.blockingMessage = "Allow Screen & System Audio access, then refresh sources."
+
+        var modelMissing = fixture.readiness
+        modelMissing.modelReady = false
+        modelMissing.modelStatus = "Load speaker model in Settings"
+        modelMissing.blockingMessage = "Load the supplied speaker separation model in FluidMeet settings before recording."
+
+        var inRoomDraft = fixture.draft
+        inRoomDraft.mode = .inRoom
+        inRoomDraft.selectedApplicationID = nil
+        inRoomDraft.title = "In-room planning session"
+
+        let scenarios: [(String, MeetingTranscriptionSetupDraft, MeetingSetupReadiness)] = [
+            ("setup-ready", fixture.draft, fixture.readiness),
+            ("setup-waiting", waitingDraft, fixture.readiness),
+            ("setup-microphone-denied", fixture.draft, microphoneDenied),
+            ("setup-meeting-audio-denied", fixture.draft, meetingAudioDenied),
+            ("setup-model-missing", fixture.draft, modelMissing),
+            ("setup-in-room", inRoomDraft, fixture.readiness),
+        ]
+        for (name, draft, readiness) in scenarios {
+            for scheme in [ColorScheme.dark, .light] {
+                for width in [CGFloat(520), 1000] {
+                    try self.renderMeetingUI(
+                        self.meetingUICanvas(draft: draft, readiness: readiness, fixture: fixture, actions: actions),
+                        name: name, width: width, scheme: scheme
+                    )
+                }
+            }
+        }
+        XCTAssertEqual(actions.count, 0, "Readiness rendering must not invoke actions or write the setup draft")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Readiness rendering must not persist settings or change audio routing")
+    }
+
+    func testMeetSummaryComingSoonRendersWithoutChangingPreferences() throws {
+        let preferences = MeetingUIPreferences()
+        for scheme in [ColorScheme.dark, .light] {
+            for width in [CGFloat(520), 1000] {
+                try self.renderMeetingUI(MeetingSummaryComingSoon(), name: "summary-coming-soon", width: width, scheme: scheme)
+            }
+        }
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "The planned summary feature must not change settings")
+    }
+
+    func testFluidMeetDocumentTabBaselineStaysHorizontalInBothStackAxes() throws {
+        let preferences = MeetingUIPreferences()
+        let actions = MeetingUIActionRecorder()
+        let tabWidth: CGFloat = 420
+        for scheme in [ColorScheme.dark, .light] {
+            let base = AppTheme.adaptive(accent: FluidBrandColors.blue, colorScheme: scheme)
+            // Distinct probe colors isolate geometry from text rasterization and native materials.
+            let probeTheme = AppTheme(
+                palette: AppTheme.Palette(
+                    windowBackground: base.palette.windowBackground,
+                    contentBackground: base.palette.contentBackground,
+                    sidebarBackground: base.palette.sidebarBackground,
+                    cardBackground: base.palette.cardBackground,
+                    elevatedCardBackground: base.palette.elevatedCardBackground,
+                    toolbarBackground: base.palette.toolbarBackground,
+                    cardBorder: base.palette.cardBorder,
+                    separator: Color(red: 1, green: 0, blue: 1),
+                    primaryText: Color(red: 0, green: 1, blue: 1),
+                    secondaryText: base.palette.secondaryText,
+                    tertiaryText: base.palette.tertiaryText,
+                    accent: base.palette.accent,
+                    warning: base.palette.warning,
+                    success: base.palette.success
+                ),
+                typography: base.typography, metrics: base.metrics, materials: base.materials
+            )
+            for section in [MeetingDocumentSection.transcript, .summary] {
+                for horizontal in [true, false] {
+                    let tabs = MeetingDocumentTabs(selection: Binding(get: { section }, set: { _ in actions.record() }))
+                        .frame(width: tabWidth)
+                    let ancestor: AnyView
+                    if horizontal {
+                        ancestor = AnyView(HStack(spacing: 0) {
+                            tabs
+                            Color.clear.frame(width: 40, height: 64)
+                        })
+                    } else {
+                        ancestor = AnyView(VStack(spacing: 0) {
+                            tabs
+                            Color.clear.frame(height: 24)
+                        })
+                    }
+                    let context = "\(horizontal ? "hstack" : "vstack")-\(section)-\(scheme)"
+                    let bitmap = try self.renderMeetingUI(
+                        ancestor.appTheme(probeTheme), name: "tabs-baseline-\(context)",
+                        width: 500, height: 140, scheme: scheme
+                    )
+                    let scale = CGFloat(bitmap.pixelsWide) / 500
+                    // Color-managed capture can shift RGB values; classify hue, not exact pixels.
+                    let baseline = try XCTUnwrap(self.meetingUIPixelBounds(in: bitmap) { color, _ in
+                        color.alphaComponent > 0.5 && min(color.redComponent, color.blueComponent) - color.greenComponent > 0.3
+                    }, "\(context): the document baseline must render")
+                    XCTAssertEqual(baseline.width / scale, tabWidth, accuracy: 2, "\(context): baseline must span both tabs, not turn vertical")
+                    XCTAssertLessThanOrEqual(baseline.height / scale, 2, "\(context): baseline must stay one point tall, allowing pixel antialiasing")
+                }
+            }
+        }
+        XCTAssertEqual(actions.count, 0, "Layout must not select a document tab")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Tab layout must not change meeting or audio-device preferences")
+    }
+
+    func testFluidMeetHoverHighlightRespectsDisabledAndReducedMotionStates() throws {
+        let preferences = MeetingUIPreferences()
+        for scheme in [ColorScheme.dark, .light] {
+            for enabled in [true, false] {
+                for hovered in [true, false] {
+                    for reducedMotion in [true, false] {
+                        let highlight = MeetingHoverHighlight(isHovered: hovered, cornerRadius: 8, reduceMotion: reducedMotion)
+                            .frame(width: 120, height: 36)
+                            .disabled(!enabled)
+                        let bitmap = try self.renderMeetingUI(
+                            highlight,
+                            name: "hover-\(enabled)-\(hovered)-\(reducedMotion)",
+                            width: 160, height: 80, scheme: scheme
+                        )
+                        let bounds = self.meetingUIPixelBounds(in: bitmap) { color, _ in color.alphaComponent > 0.01 }
+                        if enabled, hovered {
+                            let visible = try XCTUnwrap(bounds, "Enabled hover must provide feedback even with Reduce Motion")
+                            let scale = CGFloat(bitmap.pixelsWide) / 160
+                            XCTAssertEqual(visible.width / scale, 120, accuracy: 1, "Hover must not expand the control")
+                            XCTAssertEqual(visible.height / scale, 36, accuracy: 1, "Hover must not change control height")
+                        } else {
+                            XCTAssertNil(bounds, "Idle and disabled controls must not show a hover highlight")
+                        }
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Hover rendering must not change settings or audio routing")
+    }
+
+    func testFluidMeetSettingsSectionsRenderWithoutSideEffects() throws {
+        let preferences = MeetingUIPreferences()
+        let actions = MeetingUIActionRecorder()
+        let fixture = self.makeMeetingUISetupFixture()
+        let sections: [(String, MeetingSettingsSection)] = [
+            ("recording", .recording),
+            ("automation", .automation),
+            ("integrations", .integrations),
+        ]
+        for (name, section) in sections {
+            let sheet = MeetingRecordingSettingsSheet(
+                draft: Binding(get: { fixture.draft }, set: { _ in actions.record() }),
+                retentionPolicy: Binding(get: { .days7 }, set: { _ in actions.record() }),
+                applications: fixture.applications,
+                microphones: fixture.microphones,
+                readiness: fixture.readiness,
+                isFirstSetup: false,
+                onRefreshSources: { actions.record() },
+                onOpenMicrophoneSettings: { actions.record() },
+                onOpenScreenRecordingSettings: { actions.record() },
+                onOpenVoiceEngine: { actions.record() },
+                onCancel: { actions.record() },
+                onSave: { actions.record() },
+                initialSection: section
+            )
+            for scheme in [ColorScheme.dark, .light] {
+                try self.renderMeetingUI(sheet, name: "settings-\(name)", width: 820, height: 700, scheme: scheme)
+            }
+        }
+        XCTAssertEqual(actions.count, 0, "Opening settings sections must not save, request permissions, or write draft bindings")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Opening settings must not change retention, detection, or audio routing")
+    }
+
+    func testFluidMeetLongTranscriptRendersWithoutSideEffects() throws {
+        let preferences = MeetingUIPreferences()
+        let actions = MeetingUIActionRecorder()
+        let fixture = self.makeMeetingUISetupFixture()
+        let session = self.makeLongMeetingUIResult()
+        let echo = try XCTUnwrap(session.transcriptSegments.first(where: \.isEcho))
+        let visibleText = MeetingTranscriptExporter.text(for: session)
+        XCTAssertFalse(visibleText.contains(echo.text), "Probable echo is hidden from the default transcript output")
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: session, includeEchoes: true).contains(echo.text))
+        XCTAssertTrue(visibleText.contains("Amelia Richardson"))
+        XCTAssertTrue(visibleText.contains("Rafael Moreno"))
+        XCTAssertTrue(visibleText.contains("Unknown speaker"))
+
+        var echoOnly = session
+        echoOnly.title = "Meeting with only probable echo remaining"
+        echoOnly.transcriptSegments = [echo]
+        XCTAssertTrue(MeetingTranscriptExporter.text(for: echoOnly).isEmpty)
+
+        for (name, result) in [("result-long-conversation", session), ("result-echo-only", echoOnly)] {
+            for scheme in [ColorScheme.dark, .light] {
+                for width in [CGFloat(520), 1000] {
+                    try self.renderMeetingUI(
+                        self.meetingUICanvas(
+                            draft: fixture.draft, readiness: fixture.readiness, fixture: fixture,
+                            actions: actions, state: .result(result)
+                        ),
+                        name: name, width: width, scheme: scheme
+                    )
+                }
+            }
+        }
+        XCTAssertEqual(actions.count, 0, "Reading a long transcript must not start audio, export, or modify speakers and transcript text")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Transcript rendering must not change saved meeting settings or audio routing")
+    }
+
+    func testFluidMeetShortRecordingRendersWithoutSideEffects() throws {
+        let preferences = MeetingUIPreferences()
+        let actions = MeetingUIActionRecorder()
+        let fixture = self.makeMeetingUISetupFixture()
+        var session = self.makeLongMeetingUIResult()
+        session.state = .recording
+        session.startedAt = Date(timeIntervalSinceNow: -94)
+        session.endedAt = nil
+        session.transcriptSegments = []
+        let state = MeetingTranscriptionCanvasState.recording(
+            session: session,
+            trackHealth: [.microphone: .waiting, .applicationAudio: .waiting],
+            liveTranscript: .empty
+        )
+        for scheme in [ColorScheme.dark, .light] {
+            try self.renderMeetingUI(
+                self.meetingUICanvas(
+                    draft: fixture.draft, readiness: fixture.readiness, fixture: fixture,
+                    actions: actions, state: state
+                ),
+                name: "recording-short-window", width: 520, height: 500, scheme: scheme
+            )
+        }
+        XCTAssertEqual(actions.count, 0, "Rendering recording controls must not start or stop real audio capture")
+        XCTAssertEqual(MeetingUIPreferences(), preferences, "Recording presentation must not change saved settings or audio routing")
     }
 
     func testHistoryKeyboardTraversalWalksTheRenderedOrder() {
@@ -111,6 +361,213 @@ final class MeetingRecoveryTests: XCTestCase {
     }
 
     // MARK: - Fixtures
+
+    @MainActor
+    private final class MeetingUIActionRecorder {
+        var count = 0
+        func record() { self.count += 1 }
+    }
+
+    private struct MeetingUIPreferences: Equatable {
+        let recording: MeetingRecordingDefaults
+        let retention: MeetingAudioRetentionPolicy
+        let nativeDetection: Bool
+        let browserDetection: Bool
+        let inputDeviceUID: String?
+        let outputDeviceUID: String?
+
+        @MainActor
+        init() {
+            let settings = SettingsStore.shared
+            self.recording = settings.meetingRecordingDefaults
+            self.retention = settings.meetingAudioRetentionPolicy
+            self.nativeDetection = settings.meetingAutoDetectEnabled
+            self.browserDetection = settings.meetingAutoDetectBrowserEnabled
+            self.inputDeviceUID = settings.preferredInputDeviceUID
+            self.outputDeviceUID = settings.preferredOutputDeviceUID
+        }
+    }
+
+    private struct MeetingUISetupFixture {
+        let draft: MeetingTranscriptionSetupDraft
+        let applications: [MeetingApplicationOption]
+        let microphones: [MeetingMicrophoneOption]
+        let readiness: MeetingSetupReadiness
+    }
+
+    private func makeMeetingUISetupFixture() -> MeetingUISetupFixture {
+        let application = MeetingApplicationOption(identity: MeetingApplicationIdentity(
+            bundleIdentifier: "us.zoom.xos", processID: 42, displayName: "Zoom Workplace"
+        ))
+        let microphone = MeetingMicrophoneOption(identity: MeetingMicrophoneIdentity(
+            captureDeviceID: "meeting-ui-fixture-microphone", displayName: "MacBook Pro Microphone"
+        ))
+        var draft = MeetingTranscriptionSetupDraft()
+        draft.mode = .onlineCall
+        draft.title = "Product design review and launch planning"
+        draft.titleWasEdited = true
+        draft.selectedApplicationID = application.id
+        draft.usesAutomaticApplication = true
+        draft.selectedMicrophoneID = microphone.id
+        draft.autoDetectEnabled = true
+        draft.browserDetectionEnabled = true
+        return MeetingUISetupFixture(
+            draft: draft,
+            applications: [application],
+            microphones: [microphone],
+            readiness: MeetingSetupReadiness(
+                isCheckingSources: false,
+                meetingAudioStatus: "Ready", meetingAudioReady: true,
+                microphoneStatus: "Ready", microphoneReady: true,
+                modelStatus: "Speaker model installed", modelReady: true,
+                storageStatus: "120 GB available", storageReady: true,
+                activityStatus: "Ready", activityReady: true,
+                showMicrophoneSettingsAction: false,
+                showScreenRecordingSettingsAction: false,
+                blockingMessage: nil
+            )
+        )
+    }
+
+    private func meetingUICanvas(
+        draft: MeetingTranscriptionSetupDraft,
+        readiness: MeetingSetupReadiness,
+        fixture: MeetingUISetupFixture,
+        actions: MeetingUIActionRecorder,
+        state: MeetingTranscriptionCanvasState = .setup(isStarting: false, recentSession: nil)
+    ) -> some View {
+        MeetingTranscriptionCanvas(
+            setupDraft: Binding(get: { draft }, set: { _ in actions.record() }),
+            state: state,
+            applications: fixture.applications,
+            microphones: fixture.microphones,
+            readiness: readiness,
+            errorMessage: nil,
+            onStart: { actions.record() },
+            onStop: { actions.record() },
+            onRetrySession: { _ in actions.record() },
+            onRevealAudio: { _ in actions.record() },
+            onRecordAgain: { _ in actions.record() },
+            onCopyTranscript: { _, _ in actions.record() },
+            onExportTranscript: { _, _, _ in actions.record() },
+            onReassignSegment: { _, _, _ in actions.record() },
+            onNameUnknownSegment: { _, _, _ in actions.record() },
+            onRenameSpeaker: { _, _, _ in actions.record() },
+            onMergeSpeakers: { _, _, _ in actions.record() },
+            onUndoCorrection: { _ in actions.record() },
+            onRenameSession: { _, _ in actions.record() },
+            onAssignSpeakers: { _, _ in actions.record(); return nil },
+            canUndoCorrection: { _ in false },
+            isQuiescent: true,
+            onRepairSetup: { actions.record() },
+            onEditSetup: { actions.record() },
+            isRetrying: false,
+            onCloseSelection: { actions.record() }
+        )
+    }
+
+    private func makeLongMeetingUIResult() -> MeetingSession {
+        var microphone = self.makeMicrophoneTrack(chunks: [])
+        microphone.sourceDisplayName = "MacBook Pro Microphone"
+        var application = self.makeMicrophoneTrack(chunks: [])
+        application.kind = .applicationAudio
+        application.sourceIdentifier = "us.zoom.xos"
+        application.sourceDisplayName = "Zoom Workplace"
+        let startedAt = Date(timeIntervalSince1970: 1_789_996_800)
+        var session = self.makeSession(
+            state: .completed, startedAt: startedAt,
+            endedAt: startedAt.addingTimeInterval(32 * 60 + 18),
+            audioTracks: [microphone, application]
+        )
+        session.title = "Product design review — simplifying the first meeting experience before our autumn launch"
+        session.mode = .onlineCall
+        session.capturedApplication = MeetingApplicationIdentity(bundleIdentifier: "us.zoom.xos", displayName: "Zoom Workplace")
+        session.selectedMicrophone.displayName = microphone.sourceDisplayName
+        session.transcriptTimeDomain = .meetingRelative
+        session.transcriptIsComplete = true
+        let local = self.makeSpeaker(name: "You", isLocalUser: true)
+        let amelia = self.makeSpeaker(name: "Amelia Richardson", trackKind: .applicationAudio)
+        let rafael = self.makeSpeaker(name: "Rafael Moreno", trackKind: .applicationAudio)
+        session.speakers = [local, amelia, rafael]
+
+        let turns: [(MeetingSessionSpeaker?, String)] = [
+            (local, "Let's start with what someone needs in their first thirty seconds. They should know which meeting we are capturing, see that their microphone is ready, and find the recording control without having to read a settings page."),
+            (local, "Once a conversation has finished, the transcript should read like a document. Keep the title and date nearby, but let the words take up most of the space. We can move less common actions into the menu."),
+            (amelia, "I agree. In the interviews, people went back to a meeting because they remembered a decision, not because they wanted to inspect a recording. The first screen should help them recognize the conversation and pick up where they left off."),
+            (rafael, "The longer examples matter here. A one-line transcript looks fine in almost any layout. We need to see what happens with several speakers, names that wrap, and a paragraph that takes more than two lines on a small laptop."),
+            (amelia, "For speaker corrections, I would keep the name close to the passage. If I notice that the wrong person has been assigned, I should be able to fix it there and continue reading without losing my place."),
+            (nil, "Could we also make it clear when the recording contains an overlap that the model cannot confidently assign? An honest unknown label is more useful than attributing the statement to the wrong person."),
+            (local, "Yes. We should preserve uncertain attribution and avoid making the interface look more confident than the transcript is. The correction remains a deliberate action, and the original recording stays available until the retention policy removes it."),
+            (rafael, "For the launch review, I will test the smallest supported window and both appearances. I will also check a meeting that has no readable transcript, so the recovery action is still obvious when someone needs it."),
+            (amelia, "I'll collect three longer conversations for the design review. We should compare the same content each time, including one where the speaker names are much longer than the labels in our initial mockup."),
+            (local, "The next step is to review those examples together on Thursday. We can then decide whether the meeting list, transcript width, and primary actions feel consistent with the rest of the app."),
+        ]
+        session.transcriptSegments = turns.enumerated().map { index, turn in
+            let trackID = turn.0?.isLocalUser == true ? microphone.id : application.id
+            var segment = self.makeTranscriptSegment(sourceTrackID: trackID, speakerID: turn.0?.id)
+            segment.start = MeetingMediaTime(value: Int64(index * 32_000), timescale: 1000)
+            segment.end = MeetingMediaTime(value: Int64(index * 32_000 + 27_000), timescale: 1000)
+            segment.text = turn.1
+            segment.attributionState = turn.0 == nil ? .unassigned : .assigned
+            return segment
+        }
+        var echo = self.makeTranscriptSegment(sourceTrackID: microphone.id, speakerID: local.id)
+        echo.start = MeetingMediaTime(value: 66_000, timescale: 1000)
+        echo.end = MeetingMediaTime(value: 70_000, timescale: 1000)
+        echo.text = "This repeated phrase was captured through the speakers and is marked as probable echo."
+        echo.isLikelyEcho = true
+        echo.attributionState = .assigned
+        session.transcriptSegments.append(echo)
+        return session
+    }
+
+    private func meetingUIPixelBounds(
+        in bitmap: NSBitmapImageRep,
+        matching predicate: (NSColor, Int) -> Bool
+    ) -> CGRect? {
+        var bounds: CGRect?
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), predicate(color, y) else { continue }
+                let pixel = CGRect(x: x, y: y, width: 1, height: 1)
+                bounds = bounds.map { $0.union(pixel) } ?? pixel
+            }
+        }
+        return bounds
+    }
+
+    @discardableResult
+    private func renderMeetingUI<Content: View>(
+        _ content: Content,
+        name: String,
+        width: CGFloat,
+        height: CGFloat = 680,
+        scheme: ColorScheme
+    ) throws -> NSBitmapImageRep {
+        let canvas = content
+            .frame(width: width, height: height)
+            .appTheme(.adaptive(accent: FluidBrandColors.blue, colorScheme: scheme))
+            .environment(\.colorScheme, scheme)
+        let host = NSHostingView(rootView: canvas)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        window.contentView = host
+        defer { window.close() }
+        // AppKit-backed scroll views and native menus need hosting-view capture.
+        host.layoutSubtreeIfNeeded()
+        host.displayIfNeeded()
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds), "\(name) must render")
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        let output = URL(fileURLWithPath: "/tmp/meet-assist-ui-review", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try png.write(to: output.appendingPathComponent("\(name)-\(scheme)-\(Int(width)).png"))
+        return bitmap
+    }
 
     private func makeTempDirectory() -> URL {
         let dir = FileManager.default.temporaryDirectory

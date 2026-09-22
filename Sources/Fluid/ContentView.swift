@@ -1410,7 +1410,7 @@ struct ContentView: View {
                 self.sidebarNavigationLink(.fileTranscription, title: "File Transcription", systemImage: "doc.text.fill")
                 self.sidebarNavigationLink(
                     .meetingTranscription,
-                    title: "Meet Assist",
+                    title: "FluidMeet",
                     systemImage: "person.2.fill"
                 )
             } header: {

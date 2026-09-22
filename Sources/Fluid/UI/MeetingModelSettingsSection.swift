@@ -6,34 +6,58 @@ struct MeetingModelSettingsSection: View {
     @State private var installed: MeetingNemotronModelArtifact?
     @State private var isBusy = true
     @State private var message: String?
+    @State private var showingDetails = false
 
     var body: some View {
-        FluidManagementGroup(title: "Speaker separation model") {
+        FluidManagementGroup(title: "Speaker labels") {
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
                 HStack(spacing: self.theme.metrics.spacing.lg) {
                     VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                        Text("Identify each speaker")
+                            .font(self.theme.typography.bodyStrong)
+                            .foregroundStyle(self.theme.palette.primaryText)
                         if self.isBusy {
-                            HStack { ProgressView().controlSize(.small); Text("Validating model…") }
-                        } else if let installed {
-                            Label("Ready", systemImage: "checkmark.circle.fill")
+                            HStack(spacing: self.theme.metrics.spacing.sm) {
+                                ProgressView().controlSize(.small)
+                                Text("Checking model…")
+                                    .font(self.theme.typography.caption)
+                                    .foregroundStyle(self.theme.palette.secondaryText)
+                            }
+                        } else if self.installed != nil {
+                            Label("Ready · runs after recording", systemImage: "checkmark.circle.fill")
+                                .font(self.theme.typography.caption)
                                 .foregroundStyle(self.theme.palette.success)
-                            Text("Nemotron FP16 · \(ByteCountFormatter.string(fromByteCount: installed.totalByteCount, countStyle: .file))")
+                        } else {
+                            Text(CPUArchitecture.isAppleSilicon ? "Import a model to get started." : "Apple silicon required.")
                                 .font(self.theme.typography.caption)
                                 .foregroundStyle(self.theme.palette.secondaryText)
-                        } else {
-                            Text("Not installed").font(self.theme.typography.bodyStrong)
                         }
                     }
                     Spacer(minLength: self.theme.metrics.spacing.md)
-                    Button(self.installed == nil ? "Load model…" : "Replace model…", action: self.choosePackage)
-                        .fluidGlassAction()
+                    Button(self.installed == nil ? "Import model…" : "Replace…", action: self.choosePackage)
+                        .meetingGlassAction()
                         .disabled(self.isBusy || !CPUArchitecture.isAppleSilicon)
                 }
-                Text(CPUArchitecture.isAppleSilicon
-                    ? "Beta: choose the supplied .mlpackage. A copy is saved in FluidVoice and stays ready after restarting. No recording starts."
-                    : "Speaker separation requires an Apple silicon Mac.")
+                DisclosureGroup(isExpanded: self.$showingDetails) {
+                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
+                        if let installed {
+                            Text("Nemotron FP16 · \(ByteCountFormatter.string(fromByteCount: installed.totalByteCount, countStyle: .file))")
+                        }
+                        Text(CPUArchitecture.isAppleSilicon
+                            ? "Choose the supplied .mlpackage. A copy stays on this Mac and is ready after restarting."
+                            : "FluidMeet recording currently requires an Apple silicon Mac.")
+                        Text("Model changes are applied immediately, even if you cancel these settings. Importing a model does not start recording.")
+                    }
                     .font(self.theme.typography.caption)
                     .foregroundStyle(self.theme.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, self.theme.metrics.spacing.sm)
+                } label: {
+                    Text("Model details")
+                        .meetingHoverFeedback(cornerRadius: self.theme.metrics.corners.sm)
+                }
+                .font(self.theme.typography.captionStrong)
+                .foregroundStyle(self.theme.palette.secondaryText)
                 if let message {
                     Text(message).font(self.theme.typography.caption).foregroundStyle(self.theme.palette.warning)
                 }

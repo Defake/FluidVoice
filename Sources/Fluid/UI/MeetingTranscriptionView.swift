@@ -179,15 +179,16 @@ struct MeetingTranscriptionView: View {
                         canUndoCorrection: { self.coordinator.canUndoCorrection(sessionID: $0) },
                         isQuiescent: self.coordinator.isQuiescent,
                         onRepairSetup: self.repairRecordingSetup,
+                        onEditSetup: self.openMeetingSettings,
                         isRetrying: self.isRetrying,
                         onCloseSelection: self.closeCanvasAction
                     )
-                    .padding(.trailing, self.isMeetingHistoryVisible && geometry.size.width >= 810 ? 290 : 0)
-                    .allowsHitTesting(!self.isMeetingHistoryVisible || geometry.size.width >= 810)
-                    .accessibilityHidden(self.isMeetingHistoryVisible && geometry.size.width < 810)
+                    .padding(.trailing, self.isMeetingHistoryVisible && geometry.size.width >= 900 ? 272 : 0)
+                    .allowsHitTesting(!self.isMeetingHistoryVisible || geometry.size.width >= 900)
+                    .accessibilityHidden(self.isMeetingHistoryVisible && geometry.size.width < 900)
 
                     if self.isMeetingHistoryVisible {
-                        if geometry.size.width < 810 {
+                        if geometry.size.width < 900 {
                             Button {
                                 self.isMeetingHistoryVisible = false
                             } label: {
@@ -203,7 +204,7 @@ struct MeetingTranscriptionView: View {
                                 set: {
                                     if self.canBrowseMeetingHistory {
                                         self.selectedHistorySessionID = $0
-                                        if geometry.size.width < 810 { self.isMeetingHistoryVisible = false }
+                                        if geometry.size.width < 900 { self.isMeetingHistoryVisible = false }
                                     }
                                 }
                             ),
@@ -218,7 +219,7 @@ struct MeetingTranscriptionView: View {
                             onDeleteRequest: { self.pendingDeleteSessionID = $0 },
                             onRecordAgain: self.recordAgain
                         )
-                        .frame(width: min(290, geometry.size.width))
+                        .frame(width: min(272, geometry.size.width))
                         .overlay(alignment: .leading) { Divider() }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
@@ -240,6 +241,10 @@ struct MeetingTranscriptionView: View {
         }
         .onChange(of: self.setupDraft.selectedApplicationID) { _, _ in
             self.regenerateDefaultTitleIfNeeded()
+        }
+        .onChange(of: self.setupDraft.usesAutomaticApplication) { _, automatic in
+            guard automatic else { return }
+            self.selectPreferredApplication(from: self.applications.map(\.identity))
         }
         .onChange(of: self.appServices.meetingAutomaticTarget) { _, _ in
             guard self.setupDraft.usesAutomaticApplication, !self.isShowingMeetingSettings,
@@ -393,10 +398,20 @@ struct MeetingTranscriptionView: View {
         }
     }
 
+    /// True only when an actual app will be captured; otherwise recording is mic-only.
+    private var capturesMeetingAudio: Bool {
+        guard self.setupDraft.mode == .onlineCall, let id = self.setupDraft.selectedApplicationID else { return false }
+        return self.applications.contains { $0.id == id }
+    }
+
+    private var effectiveCaptureMode: MeetingCaptureMode {
+        self.capturesMeetingAudio ? .onlineCall : .inRoom
+    }
+
     private var readiness: MeetingSetupReadiness {
         let microphoneStatus = self.cachedMicrophoneStatus
         let microphoneReady = microphoneStatus == .authorized
-        let meetingAudioReady = self.setupDraft.mode == .inRoom || self.cachedScreenCaptureAccess
+        let meetingAudioReady = !self.capturesMeetingAudio || self.cachedScreenCaptureAccess
         let modelReady = self.cachedModelReady
         let conflictingActivity = self.asrService.activeExclusiveActivity
         let activityReady = conflictingActivity == nil
@@ -426,15 +441,15 @@ struct MeetingTranscriptionView: View {
             blockingMessage = "Allow microphone access, then refresh sources."
         } else if self.microphones.isEmpty {
             blockingMessage = "Connect a microphone, then refresh sources."
-        } else if self.setupDraft.mode == .onlineCall, !meetingAudioReady {
+        } else if !meetingAudioReady {
             blockingMessage = "Allow Screen & System Audio access, then refresh sources."
         } else if !self.cachedStorageReady {
-            let trackCount = MeetingPCMStoragePolicy.trackCount(for: self.setupDraft.mode)
+            let trackCount = MeetingPCMStoragePolicy.trackCount(for: self.effectiveCaptureMode)
             blockingMessage = "Free at least \(MeetingPCMStoragePolicy.requiredFreeSpaceDescription(trackCount: trackCount)) of storage before recording."
         } else if !CPUArchitecture.isAppleSilicon {
-            blockingMessage = "Meet Assist requires an Apple silicon Mac."
+            blockingMessage = "FluidMeet requires an Apple silicon Mac."
         } else if !modelReady {
-            blockingMessage = "Load the supplied speaker separation model in Meet Assist settings before recording."
+            blockingMessage = "Load the supplied speaker separation model in FluidMeet settings before recording."
         } else {
             blockingMessage = nil
         }
@@ -452,7 +467,7 @@ struct MeetingTranscriptionView: View {
             activityStatus: conflictingActivity.map { "Wait for \($0.displayName)" } ?? "Ready",
             activityReady: activityReady,
             showMicrophoneSettingsAction: microphoneStatus == .denied,
-            showScreenRecordingSettingsAction: self.setupDraft.mode == .onlineCall && !meetingAudioReady,
+            showScreenRecordingSettingsAction: !meetingAudioReady,
             blockingMessage: blockingMessage
         )
     }
@@ -578,7 +593,7 @@ struct MeetingTranscriptionView: View {
               readiness.modelReady,
               readiness.storageReady,
               readiness.microphoneReady,
-              self.setupDraft.mode == .inRoom || readiness.meetingAudioReady,
+              readiness.meetingAudioReady,
               let configuration = self.captureConfiguration
         else {
             self.actionErrorMessage = readiness.blockingMessage ?? "Finish meeting setup before recording."
@@ -608,18 +623,22 @@ struct MeetingTranscriptionView: View {
         var microphone = microphoneOption.identity
         microphone.role = .unknown
 
+        // No resolved app means a mic-only recording, never a refusal to record.
         let applicationOption = self.applications.first(where: { $0.id == self.setupDraft.selectedApplicationID })
-        if self.setupDraft.mode == .onlineCall, applicationOption == nil { return nil }
         var application = self.setupDraft.mode == .onlineCall ? applicationOption?.identity : nil
-        if self.setupDraft.mode == .onlineCall, self.setupDraft.usesAutomaticApplication {
-            guard let target = self.appServices.meetingAutomaticTarget,
-                  application?.bundleIdentifier == target.bundleIdentifier,
-                  application?.processID == target.pid else { return nil }
-            application?.windowID = target.windowID
+        if application != nil, self.setupDraft.usesAutomaticApplication {
+            if let target = self.appServices.meetingAutomaticTarget,
+               application?.bundleIdentifier == target.bundleIdentifier,
+               application?.processID == target.pid
+            {
+                application?.windowID = target.windowID
+            } else {
+                application = nil
+            }
         }
 
         return MeetingCaptureConfiguration(
-            mode: self.setupDraft.mode,
+            mode: application == nil ? .inRoom : .onlineCall,
             title: title,
             platform: application.map {
                 MeetingPlatformProfile(identifier: $0.bundleIdentifier, displayName: $0.displayName)
@@ -1104,7 +1123,7 @@ struct MeetingTranscriptionView: View {
     private func refreshCachedReadiness() {
         self.cachedMicrophoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         self.cachedScreenCaptureAccess = CGPreflightScreenCaptureAccess()
-        let storage = Self.storageReadiness(trackCount: MeetingPCMStoragePolicy.trackCount(for: self.setupDraft.mode))
+        let storage = Self.storageReadiness(trackCount: MeetingPCMStoragePolicy.trackCount(for: self.effectiveCaptureMode))
         self.cachedStorageStatus = storage.status
         self.cachedStorageReady = storage.ready
     }
@@ -1181,6 +1200,7 @@ struct MeetingTranscriptionCanvas: View {
     let canUndoCorrection: (MeetingSessionID) -> Bool
     let isQuiescent: Bool
     let onRepairSetup: () -> Void
+    var onEditSetup: (() -> Void)? = nil
     let isRetrying: Bool
     let onCloseSelection: (() -> Void)?
 
@@ -1199,14 +1219,14 @@ struct MeetingTranscriptionCanvas: View {
         Group {
             if self.fillsCanvasHeight {
                 self.canvasContent
-                    .frame(maxWidth: AppTheme.Metrics.Showcase.pageMaxWidth)
-                    .padding(self.theme.metrics.spacing.xxl)
+                    .frame(maxWidth: 820)
+                    .padding(self.theme.metrics.spacing.lg * 2)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
                 ScrollView {
                     self.canvasContent
-                        .frame(maxWidth: 820)
-                        .padding(self.theme.metrics.spacing.xxl)
+                        .frame(maxWidth: 720)
+                        .padding(self.theme.metrics.spacing.lg * 2)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -1223,13 +1243,13 @@ struct MeetingTranscriptionCanvas: View {
                 MeetingSetupCanvas(
                     draft: self.$setupDraft,
                     applications: self.applications,
-                    microphones: self.microphones,
                     readiness: self.readiness,
                     isStarting: isStarting,
                     errorMessage: self.errorMessage,
                     recentSession: recentSession,
                     onStart: self.onStart,
-                    onRepairSetup: self.onRepairSetup
+                    onRepairSetup: self.onRepairSetup,
+                    onEditSetup: self.onEditSetup ?? self.onRepairSetup
                 )
             case let .recording(session, trackHealth, liveTranscript):
                 MeetingRecordingCanvas(
@@ -1299,26 +1319,29 @@ private struct MeetingTranscriptionHeader: View {
 
     var body: some View {
         HStack(spacing: self.theme.metrics.spacing.md) {
-            Image(systemName: "person.2.fill")
-                .font(self.theme.typography.titleIcon)
-                .foregroundStyle(self.theme.palette.accent)
-
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                Text("Meet Assist")
-                    .font(self.theme.typography.title)
-                    .foregroundStyle(self.theme.palette.primaryText)
-                Text("Your conversations, kept close.")
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
+            Label("FluidMeet", systemImage: "person.2")
+                .font(self.theme.typography.bodyStrong)
+                .foregroundStyle(self.theme.palette.primaryText)
 
             Spacer()
 
-            HStack(spacing: self.theme.metrics.spacing.xs) {
+            ViewThatFits(in: .horizontal) {
+                self.actions(showsLabels: true)
+                self.actions(showsLabels: false)
+            }
+        }
+        .padding(.horizontal, self.theme.metrics.spacing.xxl)
+        .padding(.vertical, self.theme.metrics.spacing.md)
+    }
+
+    private func actions(showsLabels: Bool) -> some View {
+        FluidGlassControlGroup {
+            HStack(spacing: self.theme.metrics.spacing.sm) {
                 if self.canStartNewMeeting {
                     MeetingHeaderIconButton(
                         systemImage: "plus",
                         label: "New Meeting",
+                        visibleTitle: showsLabels ? "New meeting" : nil,
                         action: self.onNewMeeting
                     )
                     .keyboardShortcut("n", modifiers: .command)
@@ -1327,7 +1350,8 @@ private struct MeetingTranscriptionHeader: View {
 
                 MeetingHeaderIconButton(
                     systemImage: "gearshape",
-                    label: "Meet Assist settings",
+                    label: "FluidMeet settings",
+                    visibleTitle: showsLabels ? "Settings" : nil,
                     action: self.onOpenMeetingSettings
                 )
                 .disabled(!self.canEditSetup)
@@ -1338,13 +1362,12 @@ private struct MeetingTranscriptionHeader: View {
                         ? "rectangle.righthalf.inset.filled"
                         : "sidebar.right",
                     label: self.isMeetingHistoryVisible ? "Hide meeting history" : "Show meeting history",
+                    visibleTitle: showsLabels ? "Meetings" : nil,
                     isSelected: self.isMeetingHistoryVisible,
                     action: self.onToggleMeetingHistory
                 )
             }
         }
-        .padding(.horizontal, self.theme.metrics.spacing.xxl)
-        .padding(.vertical, self.theme.metrics.spacing.lg)
     }
 
     private var canStartNewMeeting: Bool {
@@ -1368,16 +1391,20 @@ private struct MeetingTranscriptionHeader: View {
 private struct MeetingHeaderIconButton: View {
     let systemImage: String
     let label: String
+    var visibleTitle: String? = nil
     var isSelected = false
     let action: () -> Void
 
     @Environment(\.theme) private var theme
     var body: some View {
         Button(action: self.action) {
-            Image(systemName: self.systemImage)
-                .foregroundStyle(self.isSelected ? self.theme.palette.accent : self.theme.palette.primaryText)
+            HStack(spacing: self.theme.metrics.spacing.sm) {
+                Image(systemName: self.systemImage)
+                if let visibleTitle { Text(visibleTitle) }
+            }
+            .foregroundStyle(self.isSelected ? self.theme.palette.accent : self.theme.palette.primaryText)
         }
-        .fluidGlassAction(circular: true)
+        .meetingGlassAction(circular: self.visibleTitle == nil)
         .help(self.label)
         .accessibilityLabel(self.label)
         .accessibilityAddTraits(self.isSelected ? .isSelected : [])
@@ -1400,6 +1427,7 @@ private struct MeetingHistoryInspector: View {
 
     @Environment(\.theme) private var theme
     @State private var searchText = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var filteredSessions: [MeetingSession] {
         let query = self.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1436,8 +1464,8 @@ private struct MeetingHistoryInspector: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: self.theme.metrics.spacing.sm) {
-                Text("Your meetings")
-                    .font(self.theme.typography.sectionTitle)
+                Text("Meetings")
+                    .font(self.theme.typography.bodySmallStrong)
                 Text("\(self.sessions.count)")
                     .font(self.theme.typography.badge)
                     .foregroundStyle(self.theme.palette.secondaryText)
@@ -1446,6 +1474,7 @@ private struct MeetingHistoryInspector: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
+                .meetingHoverFeedback()
                 .help("Refresh meeting history")
                 .accessibilityLabel("Refresh meeting history")
             }
@@ -1456,6 +1485,14 @@ private struct MeetingHistoryInspector: View {
             HStack(spacing: self.theme.metrics.spacing.sm) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search meetings", text: self.$searchText).textFieldStyle(.plain)
+                if !self.searchText.isEmpty {
+                    Button { self.searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .meetingHoverFeedback()
+                    .accessibilityLabel("Clear meeting search")
+                }
             }
             .padding(self.theme.metrics.spacing.md)
             .fluidDropdownSurface()
@@ -1491,12 +1528,25 @@ private struct MeetingHistoryInspector: View {
                                             session: session,
                                             isSelected: self.selectedSessionID == session.id,
                                             isQuiescent: self.isQuiescent,
+                                            onSelect: { self.selectedSessionID = session.id },
                                             onRetry: { self.onRetry(session.id) },
                                             onRecordAgain: { self.onRecordAgain(session) }
                                         )
                                         .id(session.id)
-                                        .onTapGesture { self.selectedSessionID = session.id }
                                         .contextMenu { self.contextMenu(for: session) }
+                                        .overlay(alignment: .topTrailing) {
+                                            Menu { self.contextMenu(for: session) } label: {
+                                                Image(systemName: "ellipsis")
+                                                    .frame(width: 24, height: 24)
+                                                    .contentShape(Rectangle())
+                                            }
+                                            .menuStyle(.borderlessButton)
+                                            .menuIndicator(.hidden)
+                                            .fixedSize()
+                                            .meetingHoverFeedback()
+                                            .accessibilityLabel("Actions for \(session.title)")
+                                            .padding(self.theme.metrics.spacing.sm)
+                                        }
                                     }
                                 } header: {
                                     Text(group.key)
@@ -1521,7 +1571,7 @@ private struct MeetingHistoryInspector: View {
                         guard let moved = self.sessionID(movingFrom: self.selectedSessionID, direction: direction)
                         else { return }
                         self.selectedSessionID = moved
-                        withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(moved, anchor: .center) }
+                        withAnimation(self.reduceMotion ? nil : .easeOut(duration: 0.12)) { proxy.scrollTo(moved, anchor: .center) }
                     }
                 }
             }
@@ -1597,37 +1647,70 @@ private struct MeetingHistoryRow: View {
     let session: MeetingSession
     let isSelected: Bool
     let isQuiescent: Bool
+    let onSelect: () -> Void
     let onRetry: () -> Void
     let onRecordAgain: () -> Void
 
     @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: self.theme.metrics.spacing.md) {
-            self.tile
-            VStack(alignment: .leading, spacing: 2) {
-                Text(self.session.title)
-                    .font(self.theme.typography.bodyStrong)
-                    .foregroundStyle(self.theme.palette.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                self.secondaryLine
+        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
+            Button(action: self.onSelect) {
+                HStack(alignment: .top, spacing: self.theme.metrics.spacing.md) {
+                    self.tile
+                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                        Text(self.session.title)
+                            .font(self.theme.typography.bodyStrong)
+                            .foregroundStyle(self.theme.palette.primaryText)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .padding(.trailing, self.theme.metrics.spacing.xxl)
+                        self.secondaryLine
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, self.theme.metrics.spacing.md)
+                .padding(.vertical, self.theme.metrics.spacing.md)
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(self.session.title), \(self.statusText), \(self.sourceName)")
+            .accessibilityAddTraits(self.isSelected ? .isSelected : [])
+            if let actionLabel {
+                Button(actionLabel, action: self.performAction)
+                    .buttonStyle(.borderless)
+                    .meetingHoverFeedback()
+                    .font(self.theme.typography.captionStrong)
+                    .foregroundStyle(self.actionColor)
+                    .disabled(!self.isQuiescent)
+                    .accessibilityLabel(self.actionAccessibilityLabel ?? actionLabel)
+                    .padding(.leading, 18 + self.theme.metrics.spacing.md * 2)
+                    .padding(.bottom, self.theme.metrics.spacing.sm)
+            }
         }
-        .padding(.horizontal, self.theme.metrics.spacing.sm)
-        .padding(.vertical, self.theme.metrics.spacing.sm)
-        .background(self.rowBackground, in: RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous))
+        .background {
+            RoundedRectangle(cornerRadius: self.theme.metrics.corners.md, style: .continuous)
+                .fill(self.rowBackground)
+                .animation(self.reduceMotion ? nil : .easeOut(duration: 0.14), value: self.isHovered && self.isEnabled)
+        }
         .contentShape(Rectangle())
-        .onHover { self.isHovered = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(self.session.title), \(self.statusText), \(self.sourceName)")
-        .accessibilityAddTraits(self.isSelected ? [.isButton, .isSelected] : .isButton)
+        .onHover { self.isHovered = $0 && self.isEnabled }
+        .onChange(of: self.isEnabled) { _, enabled in
+            if !enabled { self.isHovered = false }
+        }
+        .onDisappear { self.isHovered = false }
+        .accessibilityElement(children: .contain)
     }
 
     private var tile: some View {
-        FluidIconTile(icon: self.tileIcon, tint: self.tileIconColor, size: 44)
+        Image(systemName: self.tileIcon)
+            .font(self.theme.typography.bodySmall)
+            .foregroundStyle(self.tileIconColor)
+            .frame(width: 18, height: 22)
     }
 
     @ViewBuilder
@@ -1638,14 +1721,6 @@ private struct MeetingHistoryRow: View {
                     Text("·").foregroundStyle(self.theme.palette.tertiaryText)
                 }
                 Text(part)
-            }
-            if let actionLabel {
-                Text("·").foregroundStyle(self.theme.palette.tertiaryText)
-                Button(actionLabel, action: self.performAction)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(self.actionColor)
-                    .disabled(!self.isQuiescent)
-                    .accessibilityLabel(self.actionAccessibilityLabel ?? actionLabel)
             }
         }
         .font(self.theme.typography.caption)
@@ -1670,13 +1745,13 @@ private struct MeetingHistoryRow: View {
         case .completed:
             var parts = [self.timeText, Self.durationText(self.session.duration)]
             if !self.session.activeSpeakers.isEmpty {
-                parts.append("\(self.session.activeSpeakers.count) speakers")
+                parts.append(self.session.activeSpeakers.count == 1 ? "1 speaker" : "\(self.session.activeSpeakers.count) speakers")
             }
             return parts
         case .interrupted:
             return [self.timeText, "Interrupted"]
         case .failed:
-            return [self.timeText, self.session.failures.last?.message ?? "Failed"]
+            return [self.timeText, "Failed"]
         case .processing:
             return [self.timeText, "Processing"]
         case .recording, .recordingDegraded, .preparing, .stopping:
@@ -1706,12 +1781,8 @@ private struct MeetingHistoryRow: View {
     }
 
     private var rowBackground: Color {
-        if self.isSelected {
-            return self.theme.palette.accent.opacity(self.theme.metrics.pickerControl.selectedRowOpacity)
-        }
-        if self.isHovered {
-            return self.theme.palette.accent.opacity(self.theme.metrics.pickerControl.selectedRowOpacity * 0.4)
-        }
+        if self.isSelected { return self.theme.palette.primaryText.opacity(self.isHovered && self.isEnabled ? 0.14 : 0.08) }
+        if self.isHovered && self.isEnabled { return self.theme.palette.primaryText.opacity(0.06) }
         return .clear
     }
 
@@ -1754,522 +1825,241 @@ private struct MeetingHistoryRow: View {
     }
 }
 
-private struct MeetingRecordingSettingsSheet: View {
-    @Binding var draft: MeetingTranscriptionSetupDraft
-    @Binding var retentionPolicy: MeetingAudioRetentionPolicy
-    @ObservedObject private var dismissalAdvisor = MeetingAutoDetectDismissalAdvisor.shared
-    @ObservedObject private var appServices = AppServices.shared
-
-    let applications: [MeetingApplicationOption]
-    let microphones: [MeetingMicrophoneOption]
-    let readiness: MeetingSetupReadiness
-    let isFirstSetup: Bool
-    let onRefreshSources: () -> Void
-    let onOpenMicrophoneSettings: @MainActor @Sendable () -> Void
-    let onOpenScreenRecordingSettings: @MainActor @Sendable () -> Void
-    let onOpenVoiceEngine: () -> Void
-    let onCancel: () -> Void
-    let onSave: () -> Void
-
-    @Environment(\.theme) private var theme
-
-    private var canSave: Bool {
-        guard self.draft.selectedMicrophoneID != nil else { return false }
-        return self.draft.mode == .inRoom
-            || self.draft.usesAutomaticApplication
-            || self.draft.selectedApplicationID != nil
-    }
-
-    private var separationDescription: String {
-        if !CPUArchitecture.isAppleSilicon {
-            return "Plain transcript on Intel"
-        }
-        return self.readiness.modelReady ? "Automatic after Stop" : "Load supplied model below"
-    }
-
-    private var saveHelp: String? {
-        guard !self.canSave else { return nil }
-        if let blockingMessage = readiness.blockingMessage {
-            return blockingMessage
-        }
-        if self.draft.selectedMicrophoneID == nil {
-            return "Choose an available microphone to save this setup."
-        }
-        return "Choose an available meeting application to save this setup."
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                Image(systemName: "gearshape.fill")
-                    .font(self.theme.typography.titleIcon)
-                    .foregroundStyle(self.theme.palette.accent)
-
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                    Text(self.isFirstSetup ? "Set up Meet Assist" : "Meet Assist settings")
-                        .font(self.theme.typography.title)
-                    Text("Set recording defaults and choose this meeting’s audio source.")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, self.theme.metrics.spacing.xl)
-            .padding(.vertical, self.theme.metrics.spacing.lg)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-                    FluidManagementGroup(title: "Recording") {
-                        VStack(spacing: 0) {
-                            MeetingAdaptiveSetupRow(
-                                title: "Meeting type",
-                                detail: "Choose the setup you use most often."
-                            ) {
-                                Menu {
-                                    Picker("Meeting type", selection: self.$draft.mode) {
-                                        Text("Online call").tag(MeetingCaptureMode.onlineCall)
-                                        Text("In-room").tag(MeetingCaptureMode.inRoom)
-                                    }
-                                    .pickerStyle(.inline)
-                                } label: {
-                                    Text(self.draft.mode == .onlineCall ? "Online call" : "In-room")
-                                }
-                                .fluidDropdownStyle(fillsWidth: true)
-                                .accessibilityLabel("Default meeting type")
-                            }
-
-                            if self.draft.mode == .onlineCall {
-                                Divider()
-                                MeetingAdaptiveSetupRow(
-                                    title: "Meeting audio",
-                                    detail: "Automatic uses the detected meeting. You can also choose an audio source for this meeting."
-                                ) {
-                                    Menu {
-                                        Picker("Meeting audio", selection: Binding(
-                                            get: { self.draft.usesAutomaticApplication ? nil : self.draft.selectedApplicationID },
-                                            set: {
-                                                self.draft.usesAutomaticApplication = $0 == nil
-                                                self.draft.selectedApplicationID = $0
-                                            }
-                                        )) {
-                                            Text("Automatic").tag(String?.none)
-                                            ForEach(self.applications) { option in
-                                                Text(option.identity.displayName).tag(Optional(option.id))
-                                            }
-                                        }
-                                        .pickerStyle(.inline)
-                                    } label: {
-                                        Text(self.draft.usesAutomaticApplication ? "Automatic" :
-                                            (self.applications.first(where: { $0.id == self.draft.selectedApplicationID })?.identity.displayName ?? "Source unavailable"))
-                                    }
-                                    .fluidDropdownStyle(fillsWidth: true)
-                                    .accessibilityLabel("Meeting audio source")
-                                }
-                            }
-
-                            if self.draft.autoDetectEnabled,
-                               self.appServices.meetingAutoDetectHealth == .zoomWindowTitleUnreadable
-                            {
-                                MeetingAdaptiveSetupRow(
-                                    title: "Zoom window access needs repair",
-                                    detail: "Screen Recording or Accessibility access is preventing FluidVoice from reading Zoom meeting windows. Recording has not started."
-                                ) {
-                                    Button("Open Screen Recording Settings") {
-                                        self.onOpenScreenRecordingSettings()
-                                    }
-                                    .fluidButton(.compact, size: .small)
-                                }
-                            }
-
-                            Divider()
-                            MeetingAdaptiveSetupRow(
-                                title: "Microphone",
-                                detail: "Used for your voice and in-room meetings."
-                            ) {
-                                Menu {
-                                    Picker("Microphone", selection: self.$draft.selectedMicrophoneID) {
-                                        Text("Choose microphone…").tag(String?.none)
-                                        ForEach(self.microphones) { option in
-                                            Text(option.identity.displayName).tag(Optional(option.id))
-                                        }
-                                    }
-                                    .pickerStyle(.inline)
-                                } label: {
-                                    Text(self.microphones.first(where: { $0.id == self.draft.selectedMicrophoneID })?.identity.displayName ?? "Choose microphone…")
-                                }
-                                .fluidDropdownStyle(fillsWidth: true)
-                                .accessibilityLabel("Default meeting microphone")
-                            }
-
-                            Divider()
-                            MeetingAdaptiveSetupRow(title: "Language") {
-                                Text("English")
-                                    .font(self.theme.typography.bodyStrong)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-
-                            Divider()
-                            MeetingAdaptiveSetupRow(title: "Speaker separation") {
-                                Text(self.separationDescription)
-                                    .font(self.theme.typography.bodyStrong)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                    FluidManagementGroup(title: "Storage & detection") {
-                        VStack(spacing: 0) {
-                            MeetingAdaptiveSetupRow(
-                                title: "Keep audio",
-                                detail: "Applies to all recordings, including past ones. Audio is deleted only "
-                                    + "while FluidVoice is running; transcripts are always kept."
-                            ) {
-                                Menu {
-                                    Picker("Keep audio", selection: self.$retentionPolicy) {
-                                        ForEach(MeetingAudioRetentionPolicy.allCases, id: \.self) { policy in
-                                            Text(policy.displayName).tag(policy)
-                                        }
-                                    }
-                                    .pickerStyle(.inline)
-                                } label: {
-                                    Text(self.retentionPolicy.displayName)
-                                }
-                                .fluidDropdownStyle(fillsWidth: true)
-                                .accessibilityLabel("Audio retention")
-                            }
-
-                            Divider()
-                            MeetingAdaptiveSetupRow(
-                                title: "Detect meetings automatically",
-                                detail: "Shows a \"Meeting detected\" prompt for Zoom, Teams, and Webex. Never starts recording on its own.",
-                                trailingSwitch: true
-                            ) {
-                                Toggle("", isOn: self.$draft.autoDetectEnabled)
-                                    .labelsHidden()
-                                    .toggleStyle(.switch)
-                                    .accessibilityLabel("Detect meetings automatically")
-                            }
-
-                            if self.draft.autoDetectEnabled {
-                                Divider()
-                                MeetingAdaptiveSetupRow(
-                                    title: "Also check browser tabs",
-                                    detail: "Checks the address of the frontmost browser tab against a fixed list of meeting "
-                                        + "sites (Google Meet, Zoom, Teams, Whereby, Jitsi). Nothing is stored or sent.",
-                                    trailingSwitch: true
-                                ) {
-                                    Toggle("", isOn: self.$draft.browserDetectionEnabled)
-                                        .labelsHidden()
-                                        .toggleStyle(.switch)
-                                        .accessibilityLabel("Also check browser tabs")
-                                }
-                            }
-                        }
-                    }
-
-                    MeetingModelSettingsSection()
-
-                    if self.dismissalAdvisor.shouldSuggest {
-                        ThemedCard(style: .subtle, padding: self.theme.metrics.spacing.md) {
-                            HStack(spacing: self.theme.metrics.spacing.md) {
-                                Label(
-                                    "You've dismissed several meeting-detected prompts recently.",
-                                    systemImage: "bell.slash"
-                                )
-                                .font(self.theme.typography.bodySmall)
-                                Spacer()
-                                Button("Turn Off") {
-                                    self.draft.autoDetectEnabled = false
-                                    self.draft.browserDetectionEnabled = false
-                                    self.dismissalAdvisor.shouldSuggest = false
-                                }
-                                .fluidButton(.compact, size: .small)
-                                Button("Keep On") {
-                                    self.dismissalAdvisor.shouldSuggest = false
-                                }
-                                .fluidButton(.compact, size: .small)
-                            }
-                        }
-                    }
-
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: self.theme.metrics.spacing.sm) {
-                            self.repairActions
-                        }
-                        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                            self.repairActions
-                        }
-                    }
-
-                    Label("Recording and transcription stay on this Mac.", systemImage: "lock.fill")
-                        .font(self.theme.typography.caption)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-
-                    if let saveHelp {
-                        Label(saveHelp, systemImage: "exclamationmark.circle")
-                            .font(self.theme.typography.caption)
-                            .foregroundStyle(self.theme.palette.warning)
-                    }
-                }
-                .padding(self.theme.metrics.spacing.xl)
-            }
-
-            Divider()
-
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                Button(self.isFirstSetup ? "Not Now" : "Cancel", action: self.onCancel)
-                    .fluidGlassAction(spacious: true)
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button(self.readiness.isCheckingSources ? "Refreshing…" : "Refresh Sources", systemImage: "arrow.clockwise") {
-                    self.onRefreshSources()
-                }
-                .fluidGlassAction(spacious: true)
-                .disabled(self.readiness.isCheckingSources)
-
-                Button(self.isFirstSetup ? "Save Setup" : "Save Changes", action: self.onSave)
-                    .fluidGlassAction(prominent: true, spacious: true)
-                    .disabled(!self.canSave)
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(self.theme.metrics.spacing.lg)
-        }
-        .frame(width: 720)
-        .frame(minHeight: 540, idealHeight: 700)
-        .background(self.theme.palette.windowBackground)
-    }
-
-    @ViewBuilder
-    private var repairActions: some View {
-        if self.readiness.showMicrophoneSettingsAction {
-            Button("Microphone Settings", systemImage: "mic.fill", action: self.onOpenMicrophoneSettings)
-                .fluidButton(.compact, size: .small)
-        }
-        if self.readiness.showScreenRecordingSettingsAction {
-            Button(
-                "Screen Recording Settings",
-                systemImage: "rectangle.inset.filled.and.person.filled",
-                action: self.onOpenScreenRecordingSettings
-            )
-            .fluidButton(.compact, size: .small)
-        }
-    }
-}
-
 private struct MeetingSetupCanvas: View {
     @Binding var draft: MeetingTranscriptionSetupDraft
 
     let applications: [MeetingApplicationOption]
-    let microphones: [MeetingMicrophoneOption]
     let readiness: MeetingSetupReadiness
     let isStarting: Bool
     let errorMessage: String?
     let recentSession: MeetingSession?
     let onStart: () -> Void
     let onRepairSetup: () -> Void
+    let onEditSetup: () -> Void
 
     @Environment(\.theme) private var theme
+    @State private var documentSection = MeetingDocumentSection.transcript
 
-    private var requiredSystemsReady: Bool {
+    private var systemsReady: Bool {
         !self.readiness.isCheckingSources &&
             self.readiness.microphoneReady &&
             self.readiness.storageReady &&
             self.readiness.activityReady &&
             self.readiness.modelReady &&
-            (self.draft.mode == .inRoom || self.readiness.meetingAudioReady)
+            self.readiness.meetingAudioReady
     }
 
     private var canStart: Bool {
-        guard self.requiredSystemsReady,
-              self.draft.selectedMicrophoneID != nil,
-              !self.draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
-            return false
-        }
-        return self.draft.mode == .inRoom || self.draft.selectedApplicationID != nil
+        self.systemsReady && self.draft.selectedMicrophoneID != nil &&
+            !self.draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var waitingForMeeting: Bool {
-        self.draft.usesAutomaticApplication && self.draft.autoDetectEnabled &&
-            self.draft.mode == .onlineCall && self.draft.selectedApplicationID == nil &&
-            self.draft.selectedMicrophoneID != nil && self.requiredSystemsReady
-    }
-
-    private var startHelp: String? {
-        if let blockingMessage = readiness.blockingMessage, !self.requiredSystemsReady {
-            return blockingMessage
-        }
-        if self.draft.selectedMicrophoneID == nil {
-            return "Choose a microphone in Settings to continue."
-        }
-        if self.draft.mode == .onlineCall, self.draft.selectedApplicationID == nil {
-            if self.waitingForMeeting {
-                return "Join a supported meeting. Its audio source will be detected automatically."
-            }
-            if self.draft.usesAutomaticApplication, !self.draft.autoDetectEnabled {
-                return "Meeting detection is off. Enable it in Settings, or choose a source manually."
-            }
-            return "Open your meeting app, or choose an audio source in Settings."
-        }
-        if self.draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Add a title for this meeting."
-        }
-        return nil
-    }
-
-    private var modeName: String {
-        self.draft.mode == .onlineCall ? "Online call" : "In-room meeting"
-    }
-
-    private var applicationName: String? {
+    private var resolvedApplication: MeetingApplicationOption? {
         guard self.draft.mode == .onlineCall else { return nil }
-        return self.applications.first(where: { $0.id == self.draft.selectedApplicationID })?.identity.displayName
+        return self.applications.first(where: { $0.id == self.draft.selectedApplicationID })
     }
 
-    private var microphoneName: String {
-        self.microphones.first(where: { $0.id == self.draft.selectedMicrophoneID })?.identity.displayName
-            ?? "No microphone selected"
+    private var blockedHelp: String {
+        if let blockingMessage = readiness.blockingMessage { return blockingMessage }
+        if self.draft.selectedMicrophoneID == nil { return "Choose a microphone in Settings to continue." }
+        return "Check the recording setup."
+    }
+
+    private var planHeadline: String {
+        if let app = resolvedApplication { return "\(app.identity.displayName) is open." }
+        return self.draft.mode == .inRoom ? "In-person meeting." : "No call open."
+    }
+
+    private var planDetail: String {
+        if let app = resolvedApplication { return "\(app.identity.displayName) and your mic will be recorded." }
+        if self.draft.mode == .inRoom { return "Your mic will record the room." }
+        if self.applications.isEmpty { return "Your mic will record the room. No meeting apps are available to capture yet." }
+        return "Your mic will record the room. If a call is running, pick its app under Change."
+    }
+
+    private var sourceLabel: String {
+        if let app = resolvedApplication { return app.identity.displayName }
+        return self.draft.mode == .inRoom ? "In person" : "Automatic"
+    }
+
+    private var meetingApplications: [MeetingApplicationOption] {
+        self.applications.filter { MeetingAppRegistry.tier(forBundleIdentifier: $0.identity.bundleIdentifier) != nil }
+    }
+
+    private var otherApplications: [MeetingApplicationOption] {
+        self.applications.filter { MeetingAppRegistry.tier(forBundleIdentifier: $0.identity.bundleIdentifier) == nil }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-            Text("Ready for your next conversation.")
-                .font(.fluidSystem(size: 30, weight: .regular, design: .serif))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
+                MeetingDocumentTitle(title: "Be in the conversation.")
+                Text("Record your meeting. Come back to every word.")
+                    .font(self.theme.typography.body)
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            ThemedCard(style: .standard, padding: self.theme.metrics.spacing.xxl) {
+            MeetingDocumentTabs(selection: self.$documentSection, primaryTitle: "Meeting home", primaryIcon: "house", isEnabled: !self.isStarting)
+
+            if self.documentSection == .summary {
+                MeetingSummaryComingSoon()
+            } else {
+                self.recordingSetup
+            }
+        }
+    }
+
+    private var recordingSetup: some View {
+        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
+            ThemedCard(style: .standard, padding: self.theme.metrics.spacing.xl) {
                 VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                        HStack {
-                            Text("Meeting title").font(self.theme.typography.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Label(self.modeName, systemImage: self.draft.mode == .onlineCall ? "video" : "person.2")
-                                .font(self.theme.typography.captionStrong)
-                                .foregroundStyle(self.theme.palette.secondaryText)
-                        }
-                        TextField("Meeting title", text: Binding(
-                            get: { self.draft.title },
-                            set: { self.draft.title = $0; self.draft.titleWasEdited = true }
-                        ))
-                        .textFieldStyle(.plain)
-                        .font(self.theme.typography.sectionTitle)
-                        .padding(self.theme.metrics.spacing.md)
-                        .fluidDropdownSurface()
-                        .accessibilityLabel("Meeting title")
-                        .disabled(self.isStarting)
-                    }
-
-                    if self.draft.mode == .onlineCall {
-                        self.sourceRow(
-                            "Meeting audio",
-                            value: self.draft.usesAutomaticApplication
-                                ? "Automatic · \(self.applicationName ?? "No meeting detected")"
-                                : (self.applicationName ?? "Source unavailable"),
-                            icon: "macwindow"
-                        )
-                    }
-                    self.sourceRow("Microphone", value: self.microphoneName, icon: "mic")
-                    Divider().opacity(0.4)
-                    MeetingReadyStatus(
-                        isReady: self.canStart,
-                        isWaiting: self.waitingForMeeting,
-                        title: self.readiness.isCheckingSources ? "Checking recording setup…" :
-                            (self.canStart ? "Ready to record" : (self.waitingForMeeting ? "Waiting for a meeting" : "Setup needs attention")),
-                        detail: self.canStart ? "English · \(self.readiness.storageStatus)" : (self.startHelp ?? "Check the recording setup.")
-                    )
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: self.theme.metrics.spacing.lg) {
-                            self.permissionAction
-                            Spacer(minLength: self.theme.metrics.spacing.lg)
-                            self.startAction
-                        }
-                        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-                            self.permissionAction
-                            self.startAction.frame(maxWidth: .infinity, alignment: .trailing)
+                    self.plan
+                    FluidGlassControlGroup {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: self.theme.metrics.spacing.md) { self.actions }
+                            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) { self.actions }
                         }
                     }
                 }
             }
 
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                Label("Recording and transcription stay on this Mac.", systemImage: "lock.fill")
-                Label(
-                    self.draft.mode == .onlineCall
-                        ? "Headphones give the cleanest speaker separation."
-                        : "Place the Mac where every speaker can be heard clearly.",
-                    systemImage: self.draft.mode == .onlineCall ? "headphones" : "mic.fill"
-                )
-                Label("Make sure everyone knows the meeting is being recorded.", systemImage: "person.2")
+            self.recordingFooter
+        }
+    }
+
+    @ViewBuilder private var plan: some View {
+        if self.readiness.isCheckingSources {
+            MeetingHomeStatus(kind: .checking, title: "Checking your setup…", detail: "This only takes a moment.")
+        } else if !self.canStart {
+            MeetingHomeStatus(kind: .blocked, title: "One thing before recording", detail: self.blockedHelp)
+        } else {
+            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                Text(self.planHeadline)
+                    .font(.system(.title2, design: .serif).weight(.medium))
+                    .foregroundStyle(self.theme.palette.primaryText)
+                Text(self.planDetail)
+                    .font(self.theme.typography.body)
+                    .foregroundStyle(self.theme.palette.secondaryText)
             }
-            .font(self.theme.typography.caption)
-            .foregroundStyle(self.theme.palette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        self.startAction
+        self.sourceMenu
+        self.permissionAction
+    }
+
+    private var sourceMenu: some View {
+        Menu {
+            self.sourceEntry("In person · mic only", systemImage: "person.2", selected: self.draft.mode == .inRoom) {
+                self.draft.mode = .inRoom
+            }
+            self.sourceEntry("Automatic · follows a detected call", systemImage: "wand.and.stars",
+                             selected: self.draft.mode == .onlineCall && self.draft.usesAutomaticApplication) {
+                self.draft.mode = .onlineCall
+                self.draft.usesAutomaticApplication = true
+                self.draft.selectedApplicationID = nil
+            }
+            if !self.meetingApplications.isEmpty {
+                Divider()
+                ForEach(self.meetingApplications) { option in
+                    self.applicationEntry(option)
+                }
+            }
+            if !self.otherApplications.isEmpty {
+                Divider()
+                Menu("Other audio sources") {
+                    ForEach(self.otherApplications) { option in
+                        self.applicationEntry(option)
+                    }
+                }
+            }
+            if self.applications.isEmpty {
+                Divider()
+                Button("No apps found · Allow meeting audio access…", systemImage: "arrow.up.right", action: self.onRepairSetup)
+            }
+            Divider()
+            Button("More settings…", systemImage: "gearshape", action: self.onEditSetup)
+        } label: {
+            HStack(spacing: self.theme.metrics.spacing.sm) {
+                Text("Change · \(self.sourceLabel)")
+                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+            }
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .meetingGlassAction(spacious: true)
+        .disabled(self.isStarting)
+        .help("Choose what gets recorded.")
+        .accessibilityLabel("Change recording source. Currently \(self.sourceLabel)")
+    }
+
+    private func applicationEntry(_ option: MeetingApplicationOption) -> some View {
+        let selected = self.draft.mode == .onlineCall && !self.draft.usesAutomaticApplication && self.draft.selectedApplicationID == option.id
+        return self.sourceEntry(option.identity.displayName, systemImage: "app", selected: selected) {
+            self.draft.mode = .onlineCall
+            self.draft.usesAutomaticApplication = false
+            self.draft.selectedApplicationID = option.id
+        }
+    }
+
+    private func sourceEntry(_ title: String, systemImage: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if selected { Label(title, systemImage: "checkmark") } else { Text(title) }
+        }
+    }
+
+    private var recordingFooter: some View {
+        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
+            Label(self.resolvedApplication != nil
+                ? "Stays on this Mac. Use headphones for clearer speaker separation."
+                : "Stays on this Mac. Place it where everyone can be heard.", systemImage: "lock")
+                .font(self.theme.typography.caption)
+                .foregroundStyle(self.theme.palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let errorMessage, !errorMessage.isEmpty {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(self.theme.typography.bodySmall)
                     .foregroundStyle(self.theme.palette.warning)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Could not start recording. \(errorMessage)")
             }
 
             if let recentSession {
                 Divider()
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                    Text("Recent meeting")
-                        .font(self.theme.typography.sectionTitle)
-
-                    HStack {
-                        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                            Text(recentSession.title)
-                                .font(self.theme.typography.bodyStrong)
-                            Text(recentSession.startedAt.formatted(date: .abbreviated, time: .shortened))
-                                .font(self.theme.typography.caption)
-                                .foregroundStyle(self.theme.palette.secondaryText)
-                        }
-                        Spacer()
-                        Text(Self.durationText(recentSession.duration))
-                            .font(self.theme.typography.codeCaption)
-                            .foregroundStyle(self.theme.palette.secondaryText)
+                HStack(spacing: self.theme.metrics.spacing.md) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(self.theme.palette.secondaryText)
+                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
+                        Text("Last meeting").font(self.theme.typography.caption).foregroundStyle(.secondary)
+                        Text(recentSession.title).font(self.theme.typography.bodyStrong).lineLimit(2)
                     }
-                    .padding(self.theme.metrics.spacing.md)
-                    .background(self.theme.palette.contentBackground, in: RoundedRectangle(
-                        cornerRadius: self.theme.metrics.corners.md,
-                        style: .continuous
-                    ))
+                    Spacer()
+                    Text(Self.durationText(recentSession.duration))
+                        .font(self.theme.typography.codeCaption).foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.top, self.theme.metrics.spacing.xl)
-    }
-
-    private func sourceRow(_ title: String, value: String, icon: String) -> some View {
-        HStack(spacing: self.theme.metrics.spacing.lg) {
-            FluidIconTile(icon: icon, tint: self.theme.palette.accent, size: 44)
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                Text(title).font(self.theme.typography.bodyStrong).foregroundStyle(self.theme.palette.primaryText)
-                Text(value).font(self.theme.typography.bodySmall).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, self.theme.metrics.spacing.sm)
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private var permissionAction: some View {
         if !self.canStart, !self.readiness.isCheckingSources,
            self.readiness.showMicrophoneSettingsAction || self.readiness.showScreenRecordingSettingsAction ||
-           !self.readiness.modelReady ||
-           (self.draft.mode == .onlineCall && self.draft.selectedApplicationID == nil)
+           !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil
         {
             Button(
                 self.readiness.showMicrophoneSettingsAction ? "Allow microphone access" :
                     (self.readiness.showScreenRecordingSettingsAction ? "Allow meeting audio access" :
-                        (!self.readiness.modelReady ? "Load speaker model…" : "Choose source manually…")),
+                        (!self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil ? "Set up microphone…" : "Set up speaker labels…")),
                 systemImage: self.readiness.showMicrophoneSettingsAction || self.readiness.showScreenRecordingSettingsAction ? "arrow.up.right" : "gearshape",
                 action: self.onRepairSetup
             )
-            .fluidGlassAction(spacious: true)
+            .meetingGlassAction(spacious: true)
             .disabled(self.isStarting)
         }
     }
@@ -2278,7 +2068,7 @@ private struct MeetingSetupCanvas: View {
         Button(action: self.onStart) {
             Label(self.isStarting ? "Starting…" : "Start recording", systemImage: self.isStarting ? "hourglass" : "record.circle")
         }
-        .fluidGlassAction(prominent: true, spacious: true)
+        .meetingGlassAction(prominent: true, spacious: true)
         .disabled(!self.canStart || self.isStarting)
         .keyboardShortcut(.defaultAction)
     }
@@ -2289,813 +2079,29 @@ private struct MeetingSetupCanvas: View {
     }
 }
 
-private struct MeetingRecordingCanvas: View {
-    let session: MeetingSession
-    let trackHealth: [MeetingAudioTrackKind: MeetingTrackHealth]
-    let liveTranscript: MeetingLiveTranscriptSnapshot
-    let isStopping: Bool
-    let onStop: () -> Void
-
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-            Text(self.session.title)
-                .font(self.theme.typography.title)
-                .lineLimit(2)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                HStack {
-                    Label(
-                        self.isStopping ? "Stopping…" : "Recording",
-                        systemImage: self.isStopping ? "stop.circle.fill" : "record.circle.fill"
-                    )
-                    .font(self.theme.typography.sectionTitle)
-                    .foregroundStyle(self.isStopping ? self.theme.palette.warning : Color(nsColor: .systemRed))
-
-                    Text(Self.durationText(context.date.timeIntervalSince(self.session.startedAt)))
-                        .font(self.theme.typography.codeCaption)
-                        .foregroundStyle(self.theme.palette.primaryText)
-
-                    Spacer()
-
-                    Text(self.sourceSummary)
-                        .font(self.theme.typography.caption)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .lineLimit(1)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(
-                    "\(self.isStopping ? "Meeting recording is stopping" : "Meeting recording in progress"), " +
-                        "\(Self.durationText(context.date.timeIntervalSince(self.session.startedAt))) elapsed, " +
-                        self.sourceSummary
-                )
-            }
-
-            ThemedCard(style: .subtle, padding: self.theme.metrics.spacing.md) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: self.theme.metrics.spacing.xl) { self.sourceHealth }
-                    VStack(spacing: self.theme.metrics.spacing.md) { self.sourceHealth }
-                }
-            }
-
-            MeetingLiveTranscriptCard(snapshot: self.liveTranscript)
-
-            if self.isStopping {
-                Text("Saving captured audio before offline transcription begins…")
-                    .font(self.theme.typography.body)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            } else {
-                Text("Speaker labels are added after recording.")
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
-
-            HStack {
-                Spacer()
-
-                Button(action: self.onStop) {
-                    if self.isStopping {
-                        HStack(spacing: self.theme.metrics.spacing.sm) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Stopping…")
-                        }
-                    } else {
-                        Label("Stop & Transcribe", systemImage: "stop.fill")
-                    }
-                }
-                .fluidGlassAction(prominent: true, tone: Color(nsColor: .systemRed), spacious: true)
-                .disabled(self.isStopping)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var sourceHealth: some View {
-        if self.session.mode == .onlineCall {
-            MeetingTrackHealthRow(title: "Meeting audio", health: self.trackHealth[.applicationAudio] ?? .waiting)
-        }
-        MeetingTrackHealthRow(title: "Microphone", health: self.trackHealth[.microphone] ?? .waiting)
-    }
-
-    private var sourceSummary: String {
-        let microphoneName = self.session.selectedMicrophone.displayName
-        guard self.session.mode == .onlineCall else { return microphoneName }
-        let applicationName = self.session.capturedApplication?.displayName ?? "Meeting audio"
-        return "\(applicationName) · \(microphoneName)"
-    }
-
-    private static func durationText(_ duration: TimeInterval) -> String {
-        let total = max(0, Int(duration.rounded(.down)))
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-/// Live captions during recording only — rows identify capture source, not a person; the offline
-/// diarization pipeline replaces this view's content entirely on completion.
-private struct MeetingLiveTranscriptCard: View {
-    let snapshot: MeetingLiveTranscriptSnapshot
-
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        ThemedCard(style: .subtle) {
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                HStack {
-                    Text("Live captions")
-                        .font(self.theme.typography.captionStrong)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                    Spacer()
-                    if let indicator = self.availabilityIndicator {
-                        Label(indicator, systemImage: "exclamationmark.circle")
-                            .font(self.theme.typography.caption)
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                            .labelStyle(.titleAndIcon)
-                    }
-                    Button {
-                        MeetingFloatingCaptionsController.shared.show()
-                    } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.fluidSystem(size: 12, weight: .semibold))
-                            .foregroundStyle(self.theme.palette.secondaryText)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open floating captions")
-                }
-
-                if self.rows.isEmpty {
-                    Text("Listening…")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                } else {
-                    self.scrollingBubbleList
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-
-    private var rows: [MeetingLiveBubbleComposer.Row] {
-        MeetingLiveBubbleComposer.rows(for: self.snapshot)
-    }
-
-    private var availabilityIndicator: String? {
-        switch self.snapshot.availability {
-        case .available:
-            return nil
-        case let .unavailable(reason), let .degraded(reason):
-            return reason
-        }
-    }
-
-    private var scrollingBubbleList: some View {
-        MeetingLiveBubbleScrollList(rows: self.rows, documentStyle: true)
-            .frame(minHeight: 120, maxHeight: .infinity)
-    }
-}
-
-private struct MeetingProcessingCanvas: View {
-    let session: MeetingSession
-    let stage: MeetingProcessingStage
-
-    @Environment(\.theme) private var theme
-
-    private let stages: [MeetingProcessingStage] = [
-        .saving,
-        .identifyingSpeakers,
-        .transcribing,
-        .finalizing,
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                ProgressView()
-                    .controlSize(.regular)
-                    .fixedSize()
-
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                    Text("Preparing your transcript")
-                        .font(self.theme.typography.title)
-                        .accessibilityAddTraits(.isHeader)
-                    Text("You can close this window. Processing will continue.")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                }
-            }
-
-            FluidManagementGroup(title: self.session.title) {
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-                    ForEach(Array(self.stages.enumerated()), id: \.element) { index, stage in
-                        HStack(spacing: self.theme.metrics.spacing.md) {
-                            Image(systemName: self.icon(for: stage, index: index))
-                                .foregroundStyle(self.color(for: stage, index: index))
-                                .frame(width: 20)
-                            Text(Self.title(for: stage))
-                                .font(self.theme.typography.body)
-                            Spacer()
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("\(Self.title(for: stage)), \(self.accessibilityStatus(for: stage, index: index))")
-                    }
-                }
-            }
-
-            Label("Processing on this Mac", systemImage: "lock")
-                .font(self.theme.typography.caption)
-                .foregroundStyle(self.theme.palette.secondaryText)
-        }
-    }
-
-    private var activeIndex: Int {
-        self.stages.firstIndex(of: self.stage) ?? 0
-    }
-
-    private func icon(for stage: MeetingProcessingStage, index: Int) -> String {
-        if self.stage == .completed || index < self.activeIndex { return "checkmark.circle.fill" }
-        if stage == self.stage { return "circle.dotted" }
-        return "circle"
-    }
-
-    private func color(for stage: MeetingProcessingStage, index: Int) -> Color {
-        if self.stage == .completed || index < self.activeIndex { return self.theme.palette.success }
-        if stage == self.stage { return self.theme.palette.accent }
-        return self.theme.palette.tertiaryText
-    }
-
-    private func accessibilityStatus(for stage: MeetingProcessingStage, index: Int) -> String {
-        if self.stage == .completed || index < self.activeIndex { return "complete" }
-        if stage == self.stage { return "in progress" }
-        return "waiting"
-    }
-
-    private static func title(for stage: MeetingProcessingStage) -> String {
-        switch stage {
-        case .pending: return "Waiting"
-        case .saving: return "Saving"
-        case .identifyingSpeakers: return "Identifying speakers"
-        case .transcribing: return "Transcribing"
-        case .finalizing: return "Finalizing"
-        case .completed: return "Complete"
-        }
-    }
-}
-
-/// Escape also dismisses: viewing a past meeting is a detail view, not a mode.
-private struct MeetingCloseTranscriptButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button("Close", systemImage: "xmark") { self.action() }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
-            .keyboardShortcut(.cancelAction)
-            .help("Close this transcript")
-            .accessibilityLabel("Close transcript")
-    }
-}
-
-private struct MeetingResultCanvas: View {
-    let session: MeetingSession
-    let isQuiescent: Bool
-    let canUndo: Bool
-    @State private var showsProbableEchoes = false
-    let onCopyTranscript: (MeetingSession, Bool) -> Void
-    let onExportTranscript: (MeetingSession, MeetingTranscriptExportFormat, Bool) -> Void
-    let onReassignSegment: (MeetingTranscriptSegmentID, SessionSpeakerID) -> Void
-    let onNameUnknownSegment: (MeetingTranscriptSegmentID, String) -> Void
-    let onRenameSpeaker: (SessionSpeakerID, String) -> Void
-    let onMergeSpeakers: (SessionSpeakerID, SessionSpeakerID) -> Void
-    let onUndo: () -> Void
-    let onRenameSession: (String) -> Void
-    let onAssignSpeakers: ([SessionSpeakerID: String]) async -> String?
-    let onClose: (() -> Void)?
-
-    @Environment(\.theme) private var theme
-    @State private var pendingRenameSpeaker: MeetingSessionSpeaker?
-    @State private var pendingRenameText = ""
-    @State private var pendingNameUnknownSegmentID: MeetingTranscriptSegmentID?
-    @State private var pendingUnknownSpeakerName = ""
-    @State private var isRenamingSession = false
-    @State private var pendingRenameSessionText = ""
-    @State private var isShowingAssignSpeakers = false
-    @State private var assignSpeakersFocus: SessionSpeakerID?
-    @State private var copied = false
-    @State private var copyRevision = 0
-
-    /// Naming is reached by clicking a speaker's name, so the sheet opens on the one clicked.
-    private func presentAssignSpeakers(focusing speakerID: SessionSpeakerID?) {
-        guard self.isQuiescent, !self.session.activeSpeakers.isEmpty else { return }
-        self.assignSpeakersFocus = speakerID
-        self.isShowingAssignSpeakers = true
-    }
-
-    private var speakerNames: [SessionSpeakerID: String] {
-        Dictionary(uniqueKeysWithValues: self.session.activeSpeakers.map { ($0.id, $0.displayName) })
-    }
-
-    private func chipTint(for speaker: MeetingSessionSpeaker) -> Color? {
-        speaker.isLocalUser ? self.theme.palette.accent : self.speakerTints[speaker.id]
-    }
-
-    private var speakerTints: [SessionSpeakerID: Color] {
-        MeetingSpeakerPalette.tints(for: self.session.activeSpeakers)
-    }
-
-    private var hasEchoSegments: Bool {
-        self.session.transcriptSegments.contains(where: \.isEcho)
-    }
-
-    /// Single projection so shown and copied never disagree.
-    private func visibleSegments(sorted: [MeetingTranscriptSegment]) -> [MeetingTranscriptSegment] {
-        self.showsProbableEchoes ? sorted : sorted.filter { !$0.isEcho }
-    }
-
-    /// Sorted once with per-row display state — no per-row re-sorting. Compares the resolved
-    /// displayed label (not the raw speaker id) so consecutive nil-speaker rows in different
-    /// attribution states — e.g. `unassigned` then `timingUncertain` — each still show a label.
-    private func rows(
-        for visibleSegments: [MeetingTranscriptSegment]
-    ) -> [(segment: MeetingTranscriptSegment, showsLabel: Bool, isLocal: Bool)] {
-        let speakerNames = self.speakerNames
-        var previousLabelIdentity: String?
-        return visibleSegments.map { segment in
-            let labelIdentity = MeetingTranscriptExporter.speakerLabelIdentity(
-                for: segment,
-                in: self.session,
-                speakerNames: speakerNames
-            )
-            let showsLabel = labelIdentity != previousLabelIdentity
-            previousLabelIdentity = labelIdentity
-            return (segment, showsLabel, self.isLocalSegment(segment))
-        }
-    }
-
-    var body: some View {
-        let speakerNames = self.speakerNames
-        let sorted = self.session.transcriptSegments.sorted { $0.start.seconds < $1.start.seconds }
-        let visibleSegments = self.visibleSegments(sorted: sorted)
-        let visibleSpeakerIDs = Set(visibleSegments.compactMap(\.speakerID))
-        let activeSpeakers = self.session.activeSpeakers.filter { visibleSpeakerIDs.contains($0.id) }
-        let rows = self.rows(for: visibleSegments)
-        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(self.session.title)
-                    .font(self.theme.typography.title)
-                    .contextMenu {
-                        Button("Rename…", systemImage: "pencil") {
-                            self.pendingRenameSessionText = self.session.title
-                            self.isRenamingSession = true
-                        }
-                    }
-                Spacer()
-                if self.hasEchoSegments {
-                    Toggle("Show probable echo", isOn: self.$showsProbableEchoes)
-                        .toggleStyle(.checkbox)
-                        .font(self.theme.typography.caption)
-                }
-                Label(self.statusText, systemImage: self.statusIcon)
-                    .font(self.theme.typography.badge)
-                    .foregroundStyle(self.statusColor)
-                if let onClose {
-                    MeetingCloseTranscriptButton(action: onClose)
-                }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: self.theme.metrics.spacing.lg) {
-                    self.meetingMetadata
-                }
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                    self.meetingMetadata
-                }
-            }
-            .font(self.theme.typography.caption)
-            .foregroundStyle(self.theme.palette.secondaryText)
-
-            if !activeSpeakers.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: self.theme.metrics.spacing.sm) {
-                        ForEach(activeSpeakers) { speaker in
-                            MeetingSpeakerChip(
-                                title: self.displayName(for: speaker),
-                                systemImage: speaker.isLocalUser
-                                    ? "person.crop.circle.badge.checkmark" : "person.crop.circle",
-                                tint: self.chipTint(for: speaker) ?? self.theme.palette.primaryText,
-                                action: { self.presentAssignSpeakers(focusing: speaker.id) }
-                            )
-                            .disabled(!self.isQuiescent)
-                            .contextMenu { self.speakerChipMenu(for: speaker) }
-                        }
-                    }
-                }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: self.theme.metrics.spacing.sm) { self.transcriptActions(hasText: !visibleSegments.isEmpty) }
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) { self.transcriptActions(hasText: !visibleSegments.isEmpty) }
-            }
-
-            Divider().opacity(0.4)
-
-            if visibleSegments.isEmpty {
-                ContentUnavailableView(
-                    "No transcript text",
-                    systemImage: "waveform.slash",
-                    description: Text(self.session.hasRetryableAudio
-                        ? "The recording is available if you need to retry processing."
-                        : "There is no transcript text available for this meeting.")
-                )
-                .frame(maxWidth: .infinity, minHeight: 180)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-                        ForEach(rows, id: \.segment.id) { row in
-                            MeetingTranscriptSegmentRow(
-                                segment: row.segment,
-                                speakerName: MeetingTranscriptExporter.speakerLabel(
-                                    for: row.segment,
-                                    in: self.session,
-                                    speakerNames: speakerNames
-                                ),
-                                speakerTint: row.segment.speakerID.flatMap { self.speakerTints[$0] },
-                                onRenameSpeakerTapped: {
-                                    if let speakerID = row.segment.speakerID {
-                                        self.presentAssignSpeakers(focusing: speakerID)
-                                    } else {
-                                        self.pendingNameUnknownSegmentID = row.segment.id
-                                        self.pendingUnknownSpeakerName = ""
-                                    }
-                                },
-                                isLocalUser: row.isLocal,
-                                showsSpeakerLabel: row.showsLabel,
-                                reassignTargets: activeSpeakers.filter { $0.id != row.segment.speakerID },
-                                isQuiescent: self.isQuiescent,
-                                onReassign: { speakerID in self.onReassignSegment(row.segment.id, speakerID) }
-                            )
-                        }
-                    }
-                    .frame(maxWidth: 760)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, self.theme.metrics.spacing.lg)
-                }
-                .id(self.session.id)
-            }
-        }
-        .task(id: self.copyRevision) {
-            guard self.copied else { return }
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            self.copied = false
-        }
-        .alert(
-            "Rename Speaker",
-            isPresented: Binding(
-                get: { self.pendingRenameSpeaker != nil },
-                set: { if !$0 { self.pendingRenameSpeaker = nil } }
-            )
-        ) {
-            TextField("Speaker name", text: self.$pendingRenameText)
-            Button("Cancel", role: .cancel) { self.pendingRenameSpeaker = nil }
-            Button("Rename") {
-                if let speaker = self.pendingRenameSpeaker {
-                    self.onRenameSpeaker(speaker.id, self.pendingRenameText)
-                }
-                self.pendingRenameSpeaker = nil
-            }
-        } message: {
-            Text("Enter a new name for this speaker.")
-        }
-        .alert(
-            "Name Unknown Speaker",
-            isPresented: Binding(
-                get: { self.pendingNameUnknownSegmentID != nil },
-                set: { if !$0 { self.pendingNameUnknownSegmentID = nil } }
-            )
-        ) {
-            TextField("Speaker name", text: self.$pendingUnknownSpeakerName)
-            Button("Cancel", role: .cancel) { self.pendingNameUnknownSegmentID = nil }
-            Button("Save") {
-                if let segmentID = self.pendingNameUnknownSegmentID {
-                    self.onNameUnknownSegment(segmentID, self.pendingUnknownSpeakerName)
-                }
-                self.pendingNameUnknownSegmentID = nil
-            }
-        } message: {
-            Text("This name applies only to this transcript turn.")
-        }
-        .alert("Rename Meeting", isPresented: self.$isRenamingSession) {
-            TextField("Meeting title", text: self.$pendingRenameSessionText)
-            Button("Cancel", role: .cancel) {}
-            Button("Rename") { self.onRenameSession(self.pendingRenameSessionText) }
-        } message: {
-            Text("Enter a new title for this meeting.")
-        }
-        // Prevents an echo toggle left on for one meeting from leaking into the next.
-        .onChange(of: self.session.id) { _, _ in
-            self.copied = false
-            self.showsProbableEchoes = false
-            self.isShowingAssignSpeakers = false
-            self.pendingNameUnknownSegmentID = nil
-        }
-        .sheet(isPresented: self.$isShowingAssignSpeakers) {
-            MeetingAssignSpeakersSheet(
-                speakers: self.session.activeSpeakers,
-                quotesBySpeaker: Dictionary(uniqueKeysWithValues: self.session.activeSpeakers.map {
-                    ($0.id, MeetingAssignSpeakersQuoteSource.sampleQuotes(for: $0.id, in: self.session.transcriptSegments))
-                }),
-                tints: self.speakerTints,
-                accentColor: self.theme.palette.accent,
-                focusedSpeakerID: self.assignSpeakersFocus,
-                onSave: self.onAssignSpeakers,
-                onCancel: { self.isShowingAssignSpeakers = false }
-            )
-        }
-    }
-
-    @ViewBuilder private func transcriptActions(hasText: Bool) -> some View {
-        Button(self.copied ? "Copied" : "Copy transcript", systemImage: self.copied ? "checkmark" : "doc.on.doc") {
-            self.onCopyTranscript(self.session, self.showsProbableEchoes)
-            self.copied = true
-            self.copyRevision += 1
-        }
-        .fluidGlassAction(prominent: true, spacious: true)
-        .disabled(!hasText)
-        Menu("Export", systemImage: "square.and.arrow.up") {
-            Button("Text…") { self.onExportTranscript(self.session, .text, self.showsProbableEchoes) }
-            Button("JSON…") { self.onExportTranscript(self.session, .json, self.showsProbableEchoes) }
-        }
-        .fluidGlassAction(spacious: true)
-        .disabled(!hasText)
-        Button("Undo correction", systemImage: "arrow.uturn.backward", action: self.onUndo)
-            .fluidGlassAction(spacious: true)
-            .disabled(!self.canUndo || !self.isQuiescent)
-    }
-
-    @ViewBuilder
-    private func speakerChipMenu(for speaker: MeetingSessionSpeaker) -> some View {
-        Button("Rename…", systemImage: "pencil") {
-            self.pendingRenameSpeaker = speaker
-            self.pendingRenameText = speaker.displayName
-        }
-        .disabled(!self.isQuiescent)
-        if !speaker.isLocalUser {
-            let eligibleTargets = self.session.activeSpeakers.filter {
-                $0.id != speaker.id && !$0.isLocalUser && $0.trackKind == speaker.trackKind
-            }
-            if !eligibleTargets.isEmpty {
-                Menu("Merge into") {
-                    ForEach(eligibleTargets) { target in
-                        Button(target.displayName) {
-                            self.onMergeSpeakers(speaker.id, target.id)
-                        }
-                    }
-                }
-                .disabled(!self.isQuiescent)
-            }
-        }
-    }
-
-    private func displayName(for speaker: MeetingSessionSpeaker) -> String {
-        guard speaker.isLocalUser,
-              speaker.displayName.caseInsensitiveCompare("You") != .orderedSame
-        else {
-            return speaker.displayName
-        }
-        return "\(speaker.displayName) (You)"
-    }
-
-    // Only explicitly persisted legacy ownership metadata receives the local-user treatment.
-    private func isLocalSegment(_ segment: MeetingTranscriptSegment) -> Bool {
-        guard let speakerID = segment.speakerID,
-              let speaker = self.session.speakers.first(where: { $0.id == speakerID })
-        else { return false }
-        return speaker.isLocalUser
-    }
-
-    @ViewBuilder
-    private var meetingMetadata: some View {
-        Label(
-            self.session.startedAt.formatted(date: .abbreviated, time: .shortened),
-            systemImage: "calendar"
-        )
-        Label(Self.durationText(self.session.duration), systemImage: "clock")
-        Label(self.sourceName, systemImage: self.session.mode == .onlineCall ? "macwindow" : "person.3")
-        Label(self.session.selectedMicrophone.displayName, systemImage: "mic")
-    }
-
-    private var sourceName: String {
-        self.session.capturedApplication?.displayName ?? "In-room meeting"
-    }
-
-    private var statusText: String {
-        switch self.session.state {
-        case .completed: "Completed"
-        case .failed: "Failed"
-        case .interrupted: "Interrupted"
-        case .processing: "Processing"
-        case .recording, .recordingDegraded, .preparing, .stopping: "Recording"
-        }
-    }
-
-    private var statusIcon: String {
-        switch self.session.state {
-        case .completed: "checkmark.circle.fill"
-        case .failed: "xmark.circle.fill"
-        case .interrupted: "exclamationmark.circle.fill"
-        case .processing: "ellipsis.circle.fill"
-        case .recording, .recordingDegraded, .preparing, .stopping: "record.circle.fill"
-        }
-    }
-
-    private var statusColor: Color {
-        switch self.session.state {
-        case .completed: self.theme.palette.success
-        case .failed: Color(nsColor: .systemRed)
-        case .interrupted: self.theme.palette.warning
-        case .processing: self.theme.palette.accent
-        case .recording, .recordingDegraded, .preparing, .stopping: self.theme.palette.warning
-        }
-    }
-
-    private static func durationText(_ duration: TimeInterval) -> String {
-        let total = max(0, Int(duration.rounded(.down)))
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        let seconds = total % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-private struct MeetingFailureCanvas: View {
-    let session: MeetingSession?
-    let message: String
-    let isRetrying: Bool
-    let onRetrySession: (MeetingSession) -> Void
-    let onRevealAudio: (MeetingSession) -> Void
-    let onRecordAgain: (MeetingSession) -> Void
-    let onClose: (() -> Void)?
-
-    @Environment(\.theme) private var theme
-
-    private var hasRecoverableAudio: Bool {
-        self.session?.hasRetryableAudio == true
-    }
-
-    private var title: String {
-        guard let session else { return "Meeting setup failed" }
-        let lastFailureDomain = session.failures.last?.domain
-        if lastFailureDomain == .processing ||
-            (session.state == .interrupted && !session.processingAttempts.isEmpty)
-        {
-            return session.state == .interrupted
-                ? "Meeting transcription was interrupted"
-                : "Meeting transcription failed"
-        }
-        if self.hasRecoverableAudio {
-            return session.state == .interrupted
-                ? "Meeting recording was interrupted"
-                : "Meeting recording failed"
-        }
-        return "Meeting setup failed"
-    }
-
-    var body: some View {
-        FluidManagementGroup(title: self.session?.title ?? "Recording setup") {
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-                HStack(alignment: .firstTextBaseline) {
-                    Label(self.title, systemImage: "exclamationmark.triangle.fill")
-                        .font(self.theme.typography.sectionTitle)
-                        .foregroundStyle(self.theme.palette.warning)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: 0)
-                    if let onClose {
-                        MeetingCloseTranscriptButton(action: onClose)
-                    }
-                }
-                Text(self.message)
-                    .font(self.theme.typography.body)
-                    .textSelection(.enabled)
-                if self.hasRecoverableAudio {
-                    Text("The captured audio has been preserved on this Mac.")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                }
-                HStack(spacing: self.theme.metrics.spacing.sm) {
-                    if let session, self.hasRecoverableAudio {
-                        Button("Reveal Audio", systemImage: "folder", action: { self.onRevealAudio(session) })
-                            .fluidButton(.compact, size: .medium)
-                        Button(action: { self.onRetrySession(session) }) {
-                            if self.isRetrying {
-                                HStack(spacing: self.theme.metrics.spacing.sm) {
-                                    ProgressView().controlSize(.small)
-                                    Text("Retrying…")
-                                }
-                            } else {
-                                Label("Retry Transcription", systemImage: "arrow.clockwise")
-                            }
-                        }
-                        .fluidButton(.accent, size: .medium)
-                        .disabled(self.isRetrying)
-                    }
-                    if let session {
-                        Button("Record Again", systemImage: "arrow.counterclockwise.circle") {
-                            self.onRecordAgain(session)
-                        }
-                        .fluidButton(.compact, size: .medium)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct MeetingAdaptiveSetupRow<Content: View>: View {
-    let title: String
-    var detail: String?
-    let trailingSwitch: Bool
-    @ViewBuilder let content: Content
-
-    @Environment(\.theme) private var theme
-
-    init(
-        title: String,
-        detail: String? = nil,
-        trailingSwitch: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.detail = detail
-        self.trailingSwitch = trailingSwitch
-        self.content = content()
-    }
-
-    var body: some View {
-        Group {
-            if self.trailingSwitch {
-                HStack(alignment: .center, spacing: self.theme.metrics.spacing.lg) {
-                    self.label.frame(maxWidth: .infinity, alignment: .leading)
-                    self.content.fixedSize()
-                }
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .center, spacing: self.theme.metrics.spacing.lg) {
-                        self.label
-                            .frame(width: 220, alignment: .leading)
-                        self.content
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                        self.label
-                        self.content
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, self.theme.metrics.spacing.xs)
-        .padding(.vertical, self.theme.metrics.spacing.md)
-    }
-
-    private var label: some View {
-        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-            Text(self.title)
-                .font(self.theme.typography.bodyStrong)
-                .foregroundStyle(self.theme.palette.primaryText)
-            if let detail {
-                Text(detail)
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-private struct MeetingReadyStatus: View {
-    let isReady: Bool
-    var isWaiting = false
+/// Readiness at a glance: a single dot carries the state, the text explains it.
+private struct MeetingHomeStatus: View {
+    enum Kind { case checking, blocked }
+
+    let kind: Kind
     let title: String
     let detail: String
 
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(spacing: self.theme.metrics.spacing.md) {
-            Image(systemName: self.isReady ? "checkmark.circle.fill" : (self.isWaiting ? "clock" : "exclamationmark.circle.fill"))
-                .foregroundStyle(self.isReady ? self.theme.palette.success : (self.isWaiting ? self.theme.palette.secondaryText : self.theme.palette.warning))
-                .accessibilityHidden(true)
+        HStack(alignment: .firstTextBaseline, spacing: self.theme.metrics.spacing.md) {
+            Group {
+                if self.kind == .checking {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Circle().fill(self.theme.palette.warning)
+                }
+            }
+            .frame(width: 12, height: 12)
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
                 Text(self.title)
                     .font(self.theme.typography.bodyStrong)
@@ -3108,173 +2114,5 @@ private struct MeetingReadyStatus: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(self.title). \(self.detail)")
-    }
-}
-
-private struct MeetingTrackHealthRow: View {
-    let title: String
-    let health: MeetingTrackHealth
-
-    @Environment(\.theme) private var theme
-
-    private var statusText: String {
-        switch self.health.status {
-        case .waiting: return "Waiting for audio"
-        case .healthy: return "Healthy"
-        case .degraded: return self.health.detail ?? "Audio source degraded"
-        case .unavailable: return self.health.detail ?? "Audio source unavailable"
-        case .stopped: return "Stopped"
-        }
-    }
-
-    private var isHealthy: Bool {
-        self.health.status == .healthy
-    }
-
-    var body: some View {
-        HStack(spacing: self.theme.metrics.spacing.md) {
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xs) {
-                Text(self.title)
-                    .font(self.theme.typography.bodyStrong)
-                Text(self.statusText)
-                    .font(self.theme.typography.caption)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            ProgressView(value: min(max(Double(self.health.level), 0), 1))
-                .progressViewStyle(.linear)
-                .frame(width: 80)
-                .accessibilityLabel("\(self.title) level")
-
-            Label(
-                self.statusText,
-                systemImage: self.isHealthy ? "checkmark.circle.fill" : "exclamationmark.circle.fill"
-            )
-            .labelStyle(.iconOnly)
-            .foregroundStyle(self.isHealthy ? self.theme.palette.success : self.theme.palette.warning)
-            .accessibilityLabel(self.statusText)
-        }
-    }
-}
-
-private struct MeetingSpeakerChip: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-    let action: () -> Void
-
-    @Environment(\.theme) private var theme
-    @Environment(\.isEnabled) private var isEnabled
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: self.action) {
-            HStack(spacing: 3) {
-                Label(self.title, systemImage: self.systemImage)
-                Image(systemName: "chevron.right")
-                    .font(.fluidSystem(size: 9, weight: .semibold))
-                    .opacity(self.isHovering ? 1 : 0.45)
-            }
-            .font(self.theme.typography.badge)
-            .foregroundStyle(self.tint)
-            .padding(.horizontal, self.theme.metrics.spacing.md)
-            .padding(.vertical, self.theme.metrics.spacing.sm)
-            .background(self.tint.opacity(self.isHovering ? 0.20 : 0.12), in: Capsule())
-            .overlay(Capsule().strokeBorder(self.tint.opacity(self.isHovering ? 0.45 : 0.22)))
-        }
-        .buttonStyle(.plain)
-        .help("Rename this speaker")
-        .accessibilityLabel("Rename \(self.title)")
-        .pointerStyle(self.isEnabled ? .link : nil)
-        .onHover { self.isHovering = self.isEnabled && $0 }
-    }
-}
-
-private struct MeetingTranscriptSegmentRow: View {
-    let segment: MeetingTranscriptSegment
-    let speakerName: String
-    let speakerTint: Color?
-    let onRenameSpeakerTapped: (() -> Void)?
-    let isLocalUser: Bool
-    let showsSpeakerLabel: Bool
-    let reassignTargets: [MeetingSessionSpeaker]
-    let isQuiescent: Bool
-    let onReassign: (SessionSpeakerID) -> Void
-
-    @Environment(\.theme) private var theme
-    @State private var isHoveringSpeaker = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: self.theme.metrics.spacing.lg) {
-            Text(MeetingTranscriptExporter.timestampText(self.segment.start.seconds))
-                .font(self.theme.typography.codeCaption)
-                .foregroundStyle(self.theme.palette.secondaryText)
-                .frame(width: 58, alignment: .leading)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-                if self.showsSpeakerLabel { self.speakerLabel }
-                Text(self.segment.text)
-                    .font(self.theme.typography.body)
-                    .foregroundStyle(self.theme.palette.primaryText)
-                    .lineSpacing(5)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if self.segment.isEcho {
-                    Text("Probable echo").font(self.theme.typography.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-        .opacity(self.segment.isEcho ? 0.6 : 1)
-        .contextMenu {
-            Menu("Reassign to") {
-                ForEach(self.reassignTargets) { target in
-                    Button(target.displayName) {
-                        self.onReassign(target.id)
-                    }
-                }
-            }
-            .disabled(!self.isQuiescent)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(MeetingTranscriptExporter.timestampText(self.segment.start.seconds)), \(self.speakerName), \(self.segment.text)"
-        )
-    }
-
-    private var speakerLabel: some View {
-        let name = Text(self.speakerName)
-            .foregroundColor(self.nameColor)
-            .fontWeight(.semibold)
-            .font(self.theme.typography.bodySmallStrong)
-
-        return HStack(spacing: 8) {
-            if let onRenameSpeakerTapped = self.onRenameSpeakerTapped {
-                Button(action: onRenameSpeakerTapped) {
-                    HStack(spacing: 3) {
-                        name
-                        // Always shown, not hover-only, so the affordance survives an unfocused window.
-                        Image(systemName: "chevron.right")
-                            .font(.fluidSystem(size: 10, weight: .semibold))
-                            .foregroundColor(self.nameColor)
-                            .opacity(self.isHoveringSpeaker ? 1 : 0.45)
-                    }
-                }
-                .buttonStyle(.plain)
-                // No .help here: the tooltip lands on top of the turn's first line of text.
-                .accessibilityLabel("Rename \(self.speakerName)")
-                .pointerStyle(.link)
-                .onHover { self.isHoveringSpeaker = $0 }
-            } else {
-                name
-            }
-        }
-    }
-
-    private var nameColor: Color {
-        if self.isLocalUser { return self.theme.palette.accent }
-        return self.speakerTint ?? self.theme.palette.tertiaryText
     }
 }

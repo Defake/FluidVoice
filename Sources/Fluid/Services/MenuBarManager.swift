@@ -925,7 +925,7 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
         self.meetingStatusMenuItem = meetingStatusItem
 
         let openMeetingItem = NSMenuItem(
-            title: "Open Meet Assist",
+            title: "Open FluidMeet",
             action: #selector(openMeetingTranscription),
             keyEquivalent: ""
         )
@@ -1077,24 +1077,24 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
             break
         case .preparing:
             self.meetingStatusMenuItem?.title = "Starting meeting recording…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .recording:
             let source = self.meetingMenuPresentation.sourceName ?? "Meeting"
             let elapsed = self.meetingMenuPresentation.startedAt.map { Self.elapsedText(now.timeIntervalSince($0)) } ?? "0:00"
             self.meetingStatusMenuItem?.title = "Recording \(source) · \(elapsed)"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .stopping:
             self.meetingStatusMenuItem?.title = "Finalizing meeting audio…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .processing:
             self.meetingStatusMenuItem?.title = "Transcribing meeting…"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .interrupted:
             self.meetingStatusMenuItem?.title = self.meetingMenuPresentation.attentionStatus ?? "Recording interrupted"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .failed:
             self.meetingStatusMenuItem?.title = self.meetingMenuPresentation.attentionStatus ?? "Meeting setup failed"
-            self.openMeetingTranscriptionMenuItem?.title = "Open Meet Assist"
+            self.openMeetingTranscriptionMenuItem?.title = "Open FluidMeet"
         case .completed:
             self.openMeetingTranscriptionMenuItem?.title = "Open Latest Meeting Transcript"
         }

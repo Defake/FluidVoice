@@ -18,7 +18,7 @@ nonisolated enum MeetingAssignSpeakersQuoteSource {
     }
 
     private static func truncated(_ text: String) -> String {
-        guard text.count > Self.maxQuoteLength else { return text }
+        guard text.count > self.maxQuoteLength else { return text }
         let cutoff = text.index(text.startIndex, offsetBy: Self.maxQuoteLength)
         let prefix = text[text.startIndex..<cutoff]
         if let lastSpace = prefix.lastIndex(of: " ") {
@@ -43,7 +43,8 @@ nonisolated enum MeetingAssignSpeakersValidation {
         }
         for index in resulting.indices {
             for other in resulting[(index + 1)...]
-            where other.name.caseInsensitiveCompare(resulting[index].name) == .orderedSame {
+                where other.name.caseInsensitiveCompare(resulting[index].name) == .orderedSame
+            {
                 guard resulting[index].changed || other.changed else { continue }
                 return other.name
             }
@@ -120,16 +121,18 @@ struct MeetingAssignSpeakersSheet: View {
 
             Divider()
 
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                Spacer()
-                Button("Cancel", action: self.onCancel)
-                    .fluidButton(.compact, size: .medium)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(self.isSaving)
-                Button("Save names") { Task { await self.save() } }
-                    .fluidButton(.accent, size: .medium)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(self.isSaving)
+            FluidGlassControlGroup {
+                HStack(spacing: self.theme.metrics.spacing.md) {
+                    Button("Cancel", action: self.onCancel)
+                        .meetingGlassAction()
+                        .keyboardShortcut(.cancelAction)
+                        .disabled(self.isSaving)
+                    Spacer()
+                    Button(self.isSaving ? "Saving…" : "Save names") { Task { await self.save() } }
+                        .meetingGlassAction(prominent: true)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(self.isSaving)
+                }
             }
             .padding(self.theme.metrics.spacing.lg)
         }
@@ -150,7 +153,8 @@ struct MeetingAssignSpeakersSheet: View {
             Spacer()
             Button("Close", systemImage: "xmark") { self.onCancel() }
                 .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
+                .meetingGlassAction(circular: true)
+                .disabled(self.isSaving)
                 .accessibilityLabel("Close")
         }
         .padding(.horizontal, self.theme.metrics.spacing.xl)
@@ -174,7 +178,7 @@ struct MeetingAssignSpeakersSheet: View {
 
             let quotes = self.quotesBySpeaker[speaker.id] ?? []
             if quotes.isEmpty {
-                Text("No sample audio")
+                Text("No transcript sample")
                     .font(self.theme.typography.bodySmall)
                     .foregroundStyle(self.theme.palette.tertiaryText)
                     .padding(.leading, self.theme.metrics.spacing.md)
@@ -204,6 +208,8 @@ struct MeetingAssignSpeakersSheet: View {
                 prompt: Text(speaker.displayName)
             )
             .textFieldStyle(.roundedBorder)
+            .controlSize(.large)
+            .accessibilityLabel("Name for \(speaker.displayName)")
             .focused(self.$focusedField, equals: speaker.id)
             .disabled(self.isSaving)
         }
