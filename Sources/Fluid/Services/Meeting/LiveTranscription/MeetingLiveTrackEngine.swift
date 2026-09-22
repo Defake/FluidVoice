@@ -72,6 +72,8 @@ actor MeetingLiveTrackEngine {
     private var diagnosticResetUptime: Double?
     private let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false
+        // Fixed Float32 PCM format with positive sample rate and channels is valid by construction.
+        // swiftlint:disable:next force_unwrapping
     )!
 
     private var converter: AVAudioConverter?
@@ -87,6 +89,9 @@ actor MeetingLiveTrackEngine {
     private var drainTask: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
     private var isModelReady = false
+    // Each engine belongs to one meeting. Stop is terminal, including suspended startup.
+    private var hasStarted = false
+    private var isStopped = false
 
     private var diagSamplesConsumed = 0
     private var diagSecondsConsumed: Double = 0
@@ -98,8 +103,9 @@ actor MeetingLiveTrackEngine {
 
     private var diagLabel: String { self.kind == .microphone ? "MIC" : "APP" }
 
-    private func diag(_ message: String) {
-        DebugLogger.shared.info("[live/\(self.diagLabel)] \(message)", source: "MeetingLive")
+    private func diag(_ message: @autoclosure () -> String) {
+        guard self.diagnosticsEnabled else { return }
+        DebugLogger.shared.info("[live/\(self.diagLabel)] \(message())", source: "MeetingLive")
     }
 
     private var onPartial: PartialHandler?
@@ -130,6 +136,7 @@ actor MeetingLiveTrackEngine {
         onDegraded: @escaping DegradedHandler,
         onReady: @escaping ReadyHandler
     ) {
+        guard !self.isStopped else { return }
         self.onPartial = onPartial
         self.onUtterance = onUtterance
         self.onDegraded = onDegraded
@@ -137,11 +144,13 @@ actor MeetingLiveTrackEngine {
     }
 
     func start() async {
-        guard self.drainTask == nil else { return }
+        guard !self.hasStarted, !self.isStopped else { return }
+        self.hasStarted = true
         let manager = self.manager
         let kind = self.kind
         // Wired synchronously before load/drain start so no decode result can race ahead of it.
         await self.installCallbacks()
+        guard !self.isStopped else { return }
         self.loadTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -164,6 +173,11 @@ actor MeetingLiveTrackEngine {
     }
 
     func stop() async {
+        self.isStopped = true
+        self.onPartial = nil
+        self.onUtterance = nil
+        self.onReady = nil
+        self.onDegraded = nil
         self.loadTask?.cancel()
         self.drainTask?.cancel()
         await self.loadTask?.value
@@ -207,20 +221,22 @@ actor MeetingLiveTrackEngine {
             try await self.manager.appendAudio(silence)
             try await self.manager.processBufferedAudio()
         } catch {
-            self.diag("warmup failed (continuing): \(error)")
+            DebugLogger.shared.warning("Live captions warmup failed (continuing): \(error)", source: "MeetingLive")
         }
         await self.resetRecognizer()
         self.diag(String(format: "warmup complete in %.2fs", self.uptime() - started))
     }
 
     private func markReady() {
+        guard !self.isStopped else { return }
         self.isModelReady = true
         self.diag("model ready")
         self.onReady?(self.kind)
     }
 
     private func markLoadFailed(kind: MeetingAudioTrackKind, error: Error) {
-        self.diag("model load FAILED: \(error)")
+        guard !self.isStopped else { return }
+        DebugLogger.shared.warning("Live captions model load failed: \(error)", source: "MeetingLive")
         self.onDegraded?(kind, "Live captions could not load: \(error.localizedDescription)")
     }
 
@@ -275,7 +291,7 @@ actor MeetingLiveTrackEngine {
             await self.rotateLongUtteranceIfNeeded()
         } catch {
             if self.diagnosticsEnabled { self.diagnosticSnapshot.appendOrProcessErrors += 1 }
-            self.diag("appendAudio/process error: \(error)")
+            DebugLogger.shared.warning("Live captions audio processing failed: \(error)", source: "MeetingLive")
             self.onDegraded?(self.kind, "Live captions hit an error and resynced.")
             await self.resetUtterance()
         }
@@ -302,13 +318,15 @@ actor MeetingLiveTrackEngine {
         self.lastPartialText = ""
         self.lastPartialUptime = nil
         await self.resetRecognizer()
-        guard !text.isEmpty else { return }
+        guard !self.isStopped, !text.isEmpty else { return }
         self.lastUtteranceEndPTS = end
         self.diagUtterances += 1
         self.diag(String(
             format: "forced EOU (%@) span=[%.2f–%.2f] chars=%d",
             hitCeiling ? "open>\(Int(Self.maxOpenUtteranceSeconds))s" : String(format: "quiet %.1fs", quietSeconds ?? 0),
-            start.seconds, end.seconds, text.count
+            start.seconds,
+            end.seconds,
+            text.count
         ))
         self.onUtterance?(self.kind, turnID, text, start, end)
     }
@@ -316,6 +334,7 @@ actor MeetingLiveTrackEngine {
     /// Once every 5s of wall clock: proves audio is still reaching the recognizer, and how long the
     /// current utterance has been open without an endpoint.
     private func logFlowIfDue() {
+        guard self.diagnosticsEnabled else { return }
         let now = self.uptime()
         guard now - self.diagLastFlowLog >= 5 else { return }
         self.diagLastFlowLog = now
@@ -325,14 +344,20 @@ actor MeetingLiveTrackEngine {
         let sinceEou = self.diagLastEouUptime.map { now - $0 }
         self.diag(String(
             format: "flow chunks=%d audio=%.1fs openUtterance=%.1fs partials=%d utterances=%d drops=%d sinceEOU=%@",
-            self.diagSamplesConsumed, self.diagSecondsConsumed, openFor,
-            self.diagPartials, self.diagUtterances, self.diagDrops,
+            self.diagSamplesConsumed,
+            self.diagSecondsConsumed,
+            openFor,
+            self.diagPartials,
+            self.diagUtterances,
+            self.diagDrops,
             sinceEou.map { String(format: "%.1fs", $0) } ?? "never"
         ))
         if self.diagnosticsEnabled {
             let snapshot = self.diagnosticSnapshot
             // Wrapper counters only: no audio, transcript, names, or identity evidence.
             // Actor-local logging is not an independent hung-executor watchdog.
+            // Keep the complete diagnostic output string intact.
+            // swiftlint:disable:next line_length
             self.diag("p0 converted=\(snapshot.convertedBuffers) conversionFailures=\(snapshot.conversionFailures) append=\(snapshot.appendCompletions)/\(snapshot.appendStarts) process=\(snapshot.processCompletions)/\(snapshot.processStarts) errors=\(snapshot.appendOrProcessErrors) partialCallbacks=\(snapshot.partialCallbacks) eouCallbacks=\(snapshot.eouCallbacks) resetReturns=\(snapshot.recognizerResetReturned)/\(snapshot.resetInvocations) resetOrdinal=\(snapshot.wrapperGeneration) maxProcessSeconds=\(snapshot.maxProcessSeconds)")
         }
     }
@@ -341,6 +366,7 @@ actor MeetingLiveTrackEngine {
     /// first audio buffer — marks where this utterance actually begins. Anchoring on audio instead
     /// swallowed every second of preceding silence into the utterance's span.
     private func handlePartial(_ text: String) {
+        guard !self.isStopped else { return }
         if self.diagnosticsEnabled {
             self.diagnosticSnapshot.partialCallbacks += 1
             if self.diagnosticSnapshot.firstPartialAfterResetSeconds == nil,
@@ -363,12 +389,13 @@ actor MeetingLiveTrackEngine {
         let end = self.lastConsumedPTS ?? start
         self.diagPartials += 1
         if self.diagPartials % 10 == 1 {
-            self.diag("partial #\(self.diagPartials) chars=\(text.count) tail=…\(String(text.suffix(60)))")
+            self.diag("partial #\(self.diagPartials) chars=\(text.count)")
         }
         self.onPartial?(self.kind, turnID, text, start, end)
     }
 
     private func handleEOU(_ text: String) async {
+        guard !self.isStopped else { return }
         if self.diagnosticsEnabled { self.diagnosticSnapshot.eouCallbacks += 1 }
         let start = self.utteranceStartPTS
         let end = self.lastConsumedPTS ?? start
@@ -382,7 +409,7 @@ actor MeetingLiveTrackEngine {
         self.lastPartialUptime = nil
         await self.resetRecognizer()
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !self.isStopped, !trimmed.isEmpty else { return }
         guard let start, let end, let turnID else {
             self.diag("EOU fired but no start PTS — dropped (chars=\(text.count))")
             return
@@ -390,10 +417,13 @@ actor MeetingLiveTrackEngine {
         self.lastUtteranceEndPTS = end
         self.diagUtterances += 1
         self.diag(String(
-            format: "EOU #%d span=[%.2f–%.2f] (%.1fs) sinceLastEOU=%@ text=%@",
-            self.diagUtterances, start.seconds, end.seconds, end.seconds - start.seconds,
+            format: "EOU #%d span=[%.2f–%.2f] (%.1fs) sinceLastEOU=%@ chars=%d",
+            self.diagUtterances,
+            start.seconds,
+            end.seconds,
+            end.seconds - start.seconds,
             gap.map { String(format: "%.1fs", $0) } ?? "first",
-            trimmed
+            trimmed.count
         ))
         self.onUtterance?(self.kind, turnID, trimmed, start, end)
     }

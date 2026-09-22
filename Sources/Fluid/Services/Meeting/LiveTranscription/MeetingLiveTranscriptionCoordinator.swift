@@ -11,14 +11,27 @@ import Foundation
 final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable {
     /// Two `StreamingEouAsrManager` instances measured at ~470MB RSS each. Below this, skip live
     /// entirely rather than risk contending with the recording or the later batch model.
-    static let minimumPhysicalMemoryBytes: UInt64 = 8 * 1_024 * 1_024 * 1_024
+    static let minimumPhysicalMemoryBytes: UInt64 = 8 * 1024 * 1024 * 1024
     static let echoWindowSeconds: TimeInterval = 20
 
     static func isMemorySufficient(physicalMemory: UInt64) -> Bool {
-        physicalMemory >= Self.minimumPhysicalMemoryBytes
+        physicalMemory >= self.minimumPhysicalMemoryBytes
     }
 
     private let stateLock = NSLock()
+    private let diagnosticsEnabled: Bool = {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["FLUIDVOICE_MEETING_LIVE_DIAGNOSTICS"] == "1"
+        #else
+        false
+        #endif
+    }()
+
+    private func diag(_ message: @autoclosure () -> String) {
+        guard self.diagnosticsEnabled else { return }
+        DebugLogger.shared.info(message(), source: "MeetingLive")
+    }
+
     private var snapshot: MeetingLiveTranscriptSnapshot = .empty
     private var recentThemUtterances: [MeetingLiveUtterance] = []
     private var offerCounts: [MeetingAudioTrackKind: Int] = [:]
@@ -43,26 +56,23 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
 
     func setMicrophoneCaptureMethod(_ method: MeetingAudioTrackCaptureMethod?) {
         self.stateLock.withLock { self.microphoneCaptureMethod = method }
-        DebugLogger.shared.info(
-            "[live/ECHO] setter-armed captureMethod=\(method.map(String.init(describing:)) ?? "nil")",
-            source: "MeetingLive"
+        self.diag(
+            "[live/ECHO] setter-armed captureMethod=\(method.map(String.init(describing:)) ?? "nil")"
         )
     }
 
     func start(mode: MeetingCaptureMode) {
         #if arch(arm64)
         guard Self.isMemorySufficient(physicalMemory: ProcessInfo.processInfo.physicalMemory) else {
-            DebugLogger.shared.info(
-                "Live meeting transcription skipped: below memory threshold.",
-                source: "MeetingLiveTranscriptionCoordinator"
+            self.diag(
+                "Live meeting transcription skipped: below memory threshold."
             )
             self.publish { $0.settingAvailability(.unavailable(reason: "Not enough memory available for live captions.")) }
             return
         }
 
-        DebugLogger.shared.info(
-            "[live] starting engines mode=\(mode) physicalMemory=\(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)GB",
-            source: "MeetingLive"
+        self.diag(
+            "[live] starting engines mode=\(mode) physicalMemory=\(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)GB"
         )
         let microphone = MeetingLiveTrackEngine(kind: .microphone)
         self.stateLock.withLock { self.microphoneEngine = microphone }
@@ -84,7 +94,7 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
     func offer(kind: MeetingAudioTrackKind, sampleBuffer: CMSampleBuffer) {
         #if arch(arm64)
         guard let sample = MeetingLiveSampleCopy.copy(sampleBuffer) else {
-            DebugLogger.shared.info("[live/tee] sample copy FAILED kind=\(kind)", source: "MeetingLive")
+            self.diag("[live/tee] sample copy FAILED kind=\(kind)")
             return
         }
         self.originBox.establish(sample.pts)
@@ -92,14 +102,13 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
             let count = (self.offerCounts[kind] ?? 0) + 1
             self.offerCounts[kind] = count
             if count == 1 {
-                DebugLogger.shared.info(
-                    "[live/tee] first sample kind=\(kind) pts=\(String(format: "%.3f", sample.pts.seconds)) sr=\(sample.buffer.format.sampleRate) ch=\(sample.buffer.format.channelCount)",
-                    source: "MeetingLive"
+                self.diag(
+                    "[live/tee] first sample kind=\(kind) pts=\(String(format: "%.3f", sample.pts.seconds)) sr=\(sample.buffer.format.sampleRate) ch=\(sample.buffer.format.channelCount)"
                 )
             }
             let engine = kind == .microphone ? self.microphoneEngine : self.applicationEngine
             if engine == nil, count == 1 {
-                DebugLogger.shared.info("[live/tee] no engine for kind=\(kind) — samples discarded", source: "MeetingLive")
+                self.diag("[live/tee] no engine for kind=\(kind) — samples discarded")
             }
             return engine
         }
@@ -118,13 +127,12 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
             }
             return (self.microphoneEngine, self.applicationEngine)
         }
-        DebugLogger.shared.info(
-            "[live] stopping engines offers=\(self.offerCounts.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " "))",
-            source: "MeetingLive"
+        self.diag(
+            "[live] stopping engines offers=\(self.stateLock.withLock { self.offerCounts.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ") })"
         )
         await microphone?.stop()
         await application?.stop()
-        DebugLogger.shared.info("[live] engines stopped, models released", source: "MeetingLive")
+        self.diag("[live] engines stopped, models released")
         #endif
     }
 
@@ -167,29 +175,16 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
 
         let updated: MeetingLiveTranscriptSnapshot = self.stateLock.withLock {
             if speaker == .you {
-                if self.microphoneCaptureMethod == .voiceProcessing {
-                    DebugLogger.shared.info(
-                        "[live/ECHO] skipped (voiceProcessing) mic utterance [\(String(format: "%.2f", startSeconds))] text=\(text)",
-                        source: "MeetingLive"
-                    )
-                } else {
+                if self.microphoneCaptureMethod != .voiceProcessing {
                     let recentThem = MeetingLiveEchoFilter.recentThemText(
                         from: self.recentThemUtterances,
                         before: startSeconds,
                         windowSeconds: Self.echoWindowSeconds
                     )
                     if MeetingLiveEchoFilter.shouldSuppress(micText: text, recentThemText: recentThem) {
-                        DebugLogger.shared.info(
-                            "[live/ECHO] SUPPRESSED mic utterance [\(String(format: "%.2f", startSeconds))] text=\(text)",
-                            source: "MeetingLive"
-                        )
                         self.snapshot = self.snapshot.settingPartial(nil, for: .you).markingFinalized(id)
                         return self.snapshot
                     }
-                    DebugLogger.shared.info(
-                        "[live/ECHO] kept mic utterance [\(String(format: "%.2f", startSeconds))] text=\(text)",
-                        source: "MeetingLive"
-                    )
                 }
             } else {
                 let record = MeetingLiveUtterance(id: id, speaker: .them, text: text, start: startSeconds, end: endSeconds)
@@ -204,7 +199,7 @@ final nonisolated class MeetingLiveTranscriptionCoordinator: @unchecked Sendable
     }
 
     private func handleDegraded(kind: MeetingAudioTrackKind, reason: String) {
-        DebugLogger.shared.info("[live] DEGRADED kind=\(kind) reason=\(reason)", source: "MeetingLive")
+        DebugLogger.shared.warning("Live captions degraded: \(reason)", source: "MeetingLive")
         self.publish { $0.settingAvailability(.degraded(reason: reason)) }
     }
 

@@ -1,5 +1,6 @@
-@testable import FluidVoice_Debug
+import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -9,8 +10,8 @@ final class MeetingModelPreparationQueueTests: XCTestCase {
         var active = 0
         var maximum = 0
         var completed = 0
-        func enter() { active += 1; maximum = max(maximum, active) }
-        func leave() { active -= 1; completed += 1 }
+        func enter() { self.active += 1; self.maximum = max(self.maximum, self.active) }
+        func leave() { self.active -= 1; self.completed += 1 }
     }
 
     func testConcurrentPreparationsNeverOverlap() async throws {
@@ -231,7 +232,9 @@ final class MeetingLiveBoundedQueueTests: XCTestCase {
 
     func testSaturationDropsTheOldestElement() {
         let queue = MeetingLiveBoundedQueue<Int>(capacity: 3)
-        for value in 0..<3 { _ = queue.enqueue(value) }
+        for value in 0..<3 {
+            _ = queue.enqueue(value)
+        }
         let dropped = queue.enqueue(3)
         XCTAssertTrue(dropped)
         // 0 was the oldest; it must be gone, newest (3) must be present.
@@ -247,7 +250,9 @@ final class MeetingLiveBoundedQueueTests: XCTestCase {
 
     func testHeavySaturationNeverGrowsPastCapacity() {
         let queue = MeetingLiveBoundedQueue<Int>(capacity: 4)
-        for value in 0..<1000 { _ = queue.enqueue(value) }
+        for value in 0..<1000 {
+            _ = queue.enqueue(value)
+        }
         let drained = queue.drainAll()
         XCTAssertEqual(drained.count, 4)
         XCTAssertEqual(drained, [996, 997, 998, 999])
@@ -258,9 +263,11 @@ final class MeetingLiveEchoFilterTests: XCTestCase {
     func testMicUtteranceMatchingRecentThemTextIsSuppressed() {
         let them = [
             MeetingLiveUtterance(
-                id: UUID(), speaker: .them,
+                id: UUID(),
+                speaker: .them,
                 text: "let's push the release to next Tuesday afternoon",
-                start: 10, end: 14
+                start: 10,
+                end: 14
             ),
         ]
         let recent = MeetingLiveEchoFilter.recentThemText(from: them, before: 15, windowSeconds: 20)
@@ -295,7 +302,7 @@ final class MeetingLiveEchoFilterTests: XCTestCase {
 
 final class MeetingLiveMemoryGateTests: XCTestCase {
     func testBelowThresholdDisablesLive() {
-        let oneGigabyte: UInt64 = 1 * 1_024 * 1_024 * 1_024
+        let oneGigabyte: UInt64 = 1 * 1024 * 1024 * 1024
         XCTAssertFalse(MeetingLiveTranscriptionCoordinator.isMemorySufficient(physicalMemory: oneGigabyte))
     }
 
@@ -303,7 +310,7 @@ final class MeetingLiveMemoryGateTests: XCTestCase {
         XCTAssertTrue(MeetingLiveTranscriptionCoordinator.isMemorySufficient(
             physicalMemory: MeetingLiveTranscriptionCoordinator.minimumPhysicalMemoryBytes
         ))
-        XCTAssertTrue(MeetingLiveTranscriptionCoordinator.isMemorySufficient(physicalMemory: 64 * 1_024 * 1_024 * 1_024))
+        XCTAssertTrue(MeetingLiveTranscriptionCoordinator.isMemorySufficient(physicalMemory: 64 * 1024 * 1024 * 1024))
     }
 }
 
@@ -319,8 +326,12 @@ final class MeetingLiveProvisionalContainmentTests: XCTestCase {
         let speakerID = UUID()
         session.speakers = [
             MeetingSessionSpeaker(
-                id: speakerID, displayName: "Speaker 1", diarizationClusterID: nil,
-                trackKind: .microphone, isLocalUser: true, identityCandidates: []
+                id: speakerID,
+                displayName: "Speaker 1",
+                diarizationClusterID: nil,
+                trackKind: .microphone,
+                isLocalUser: true,
+                identityCandidates: []
             ),
         ]
         session.transcriptSegments = [
@@ -370,3 +381,117 @@ final class MeetingOverlayVisibilityTests: XCTestCase {
         ))))
     }
 }
+
+#if arch(arm64)
+@MainActor
+final class MeetingLiveStartupCancellationTests: XCTestCase {
+    private actor SuspendedRecognizer: MeetingLiveRecognizer {
+        let didBeginInstalling: @Sendable () -> Void
+        let didPrepare: @Sendable () -> Void
+        private var continuation: CheckedContinuation<Void, Never>?
+        private var eouCallback: (@Sendable (String) -> Void)?
+        private var partialCallback: (@Sendable (String) -> Void)?
+        private(set) var installationCount = 0
+
+        init(didBeginInstalling: @escaping @Sendable () -> Void, didPrepare: @escaping @Sendable () -> Void) {
+            self.didBeginInstalling = didBeginInstalling
+            self.didPrepare = didPrepare
+        }
+
+        func setEouCallback(_ callback: @escaping @Sendable (String) -> Void) async {
+            self.eouCallback = callback
+            self.installationCount += 1
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                self.didBeginInstalling()
+            }
+        }
+
+        func setPartialTranscriptCallback(_ callback: @escaping @Sendable (String) -> Void) async {
+            self.partialCallback = callback
+        }
+
+        func resumeInstallation() {
+            self.continuation?.resume()
+            self.continuation = nil
+        }
+
+        func emitStaleCallbacks() {
+            self.partialCallback?("late partial")
+            self.eouCallback?("late final")
+        }
+
+        func prepareModels() async throws { self.didPrepare() }
+        func appendAudio(_ buffer: AVAudioPCMBuffer) async throws {}
+        func processBufferedAudio() async throws {}
+        func reset() async {}
+    }
+
+    func testStopDuringCallbackInstallationCannotLaunchModelsOrPublish() async {
+        let installing = expectation(description: "callback installation suspended")
+        let noPrepare = expectation(description: "stopped engine must not load models")
+        noPrepare.isInverted = true
+        let noPublish = expectation(description: "stopped engine must not publish")
+        noPublish.isInverted = true
+        let recognizer = SuspendedRecognizer(
+            didBeginInstalling: { installing.fulfill() },
+            didPrepare: { noPrepare.fulfill() }
+        )
+        let engine = MeetingLiveTrackEngine(kind: .microphone, recognizer: recognizer)
+        await engine.configure(
+            onPartial: { _, _, _, _, _ in noPublish.fulfill() },
+            onUtterance: { _, _, _, _, _ in noPublish.fulfill() },
+            onDegraded: { _, _ in noPublish.fulfill() },
+            onReady: { _ in noPublish.fulfill() }
+        )
+        let starting = Task { await engine.start() }
+        await fulfillment(of: [installing], timeout: 2)
+        await engine.stop()
+        await recognizer.resumeInstallation()
+        await starting.value
+        await recognizer.emitStaleCallbacks()
+        await engine.start() // A delayed coordinator launch cannot restart a stopped engine either.
+        await fulfillment(of: [noPrepare, noPublish], timeout: 0.1)
+        let installationCount = await recognizer.installationCount
+        XCTAssertEqual(installationCount, 1)
+        await engine.stop()
+    }
+
+    func testUninterruptedStartupStillLoadsAndBecomesReady() async {
+        let installing = expectation(description: "installing callbacks")
+        let prepared = expectation(description: "models prepared")
+        let ready = expectation(description: "captions ready")
+        let recognizer = SuspendedRecognizer(
+            didBeginInstalling: { installing.fulfill() },
+            didPrepare: { prepared.fulfill() }
+        )
+        let engine = MeetingLiveTrackEngine(kind: .microphone, recognizer: recognizer)
+        await engine.configure(
+            onPartial: { _, _, _, _, _ in },
+            onUtterance: { _, _, _, _, _ in },
+            onDegraded: { _, _ in XCTFail("Unexpected degradation") },
+            onReady: { _ in ready.fulfill() }
+        )
+        let starting = Task { await engine.start() }
+        await fulfillment(of: [installing], timeout: 2)
+        await recognizer.resumeInstallation()
+        await starting.value
+        await fulfillment(of: [prepared, ready], timeout: 2)
+        await engine.stop()
+    }
+
+    func testStopBeforeLaunchPreventsCallbackInstallation() async {
+        let noInstall = expectation(description: "stopped engine must not install callbacks")
+        noInstall.isInverted = true
+        let recognizer = SuspendedRecognizer(didBeginInstalling: { noInstall.fulfill() }, didPrepare: {})
+        let engine = MeetingLiveTrackEngine(kind: .microphone, recognizer: recognizer)
+        await engine.stop()
+        let starting = Task { await engine.start() }
+        await fulfillment(of: [noInstall], timeout: 0.1)
+        // Unblock a regression so a failed assertion cannot leak a suspended task.
+        await recognizer.resumeInstallation()
+        await starting.value
+        await engine.stop()
+    }
+}
+#endif
