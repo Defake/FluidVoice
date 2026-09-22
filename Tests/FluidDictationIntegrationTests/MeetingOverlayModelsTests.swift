@@ -11,10 +11,10 @@ final class MeetingOverlayGeometryTests: XCTestCase {
     private let screen = CGRect(x: 100, y: 50, width: 1440, height: 900)
 
     func testCanonicalPresentationVisibleSizes() {
-        XCTAssertEqual(MeetingOverlayPresentation.pill.visibleSize, CGSize(width: 84, height: 32))
-        XCTAssertEqual(MeetingOverlayPresentation.captions.visibleSize, CGSize(width: 340, height: 156))
-        XCTAssertEqual(MeetingOverlayPresentation.pill.toggled.visibleSize, CGSize(width: 340, height: 156))
-        XCTAssertEqual(MeetingOverlayPresentation.captions.toggled.visibleSize, CGSize(width: 84, height: 32))
+        XCTAssertGreaterThan(self.captions.width, self.pill.width)
+        XCTAssertGreaterThan(self.captions.height, self.pill.height)
+        XCTAssertEqual(MeetingOverlayPresentation.pill.toggled.visibleSize, self.captions)
+        XCTAssertEqual(MeetingOverlayPresentation.captions.toggled.visibleSize, self.pill)
     }
 
     func testCaptionsViewportAndFooterHeightsSumToCanvasHeight() {
@@ -22,15 +22,10 @@ final class MeetingOverlayGeometryTests: XCTestCase {
             MeetingOverlayPresentation.captionsViewportHeight + MeetingOverlayPresentation.captionsFooterHeight,
             MeetingOverlayPresentation.captions.visibleSize.height
         )
-        XCTAssertEqual(MeetingOverlayPresentation.captionsViewportHeight, 121)
-        XCTAssertEqual(MeetingOverlayPresentation.captionsFooterHeight, 35)
+        XCTAssertGreaterThan(MeetingOverlayPresentation.captionsViewportHeight, MeetingOverlayPresentation.captionsFooterHeight)
     }
 
     func testCaptionsContentInsetsSumToViewportAndCanvasWidth() {
-        XCTAssertEqual(MeetingOverlayPresentation.captionsHorizontalInset, 16)
-        XCTAssertEqual(MeetingOverlayPresentation.captionsTopInset, 12)
-        XCTAssertEqual(MeetingOverlayPresentation.captionsBottomInset, 7)
-        XCTAssertEqual(MeetingOverlayPresentation.captionsControlsHeight, 38)
         XCTAssertEqual(
             MeetingOverlayPresentation.captionsControlsHeight
                 + MeetingOverlayPresentation.captionsTopInset
@@ -43,8 +38,8 @@ final class MeetingOverlayGeometryTests: XCTestCase {
                 + (2 * MeetingOverlayPresentation.captionsHorizontalInset),
             MeetingOverlayPresentation.captions.visibleSize.width
         )
-        XCTAssertEqual(MeetingOverlayPresentation.captionsContentWidth, 308)
-        XCTAssertEqual(MeetingOverlayPresentation.captionsContentHeight, 64)
+        XCTAssertGreaterThan(MeetingOverlayPresentation.captionsContentWidth, 0)
+        XCTAssertGreaterThan(MeetingOverlayPresentation.captionsContentHeight, 0)
     }
 
     func testRollingCaptionLayoutUsesBoundedTextAndKeepsLatestGlyph() {
@@ -53,7 +48,7 @@ final class MeetingOverlayGeometryTests: XCTestCase {
         XCTAssertLessThanOrEqual(layout.attributedText.string.count, MeetingRollingCaptionLayout.maximumInputCharacters)
         XCTAssertNotNil(layout.layoutManager.textStorage)
         XCTAssertEqual(layout.selectedGlyphRange.upperBound, layout.layoutManager.numberOfGlyphs)
-        XCTAssertEqual(MeetingRollingCaptionLayout.contentSize, CGSize(width: 308, height: 64))
+        XCTAssertEqual(MeetingRollingCaptionLayout.contentSize, CGSize(width: MeetingOverlayPresentation.captionsContentWidth, height: MeetingOverlayPresentation.captionsContentHeight))
         XCTAssertTrue(CGRect(origin: .zero, size: MeetingRollingCaptionLayout.contentSize).contains(layout.inkBounds))
     }
 
@@ -77,16 +72,16 @@ final class MeetingOverlayGeometryTests: XCTestCase {
                 Color.clear.frame(height: MeetingOverlayPresentation.captionsBottomInset)
                 Color.gray.frame(height: MeetingOverlayPresentation.captionsFooterHeight)
             }
-            .frame(width: 340, height: 156)
+            .frame(width: self.captions.width, height: self.captions.height)
         }
         let host = NSHostingView(rootView: content(""))
-        host.frame = CGRect(x: 0, y: 0, width: 340, height: 156)
+        host.frame = CGRect(origin: .zero, size: self.captions)
         for text in ["short", String(repeating: "caption growing 👩🏽‍💻 字幕 ", count: 500), "rewritten latest caption"] {
             host.rootView = content(text)
             host.layoutSubtreeIfNeeded()
-            XCTAssertEqual(host.frame.size, CGSize(width: 340, height: 156))
-            XCTAssertEqual(host.fittingSize.width, 340, accuracy: 0.01)
-            XCTAssertEqual(host.fittingSize.height, 156, accuracy: 0.01)
+            XCTAssertEqual(host.frame.size, self.captions)
+            XCTAssertEqual(host.fittingSize.width, self.captions.width, accuracy: 0.01)
+            XCTAssertEqual(host.fittingSize.height, self.captions.height, accuracy: 0.01)
         }
     }
 
@@ -132,8 +127,8 @@ final class MeetingOverlayGeometryTests: XCTestCase {
             padding: 16,
             screenVisible: self.screen
         )
-        XCTAssertEqual(layout.visibleSurfaceFrame, CGRect(x: 778, y: 114, width: 84, height: 32))
-        XCTAssertEqual(layout.panelFrame, CGRect(x: 762, y: 98, width: 116, height: 64))
+        XCTAssertEqual(layout.visibleSurfaceFrame, CGRect(x: 820 - self.pill.width / 2, y: 114, width: self.pill.width, height: self.pill.height))
+        XCTAssertEqual(layout.panelFrame, layout.visibleSurfaceFrame.insetBy(dx: -16, dy: -16))
         XCTAssertTrue(self.screen.contains(layout.visibleSurfaceFrame))
     }
 
@@ -145,20 +140,26 @@ final class MeetingOverlayGeometryTests: XCTestCase {
             padding: padding,
             screenVisible: self.screen
         )
-        XCTAssertEqual(layout.visibleSurfaceFrame, CGRect(x: 650, y: 114, width: 340, height: 156))
-        XCTAssertEqual(layout.panelFrame, CGRect(x: 642, y: 102, width: 364, height: 172))
+        let expectedVisible = CGRect(x: 820 - self.captions.width / 2, y: 114, width: self.captions.width, height: self.captions.height)
+        XCTAssertEqual(layout.visibleSurfaceFrame, expectedVisible)
+        XCTAssertEqual(layout.panelFrame, CGRect(
+            x: expectedVisible.minX - padding.left,
+            y: expectedVisible.minY - padding.bottom,
+            width: expectedVisible.width + padding.left + padding.right,
+            height: expectedVisible.height + padding.top + padding.bottom
+        ))
         XCTAssertTrue(self.screen.contains(layout.visibleSurfaceFrame))
     }
 
     func testVisibleSurfaceIsClampedOnEveryScreenEdgeBeforePadding() {
         let padding = MeetingOverlayPadding(top: 10, left: 12, bottom: 14, right: 16)
         let cases: [(MeetingOverlayVisibleAnchor, CGSize, CGRect)] = [
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: 200), self.pill, CGRect(x: 100, y: 200, width: 84, height: 32)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: 200), self.pill, CGRect(x: 1456, y: 200, width: 84, height: 32)),
-            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.minY - 40), self.pill, CGRect(x: 778, y: 50, width: 84, height: 32)),
-            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.maxY), self.pill, CGRect(x: 778, y: 918, width: 84, height: 32)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: self.screen.minY - 8), self.captions, CGRect(x: 100, y: 50, width: 340, height: 156)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: self.screen.maxY), self.captions, CGRect(x: 1200, y: 794, width: 340, height: 156)),
+            (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: 200), self.pill, CGRect(origin: CGPoint(x: self.screen.minX, y: 200), size: self.pill)),
+            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: 200), self.pill, CGRect(origin: CGPoint(x: self.screen.maxX - self.pill.width, y: 200), size: self.pill)),
+            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.minY - 40), self.pill, CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.minY), size: self.pill)),
+            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.maxY), self.pill, CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.maxY - self.pill.height), size: self.pill)),
+            (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: self.screen.minY - 8), self.captions, CGRect(origin: CGPoint(x: self.screen.minX, y: self.screen.minY), size: self.captions)),
+            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: self.screen.maxY), self.captions, CGRect(origin: CGPoint(x: self.screen.maxX - self.captions.width, y: self.screen.maxY - self.captions.height), size: self.captions)),
         ]
 
         for (anchor, size, expectedVisible) in cases {

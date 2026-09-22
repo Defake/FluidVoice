@@ -140,13 +140,13 @@ private struct MeetingLiveTranscriptCard: View {
                 Spacer()
                 FluidGlassControlGroup {
                     Button {
-                        MeetingFloatingCaptionsController.shared.show()
+                        MeetingRecordingPillController.shared.expand()
                     } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                        Image(systemName: "captions.bubble")
                     }
                     .meetingGlassAction(circular: true)
-                    .help("Open floating captions")
-                    .accessibilityLabel("Open floating captions")
+                    .help("Show the live captions overlay")
+                    .accessibilityLabel("Show live captions overlay")
                 }
             }
 

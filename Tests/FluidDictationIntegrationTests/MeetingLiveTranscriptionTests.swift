@@ -354,18 +354,18 @@ final class MeetingLiveProvisionalContainmentTests: XCTestCase {
 }
 
 @MainActor
-final class MeetingFloatingCaptionsControllerVisibilityTests: XCTestCase {
+final class MeetingOverlayVisibilityTests: XCTestCase {
     func testVisibleOnlyForRecordingAndRecordingDegraded() {
         let id = MeetingSessionID()
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .idle))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .preparing(id)))
-        XCTAssertTrue(MeetingFloatingCaptionsController.isVisible(for: .recording(id)))
-        XCTAssertTrue(MeetingFloatingCaptionsController.isVisible(for: .recordingDegraded(id)))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .stopping(id)))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .processing(id, .saving)))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .completed(id)))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .interrupted(id)))
-        XCTAssertFalse(MeetingFloatingCaptionsController.isVisible(for: .failed(id, MeetingSessionFailure(
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .idle))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .preparing(id)))
+        XCTAssertTrue(MeetingOverlayVisibility.isVisible(for: .recording(id)))
+        XCTAssertTrue(MeetingOverlayVisibility.isVisible(for: .recordingDegraded(id)))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .stopping(id)))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .processing(id, .saving)))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .completed(id)))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .interrupted(id)))
+        XCTAssertFalse(MeetingOverlayVisibility.isVisible(for: .failed(id, MeetingSessionFailure(
             id: UUID(), occurredAt: Date(), domain: .capture, code: "test", message: "test failure", recoverable: true
         ))))
     }

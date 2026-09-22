@@ -35,7 +35,7 @@ enum MeetingOverlayPresentation: Equatable, Sendable {
         case .pill:
             return CGSize(width: 84, height: 32)
         case .captions:
-            return CGSize(width: 340, height: 156)
+            return CGSize(width: 420, height: 220)
         }
     }
 
@@ -43,7 +43,7 @@ enum MeetingOverlayPresentation: Equatable, Sendable {
     /// moves as caption content grows or shrinks.
     static let captionsFooterHeight: CGFloat = 35
 
-    /// Always reserved, even when hover controls are hidden, so text never moves on hover.
+    /// Persistent header row: FluidVoice mark, product name, collapse and stop controls.
     static let captionsControlsHeight: CGFloat = 38
 
     /// Canonical caption text viewport height: the remainder of the captions canvas above the
@@ -51,7 +51,7 @@ enum MeetingOverlayPresentation: Equatable, Sendable {
     static let captionsViewportHeight: CGFloat = MeetingOverlayPresentation.captions.visibleSize.height
         - MeetingOverlayPresentation.captionsFooterHeight
 
-    /// Canonical horizontal inset on both sides of the caption text content, inside the 340pt canvas.
+    /// Canonical horizontal inset on both sides of the caption text content, inside the 420pt canvas.
     static let captionsHorizontalInset: CGFloat = 16
 
     /// Canonical inset above the caption text content, inside the caption viewport.

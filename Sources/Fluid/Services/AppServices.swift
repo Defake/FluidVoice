@@ -138,7 +138,7 @@ final class AppServices: ObservableObject {
         coordinator.$state
             .receive(on: DispatchQueue.main)
             .sink { state in
-                guard !MeetingFloatingCaptionsController.isVisible(for: state) else { return }
+                guard !MeetingOverlayVisibility.isVisible(for: state) else { return }
                 MeetingStillRecordingNudgeController.shared.hide()
             }
             .store(in: &self.cancellables)

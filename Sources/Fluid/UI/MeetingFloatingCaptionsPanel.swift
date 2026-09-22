@@ -70,6 +70,18 @@ enum MeetingFloatingPanelFactory {
     }
 }
 
+/// The live overlay (pill or captions) is shown only while audio is actually being captured.
+enum MeetingOverlayVisibility {
+    static func isVisible(for state: MeetingCoordinatorState) -> Bool {
+        switch state {
+        case .recording, .recordingDegraded:
+            return true
+        case .idle, .preparing, .stopping, .processing, .completed, .interrupted, .failed:
+            return false
+        }
+    }
+}
+
 @MainActor
 final class MeetingFloatingCaptionsController: ObservableObject {
     static let shared = MeetingFloatingCaptionsController()
@@ -85,21 +97,12 @@ final class MeetingFloatingCaptionsController: ObservableObject {
 
     private init() {}
 
-    static func isVisible(for state: MeetingCoordinatorState) -> Bool {
-        switch state {
-        case .recording, .recordingDegraded:
-            return true
-        case .idle, .preparing, .stopping, .processing, .completed, .interrupted, .failed:
-            return false
-        }
-    }
-
-    func show() {
+    /// Opens the captions window, growing out of `sourceFrame` (the pill) when motion is allowed.
+    func show(from sourceFrame: NSRect?) {
         let coordinator = AppServices.shared.meetingSessionCoordinator
         let panel = self.panelOrCreate(coordinator: coordinator)
         self.subscribeIfNeeded(coordinator: coordinator)
 
-        let sourceFrame = MeetingRecordingPillController.shared.resolveCaptionsSourceFrame()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         if let sourceFrame, !panel.isVisible, !reduceMotion {
             let targetFrame = panel.frame
@@ -113,7 +116,6 @@ final class MeetingFloatingCaptionsController: ObservableObject {
         } else {
             panel.orderFrontRegardless()
         }
-        MeetingRecordingPillController.shared.collapse()
     }
 
     func hide() {
@@ -148,7 +150,7 @@ final class MeetingFloatingCaptionsController: ObservableObject {
         self.stateSubscription = coordinator.$state
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                guard Self.isVisible(for: state) else {
+                guard MeetingOverlayVisibility.isVisible(for: state) else {
                     self?.hide()
                     return
                 }
@@ -197,34 +199,29 @@ final class MeetingFloatingCaptionsController: ObservableObject {
     }
 }
 
+/// The expanded live overlay: scrollable, resizable, with a persistent header that says who is
+/// recording and offers Stop and Close. Close returns to the pill.
 struct MeetingFloatingCaptionsContent: View {
     @ObservedObject var coordinator: MeetingSessionCoordinator
 
     @Environment(\.theme) private var theme
+    @State private var isStopping = false
+
+    private static let fluidVoiceIcon: NSImage = NSImage(named: "AppIcon") ?? NSApplication.shared.applicationIconImage
 
     private var rows: [MeetingLiveBubbleComposer.Row] {
         MeetingLiveBubbleComposer.rows(for: self.coordinator.liveTranscript)
     }
 
+    private var isRecordingActive: Bool {
+        MeetingOverlayVisibility.isVisible(for: self.coordinator.state)
+    }
+
     var body: some View {
         let rows = self.rows
 
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Live captions")
-                    .font(self.theme.typography.captionStrong)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-                Spacer()
-                Button {
-                    MeetingFloatingCaptionsController.shared.hide()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.fluidSystem(size: 11, weight: .semibold))
-                        .foregroundStyle(self.theme.palette.secondaryText)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close floating captions")
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            self.header
 
             if rows.isEmpty {
                 Text("Listening…")
@@ -246,5 +243,58 @@ struct MeetingFloatingCaptionsContent: View {
                 .stroke(self.theme.palette.separator.opacity(0.55), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 6)
+        .onChange(of: self.isRecordingActive) { _, active in
+            if active { self.isStopping = false }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("FluidMeet live captions")
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: Self.fluidVoiceIcon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .accessibilityHidden(true)
+            Text("FluidMeet")
+                .font(self.theme.typography.captionStrong)
+                .foregroundStyle(self.theme.palette.primaryText)
+            Spacer(minLength: 8)
+            Button {
+                self.stopRecording()
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+                    .font(.fluidSystem(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(Color(red: 0.93, green: 0.23, blue: 0.23), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(self.isStopping || !self.isRecordingActive)
+            .help("Stop recording and transcribe")
+            .accessibilityLabel("Stop meeting recording and transcribe")
+            Button {
+                MeetingRecordingPillController.shared.collapse()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.fluidSystem(size: 10, weight: .bold))
+                    .foregroundStyle(self.theme.palette.secondaryText)
+                    .frame(width: 24, height: 24)
+                    .background(self.theme.palette.primaryText.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Back to the small pill")
+            .accessibilityLabel("Close captions")
+        }
+    }
+
+    private func stopRecording() {
+        guard !self.isStopping, self.isRecordingActive else { return }
+        self.isStopping = true
+        let coordinator = self.coordinator
+        Task { _ = try? await coordinator.stopAndTranscribe() }
     }
 }

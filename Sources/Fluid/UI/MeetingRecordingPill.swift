@@ -39,32 +39,24 @@ final class MeetingRecordingPillController: ObservableObject {
             }
     }
 
-    func toggleExpanded() {
-        self.reducer.apply(.toggleRequested)
-        guard let presentation = self.reducer.presentation else { return }
-        self.setPresentation(presentation)
-    }
-
-    /// Collapses back to the smallest pill — also called when the full captions window opens.
+    /// Collapses back to the smallest pill.
     func collapse() {
         guard self.reducer.presentation == .captions else { return }
         self.reducer.apply(.toggleRequested)
         self.setPresentation(self.reducer.presentation ?? .pill)
     }
 
+    /// Grows the pill into the captions box; a no-op when already expanded or not recording.
+    func expand() {
+        guard self.reducer.presentation == .pill else { return }
+        self.reducer.apply(.toggleRequested)
+        self.setPresentation(self.reducer.presentation ?? .captions)
+    }
+
     /// Visible surface of the current overlay, excluding transparent shadow padding.
     var currentOverlayFrame: NSRect? {
         guard let panel, panel.isVisible else { return nil }
         return Self.visibleSurfaceFrame(from: panel.frame)
-    }
-
-    /// Source frame for the full captions window: a completed Captions surface only.
-    func resolveCaptionsSourceFrame() -> NSRect? {
-        guard self.presentation == .captions, self.panel?.isVisible == true else { return nil }
-        if self.inFlightTransitionGeneration != nil {
-            self.applyFrame(for: .captions, animated: false)
-        }
-        return self.currentOverlayFrame
     }
 
     private func handleCoordinatorState(_ state: MeetingCoordinatorState, coordinator: MeetingSessionCoordinator) {
@@ -84,12 +76,21 @@ final class MeetingRecordingPillController: ObservableObject {
         }
     }
 
+    /// `.pill` is the small capsule; `.captions` is the separate scrollable, resizable window.
+    /// Exactly one of them is on screen while recording.
     private func show(coordinator: MeetingSessionCoordinator, resetFrameToPresentation: Bool) {
         let panel = self.panelOrCreate(coordinator: coordinator)
         if resetFrameToPresentation {
-            self.applyFrame(for: self.presentation, animated: false)
+            self.applyFrame(for: .pill, animated: false)
         }
-        panel.orderFrontRegardless()
+        switch self.presentation {
+        case .pill:
+            MeetingFloatingCaptionsController.shared.hide()
+            panel.orderFrontRegardless()
+        case .captions:
+            panel.orderOut(nil)
+            MeetingFloatingCaptionsController.shared.show(from: nil)
+        }
     }
 
     private func hideOverlay() {
@@ -97,15 +98,25 @@ final class MeetingRecordingPillController: ObservableObject {
         self.reducer.apply(.recordingStopped)
         self.presentation = .pill
         self.panel?.orderOut(nil)
+        MeetingFloatingCaptionsController.shared.hide()
     }
 
     private func setPresentation(_ presentation: MeetingOverlayPresentation) {
-        guard self.presentation != presentation, self.panel != nil else {
+        guard self.presentation != presentation, let panel else {
             self.presentation = presentation
             return
         }
         self.presentation = presentation
-        self.applyFrame(for: presentation, animated: true)
+        switch presentation {
+        case .captions:
+            let source = self.currentOverlayFrame
+            panel.orderOut(nil)
+            MeetingFloatingCaptionsController.shared.show(from: source)
+        case .pill:
+            MeetingFloatingCaptionsController.shared.hide()
+            self.applyFrame(for: .pill, animated: false)
+            panel.orderFrontRegardless()
+        }
     }
 
     private func applyFrame(for presentation: MeetingOverlayPresentation, animated: Bool) {
@@ -314,40 +325,24 @@ struct MeetingRecordingPillContent: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isStopping = false
-    @State private var meetingAppIcon: NSImage? = NSApplication.shared.applicationIconImage
 
     private var microphoneLevel: Float {
         self.coordinator.trackHealth[.microphone]?.level ?? 0
     }
 
     private var isRecordingActive: Bool {
-        MeetingFloatingCaptionsController.isVisible(for: self.coordinator.state)
+        MeetingOverlayVisibility.isVisible(for: self.coordinator.state)
     }
+
 
     @ObservedObject private var pill = MeetingRecordingPillController.shared
 
     var body: some View {
-        Group {
-            switch self.pill.presentation {
-            case .captions:
-                self.subtitleStrip
-            case .pill:
-                self.compactPill
-            }
-        }
+        self.compactPill
         // The panel and its view persist across meetings; re-arm the stop button per recording.
         .onChange(of: self.isRecordingActive) { _, active in
             if active { self.isStopping = false }
         }
-        .onChange(of: self.coordinator.activeSession?.capturedApplication) { _, application in
-            self.meetingAppIcon = Self.resolveMeetingAppIcon(for: application)
-        }
-        .onAppear {
-            self.meetingAppIcon = Self.resolveMeetingAppIcon(
-                for: self.coordinator.activeSession?.capturedApplication
-            )
-        }
-        .animation(nil, value: self.pill.presentation)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .padding(.top, MeetingRecordingPillController.overlayPadding.top)
         .padding(.leading, MeetingRecordingPillController.overlayPadding.left)
@@ -368,14 +363,6 @@ struct MeetingRecordingPillContent: View {
         )
     }
 
-    private var captionsSurface: some View {
-        FluidOverlaySurface(
-            cornerRadius: 16,
-            border: .linear(topOpacity: 0.15, bottomOpacity: 0.08, lineWidth: 1),
-            shadow: .init(opacity: 0.35, radius: 16, y: 6)
-        )
-    }
-
     private var compactPill: some View {
         HStack(spacing: 7) {
             MeetingRecordingLevelBars(level: self.microphoneLevel, animated: !self.reduceMotion)
@@ -390,199 +377,14 @@ struct MeetingRecordingPillContent: View {
             height: MeetingOverlayPresentation.pill.visibleSize.height
         )
         .contentShape(Capsule())
-        // The whole capsule expands; only the stop button opts out (inner Button wins its hits).
-        .onTapGesture { self.pill.toggleExpanded() }
+        // The whole capsule opens the captions window; only the stop button opts out.
+        .onTapGesture { self.pill.expand() }
         .background(self.compactSurface)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Show live captions")
         .accessibilityAction(named: "Show Captions") {
-            self.pill.toggleExpanded()
+            self.pill.expand()
         }
-    }
-
-    @State private var isHoveringStrip = false
-
-    private var subtitleStrip: some View {
-        let rows = MeetingLiveBubbleComposer.rows(for: self.coordinator.liveTranscript)
-        return VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: MeetingOverlayPresentation.captionsControlsHeight)
-
-                Color.clear
-                    .frame(height: MeetingOverlayPresentation.captionsTopInset)
-
-                Group {
-                    if rows.isEmpty {
-                        Text(self.emptyCaptionStatusText)
-                            .font(.fluidSystem(size: 13, design: .monospaced))
-                            // The overlay surface is intentionally always dark, independent of the
-                            // app theme. System label colors can resolve dark in light mode and made
-                            // this text indistinguishable from the black surface.
-                            .foregroundStyle(Color.white.opacity(0.62))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                            .accessibilityHidden(true)
-                    } else {
-                        MeetingRollingCaptionView(
-                            text: self.rollingSubtitle(rows: rows),
-                            foregroundColor: NSColor.white.withAlphaComponent(0.94)
-                        )
-                        .frame(
-                            width: MeetingOverlayPresentation.captionsContentWidth,
-                            height: MeetingOverlayPresentation.captionsContentHeight,
-                            alignment: .bottomLeading
-                        )
-                        .accessibilityHidden(true)
-                    }
-                }
-                .frame(
-                    width: MeetingOverlayPresentation.captionsContentWidth,
-                    height: MeetingOverlayPresentation.captionsContentHeight
-                )
-                // Clip strictly to the content rectangle; the TextKit view itself also draws only
-                // the selected suffix inside this frame.
-                .clipped()
-
-                Color.clear
-                    .frame(height: MeetingOverlayPresentation.captionsBottomInset)
-            }
-            .frame(
-                width: MeetingOverlayPresentation.captions.visibleSize.width,
-                height: MeetingOverlayPresentation.captionsViewportHeight
-            )
-            .clipped()
-
-            self.meetingStatusFooter
-                .frame(
-                    width: MeetingOverlayPresentation.captions.visibleSize.width,
-                    height: MeetingOverlayPresentation.captionsFooterHeight
-                )
-        }
-        .frame(
-            width: MeetingOverlayPresentation.captions.visibleSize.width,
-            height: MeetingOverlayPresentation.captions.visibleSize.height
-        )
-        .background(self.captionsSurface)
-        // Hover controls stay inside their permanently reserved top strip, never over text.
-        .overlay(alignment: .topTrailing) {
-            if self.isHoveringStrip {
-                HStack(spacing: 8) {
-                    MeetingRecordingLevelBars(level: self.microphoneLevel, animated: !self.reduceMotion)
-                        .frame(width: 18, height: 10)
-                    Button {
-                        MeetingFloatingCaptionsController.shared.show()
-                    } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.fluidSystem(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.68))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open captions window")
-                    Button {
-                        self.pill.collapse()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.fluidSystem(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.68))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Collapse captions")
-                    self.stopButton
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Color.black.opacity(0.82)))
-                .padding(6)
-                .transition(.opacity)
-            }
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) { self.isHoveringStrip = hovering }
-        }
-        .accessibilityAction(named: "Hide Captions") {
-            self.pill.collapse()
-        }
-        .accessibilityAction(named: "Open Captions Window") {
-            MeetingFloatingCaptionsController.shared.show()
-        }
-    }
-
-    private var emptyCaptionStatusText: String {
-        switch self.coordinator.liveTranscript.availability {
-        case .available:
-            return "Listening…"
-        case .unavailable(let reason), .degraded(let reason):
-            return reason
-        }
-    }
-
-    /// Mirrors the dictation overlay's persistent status row without coupling meeting state to the
-    /// dictation overlay. The ZStack keeps the waveform geometrically centered even when the app
-    /// icon and label have different widths.
-    private var meetingStatusFooter: some View {
-        ZStack {
-            MeetingCaptionWaveform(level: self.microphoneLevel, animated: !self.reduceMotion)
-                .frame(width: 90, height: 20)
-
-            HStack {
-                if let meetingAppIcon = self.meetingAppIcon {
-                    Image(nsImage: meetingAppIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                } else {
-                    Circle()
-                        .fill(self.theme.palette.accent.opacity(0.9))
-                        .frame(width: 9, height: 9)
-                        .frame(width: 18, height: 18)
-                }
-
-                Spacer()
-
-                Text("Meeting")
-                    .font(.fluidSystem(size: 10, weight: .semibold))
-                    .foregroundStyle(self.theme.palette.accent)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-        }
-        .frame(height: 28)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 7)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Meeting microphone activity")
-    }
-
-    private static func resolveMeetingAppIcon(for application: MeetingApplicationIdentity?) -> NSImage? {
-        if let processID = application?.processID,
-           let icon = NSRunningApplication(processIdentifier: processID)?.icon
-        {
-            return icon
-        }
-        if let bundleIdentifier = application?.bundleIdentifier,
-           let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
-        {
-            return NSWorkspace.shared.icon(forFile: applicationURL.path)
-        }
-        return NSApplication.shared.applicationIconImage
-    }
-
-    /// One rolling stream across the most recent rows. TextKit selects complete wrapped lines;
-    /// this input bound prevents an ever-growing live transcript from retaining excess storage.
-    private func rollingSubtitle(rows: [MeetingLiveBubbleComposer.Row]) -> String {
-        var words: [String] = []
-        var previousSpeaker: MeetingLiveSpeaker?
-        for row in rows.suffix(8) {
-            if previousSpeaker != nil, row.speaker != previousSpeaker {
-                words.append("—")
-            }
-            previousSpeaker = row.speaker
-            words.append(row.text)
-        }
-        return String(words.joined(separator: " ").suffix(MeetingRollingCaptionLayout.maximumInputCharacters))
     }
 
     private func stopRecording() {
@@ -600,10 +402,9 @@ struct MeetingRecordingPillContent: View {
         } label: {
             Image(systemName: "stop.fill")
                 .font(.fluidSystem(size: 8, weight: .bold))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .frame(width: 18, height: 18)
-                .background(Color.white.opacity(0.12), in: Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                .foregroundStyle(Color.white)
+                .frame(width: 20, height: 20)
+                .background(Color(red: 0.93, green: 0.23, blue: 0.23), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(self.isStopping || !self.isRecordingActive)
@@ -629,32 +430,6 @@ private struct MeetingRecordingLevelBars: View {
             color: self.theme.palette.accent,
             glowColor: self.theme.palette.accent,
             glowRadius: 0
-        )
-        .frame(maxHeight: .infinity, alignment: .center)
-        .animation(self.animated ? .easeOut(duration: 0.12) : nil, value: self.level)
-        .accessibilityHidden(true)
-    }
-}
-
-/// Wider center-weighted meter for the captions footer, matching the visual rhythm of the
-/// dictation overlay while remaining driven by the meeting microphone track.
-private struct MeetingCaptionWaveform: View {
-    let level: Float
-    let animated: Bool
-
-    @Environment(\.theme) private var theme
-
-    private static let weights: [CGFloat] = [0.30, 0.46, 0.66, 0.86, 1.0, 0.86, 0.66, 0.46, 0.30]
-
-    var body: some View {
-        FluidOverlayLevelBars(
-            heights: Self.weights.map { max(4, CGFloat(self.level) * 19 * $0) },
-            width: 3,
-            spacing: 4,
-            cornerRadius: 1.5,
-            color: self.theme.palette.accent,
-            glowColor: self.theme.palette.accent.opacity(0.42),
-            glowRadius: 2
         )
         .frame(maxHeight: .infinity, alignment: .center)
         .animation(self.animated ? .easeOut(duration: 0.12) : nil, value: self.level)
