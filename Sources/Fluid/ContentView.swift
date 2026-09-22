@@ -3211,7 +3211,7 @@ struct ContentView: View {
                 windowTitle: appInfo.windowTitle,
                 wasAIProcessed: postProcessingModel != nil && aiFallbackReason == nil,
                 processingModel: postProcessingModel,
-                transcriptionDurationMilliseconds: transcriptionDurationMilliseconds,
+                parakeetProcessingDurationMilliseconds: transcriptionDurationMilliseconds,
                 aiProcessingDurationMilliseconds: aiProcessingDurationMilliseconds,
                 aiTokensPerSecond: aiTokensPerSecond,
                 aiProcessingError: aiFallbackReason

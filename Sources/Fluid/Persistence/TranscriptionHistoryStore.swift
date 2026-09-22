@@ -31,6 +31,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
     let wasAIProcessed: Bool
     let processingModel: String?
     let transcriptionDurationMilliseconds: Int?
+    let parakeetProcessingDurationMilliseconds: Int?
     let aiProcessingDurationMilliseconds: Int?
     let aiTokensPerSecond: Double?
     /// Non-nil when AI post-processing was configured but failed and we fell
@@ -52,6 +53,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         wasAIProcessed: Bool,
         processingModel: String? = nil,
         transcriptionDurationMilliseconds: Int? = nil,
+        parakeetProcessingDurationMilliseconds: Int? = nil,
         aiProcessingDurationMilliseconds: Int? = nil,
         aiTokensPerSecond: Double? = nil,
         aiProcessingError: String? = nil,
@@ -68,6 +70,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         self.wasAIProcessed = wasAIProcessed
         self.processingModel = processingModel
         self.transcriptionDurationMilliseconds = transcriptionDurationMilliseconds
+        self.parakeetProcessingDurationMilliseconds = parakeetProcessingDurationMilliseconds
         self.aiProcessingDurationMilliseconds = aiProcessingDurationMilliseconds
         self.aiTokensPerSecond = aiTokensPerSecond
         self.aiProcessingError = aiProcessingError
@@ -86,6 +89,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         wasAIProcessed: Bool,
         processingModel: String?,
         transcriptionDurationMilliseconds: Int?,
+        parakeetProcessingDurationMilliseconds: Int?,
         aiProcessingDurationMilliseconds: Int?,
         aiTokensPerSecond: Double?,
         aiProcessingError: String?,
@@ -102,6 +106,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
         self.wasAIProcessed = wasAIProcessed
         self.processingModel = processingModel
         self.transcriptionDurationMilliseconds = transcriptionDurationMilliseconds
+        self.parakeetProcessingDurationMilliseconds = parakeetProcessingDurationMilliseconds
         self.aiProcessingDurationMilliseconds = aiProcessingDurationMilliseconds
         self.aiTokensPerSecond = aiTokensPerSecond
         self.aiProcessingError = aiProcessingError
@@ -124,6 +129,10 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
             Int.self,
             forKey: .transcriptionDurationMilliseconds
         )
+        self.parakeetProcessingDurationMilliseconds = try container.decodeIfPresent(
+            Int.self,
+            forKey: .parakeetProcessingDurationMilliseconds
+        )
         self.aiProcessingDurationMilliseconds = try container.decodeIfPresent(
             Int.self,
             forKey: .aiProcessingDurationMilliseconds
@@ -137,7 +146,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, timestamp, rawText, processedText, appName, windowTitle
         case characterCount, wasAIProcessed, processingModel
-        case transcriptionDurationMilliseconds, aiProcessingDurationMilliseconds
+        case transcriptionDurationMilliseconds, parakeetProcessingDurationMilliseconds, aiProcessingDurationMilliseconds
         case aiTokensPerSecond
         case aiProcessingError, audio, searchRevision
     }
@@ -203,6 +212,7 @@ struct TranscriptionHistoryEntry: Codable, Identifiable, Equatable, Sendable {
             wasAIProcessed: self.wasAIProcessed,
             processingModel: self.processingModel,
             transcriptionDurationMilliseconds: self.transcriptionDurationMilliseconds,
+            parakeetProcessingDurationMilliseconds: self.parakeetProcessingDurationMilliseconds,
             aiProcessingDurationMilliseconds: self.aiProcessingDurationMilliseconds,
             aiTokensPerSecond: self.aiTokensPerSecond,
             aiProcessingError: self.aiProcessingError,
@@ -305,6 +315,7 @@ final class TranscriptionHistoryStore: ObservableObject {
         wasAIProcessed: Bool? = nil,
         processingModel: String? = nil,
         transcriptionDurationMilliseconds: Int? = nil,
+        parakeetProcessingDurationMilliseconds: Int? = nil,
         aiProcessingDurationMilliseconds: Int? = nil,
         aiTokensPerSecond: Double? = nil,
         aiProcessingError: String? = nil,
@@ -323,6 +334,7 @@ final class TranscriptionHistoryStore: ObservableObject {
             wasAIProcessed: wasAIProcessed ?? (processingModel != nil && aiProcessingError == nil),
             processingModel: processingModel,
             transcriptionDurationMilliseconds: transcriptionDurationMilliseconds,
+            parakeetProcessingDurationMilliseconds: parakeetProcessingDurationMilliseconds,
             aiProcessingDurationMilliseconds: aiProcessingDurationMilliseconds,
             aiTokensPerSecond: aiTokensPerSecond,
             aiProcessingError: aiProcessingError,

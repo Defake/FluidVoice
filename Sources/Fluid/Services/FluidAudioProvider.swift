@@ -770,10 +770,14 @@ final class FluidAudioProvider: TranscriptionProvider {
         return ASRTranscriptionResult(
             text: text,
             confidence: result.confidence,
+            parakeetProcessingDurationMilliseconds: Self.parakeetProcessingMilliseconds(for: result),
             dictionaryLearningAlignment: alignment
         )
     }
 
+    private static func parakeetProcessingMilliseconds(for result: ASRResult) -> Int {
+        max(0, Int((result.processingTime * 1000).rounded()))
+    }
 
     private static func milliseconds(from start: TimeInterval, to end: TimeInterval) -> String {
         String(format: "%.1f", (end - start) * 1000)
@@ -954,6 +958,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                     ASRTranscriptionResult(
                         text: result.text,
                         confidence: result.confidence,
+                        parakeetProcessingDurationMilliseconds: Self.parakeetProcessingMilliseconds(for: result),
                         dictionaryLearningAlignment: self.learningAlignment(for: result)
                     ),
                     result.tokenTimings,
@@ -1002,6 +1007,7 @@ final class FluidAudioProvider: TranscriptionProvider {
                 ASRTranscriptionResult(
                     text: corrected,
                     confidence: result.confidence,
+                    parakeetProcessingDurationMilliseconds: Self.parakeetProcessingMilliseconds(for: result),
                     dictionaryLearningAlignment: alignment
                 ),
                 result.tokenTimings,

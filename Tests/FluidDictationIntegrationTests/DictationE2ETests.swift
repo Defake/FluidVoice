@@ -113,6 +113,7 @@ final class DictationE2ETests: XCTestCase {
             windowTitle: "Draft",
             wasAIProcessed: true,
             transcriptionDurationMilliseconds: 272,
+            parakeetProcessingDurationMilliseconds: 47,
             aiProcessingDurationMilliseconds: 181,
             aiTokensPerSecond: 987.7
         )
@@ -123,6 +124,7 @@ final class DictationE2ETests: XCTestCase {
         )
 
         XCTAssertEqual(decoded.transcriptionDurationMilliseconds, 272)
+        XCTAssertEqual(decoded.parakeetProcessingDurationMilliseconds, 47)
         XCTAssertEqual(decoded.aiProcessingDurationMilliseconds, 181)
         XCTAssertEqual(decoded.aiTokensPerSecond, 987.7)
     }
@@ -148,8 +150,20 @@ final class DictationE2ETests: XCTestCase {
         )
 
         XCTAssertNil(decoded.transcriptionDurationMilliseconds)
+        XCTAssertNil(decoded.parakeetProcessingDurationMilliseconds)
         XCTAssertNil(decoded.aiProcessingDurationMilliseconds)
         XCTAssertNil(decoded.aiTokensPerSecond)
+    }
+
+    func testASRResultKeepsParakeetProcessingTimeSeparate() {
+        let parakeet = ASRTranscriptionResult(
+            text: "hello",
+            parakeetProcessingDurationMilliseconds: 47
+        )
+        let anotherProvider = ASRTranscriptionResult(text: "hello")
+
+        XCTAssertEqual(parakeet.parakeetProcessingDurationMilliseconds, 47)
+        XCTAssertNil(anotherProvider.parakeetProcessingDurationMilliseconds)
     }
 
     func testTranscriptionStartSound_noneOptionHasNoFile() {

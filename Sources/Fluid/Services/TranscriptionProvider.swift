@@ -109,17 +109,22 @@ final nonisolated class ModelPreparationProgressRelay: @unchecked Sendable {
 struct ASRTranscriptionResult {
     let text: String
     let confidence: Float
+    /// FluidAudio's own Parakeet processing time. This excludes FluidVoice
+    /// executor queueing, provider setup, and post-transcription work.
+    let parakeetProcessingDurationMilliseconds: Int?
     let pronunciationEnrollment: PronunciationEnrollmentCapture?
     let dictionaryLearningAlignment: DictionaryLearningAlignment?
 
     init(
         text: String,
         confidence: Float = 1.0,
+        parakeetProcessingDurationMilliseconds: Int? = nil,
         pronunciationEnrollment: PronunciationEnrollmentCapture? = nil,
         dictionaryLearningAlignment: DictionaryLearningAlignment? = nil
     ) {
         self.text = text
         self.confidence = confidence
+        self.parakeetProcessingDurationMilliseconds = parakeetProcessingDurationMilliseconds
         self.pronunciationEnrollment = pronunciationEnrollment
         self.dictionaryLearningAlignment = dictionaryLearningAlignment
     }

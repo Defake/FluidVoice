@@ -18,6 +18,7 @@ struct HistoryAPIController: LocalAPIRouteHandler {
         let characterCount: Int
         let wasAIProcessed: Bool
         let transcriptionDurationMilliseconds: Int?
+        let parakeetProcessingDurationMilliseconds: Int?
         let aiProcessingDurationMilliseconds: Int?
         let aiTokensPerSecond: Double?
         let aiProcessingError: String?
@@ -49,6 +50,7 @@ struct HistoryAPIController: LocalAPIRouteHandler {
                     characterCount: entry.characterCount,
                     wasAIProcessed: entry.wasAIProcessed,
                     transcriptionDurationMilliseconds: entry.transcriptionDurationMilliseconds,
+                    parakeetProcessingDurationMilliseconds: entry.parakeetProcessingDurationMilliseconds,
                     aiProcessingDurationMilliseconds: entry.aiProcessingDurationMilliseconds,
                     aiTokensPerSecond: entry.aiTokensPerSecond,
                     aiProcessingError: entry.aiProcessingError

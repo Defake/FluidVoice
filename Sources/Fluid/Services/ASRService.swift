@@ -3594,7 +3594,7 @@ final class ASRService: ObservableObject {
             let finalElapsedMs = self.elapsedMilliseconds(since: finalStartedAt)
             traceStop("final_asr_end")
             if !useDictionaryTrainingPath {
-                self.lastFinalTranscriptionDurationMs = finalElapsedMs
+                self.lastFinalTranscriptionDurationMs = result.parakeetProcessingDurationMilliseconds
             }
             let finalAudioSeconds = Double(pcm.count) / 16_000.0
             let finalRTF = finalAudioSeconds > 0 ? (Double(finalElapsedMs) / 1000.0) / finalAudioSeconds : 0
