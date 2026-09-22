@@ -41,6 +41,13 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     private var discardCurrentCapture = false
     private var isCancelled = false
     private var stopTask: Task<Void, Never>?
+    private var trainingGeneration: String?
+    private var activeCaptureToken: Int?
+    private var pronunciationSettingsObserver: AnyCancellable?
+
+    private var trainingRunIsCurrent: Bool {
+        DictionaryMatcherExperiment.sharedFeaturesEnabled && self.trainingGeneration == DictionaryMatcherExperiment.generation
+    }
 
     init(
         candidate: AutomaticDictionaryCorrectionCandidate,
@@ -59,6 +66,14 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             from: savedVariants + [candidate.heardText],
             intendedReplacement: replacement
         )
+        // Observe the generation too: SwiftUI may coalesce a rapid OFF then ON.
+        self.pronunciationSettingsObserver = NotificationCenter.default.publisher(for: DictionaryMatcherExperiment.didChangeNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.trainingGeneration != nil, !self.trainingRunIsCurrent else { return }
+                    self.disablePronunciationTraining()
+                }
+            }
     }
 
     var intendedText: String {
@@ -80,10 +95,11 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     var canSave: Bool {
-        self.isReady && !self.variants.isEmpty && self.capturePhase == .idle
+        DictionaryMatcherExperiment.sharedFeaturesEnabled && self.isReady && !self.variants.isEmpty && self.capturePhase == .idle
     }
 
     var canUseRecordButton: Bool {
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled else { return false }
         if self.isAutomaticCaptureEnabled {
             return true
         }
@@ -120,12 +136,16 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     func beginTraining() {
-        guard self.screen == .choice else { return }
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled, !self.isCancelled, self.screen == .choice else { return }
         self.onInteraction?()
         self.screen = .training
         self.statusMessage = ""
         self.hasError = false
-        Task { await DictionaryTrainingEndpointMonitor.shared.prepare() }
+        let generation = DictionaryMatcherExperiment.generation
+        Task {
+            guard DictionaryMatcherExperiment.sharedFeaturesEnabled, generation == DictionaryMatcherExperiment.generation, !self.isCancelled else { return }
+            await DictionaryTrainingEndpointMonitor.shared.prepare()
+        }
     }
 
     func returnToChoice() {
@@ -136,6 +156,10 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     func toggleCapture() {
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled else {
+            self.disablePronunciationTraining()
+            return
+        }
         self.onInteraction?()
         if self.isAutomaticCaptureEnabled {
             self.isAutomaticCaptureEnabled = false
@@ -149,6 +173,7 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             if self.sampleCount >= CustomDictionaryTrainingMerge.maxSamples, !self.isReady {
                 self.resetVerificationAttempts()
             }
+            self.trainingGeneration = DictionaryMatcherExperiment.generation
             self.isAutomaticCaptureEnabled = true
             Task { await self.startCapture() }
         }
@@ -160,13 +185,15 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     func confirmWrongMatch() {
-        guard !self.isCancelled, self.capturePhase == .idle,
+        guard DictionaryMatcherExperiment.collectNegatives, !self.isCancelled, self.capturePhase == .idle,
               let correction = self.candidate.negativeCorrection else { return }
         self.onInteraction?()
         self.capturePhase = .processing
         self.statusMessage = "Saving wrong match…"
+        let pronunciationGeneration = DictionaryMatcherExperiment.generation
         Task { @MainActor in
             defer { self.capturePhase = .idle }
+            guard DictionaryMatcherExperiment.collectNegatives, pronunciationGeneration == DictionaryMatcherExperiment.generation else { return }
             let store = DictionaryNegativeExampleStore.shared
             let revision = await store.revision()
             let evidence = correction.evidence
@@ -175,15 +202,18 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             }
             do {
                 let profiles = await PronunciationDictionaryStore.shared.profiles(modelKey: evidence.modelKey)
-                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives, entryIsCurrent(),
+                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives,
+                      pronunciationGeneration == DictionaryMatcherExperiment.generation, entryIsCurrent(),
                       correction.expiresAt > Date(), profiles.contains(where: {
-                          $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) == evidence.profileKey
+                          $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) + ":shared-features-v1" == evidence.profileKey
                       }) else { throw PronunciationDictionaryStoreError.staleEvidence }
                 try await store.save(correction, expectedRevision: revision)
                 let latest = await PronunciationDictionaryStore.shared.profiles(modelKey: evidence.modelKey)
-                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives, entryIsCurrent(),
-                      await store.revision() == revision,
-                      latest.contains(where: { $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) == evidence.profileKey })
+                let latestRevision = await store.revision()
+                guard !self.isCancelled, DictionaryMatcherExperiment.collectNegatives,
+                      pronunciationGeneration == DictionaryMatcherExperiment.generation, entryIsCurrent(),
+                      latestRevision == revision,
+                      latest.contains(where: { $0.dictionaryEntryID == evidence.entryID && DictionaryNegativeEvidenceResolver.profileKey($0) + ":shared-features-v1" == evidence.profileKey })
                 else {
                     try await store.remove(id: evidence.id)
                     throw PronunciationDictionaryStoreError.staleEvidence
@@ -202,10 +232,16 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
         self.isAutomaticCaptureEnabled = false
         self.capturePhase = .processing
         let variants = self.variants
+        let pronunciationGeneration = DictionaryMatcherExperiment.generation
         Task { @MainActor in
+            guard DictionaryMatcherExperiment.sharedFeaturesEnabled, pronunciationGeneration == DictionaryMatcherExperiment.generation else {
+                self.capturePhase = .idle
+                return
+            }
             let filtered = await VoiceTrainingAliasFilter.filter(variants)
             self.capturePhase = .idle
-            guard !self.isCancelled else { return }
+            guard DictionaryMatcherExperiment.sharedFeaturesEnabled,
+                  pronunciationGeneration == DictionaryMatcherExperiment.generation, !self.isCancelled else { return }
             guard !filtered.accepted.isEmpty else {
                 self.hasError = true
                 self.statusMessage = filtered.lookupAvailable
@@ -226,12 +262,14 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
 
     func cancel() {
         self.isCancelled = true
+        self.trainingGeneration = nil
         self.discardCurrentCapture = true
         self.isAutomaticCaptureEnabled = false
         DictionaryTrainingEndpointMonitor.shared.stop()
         switch self.capturePhase {
         case .starting:
             self.stopRequestedDuringStart = true
+            Task { await self.asr.cancelPendingPronunciationTrainingStart() }
         case .recording:
             self.stopTask?.cancel()
             self.stopTask = Task { await self.finishCapture() }
@@ -240,8 +278,23 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
         }
     }
 
+    func disablePronunciationTraining() {
+        self.trainingGeneration = nil
+        self.discardCurrentCapture = true
+        self.isAutomaticCaptureEnabled = false
+        DictionaryTrainingEndpointMonitor.shared.stop()
+        if self.capturePhase == .starting {
+            self.stopRequestedDuringStart = true
+            Task { await self.asr.cancelPendingPronunciationTrainingStart() }
+        } else if self.capturePhase == .recording {
+            self.stopTask?.cancel()
+            self.stopTask = Task { await self.finishCapture() }
+        }
+        if self.screen == .training { self.screen = .choice }
+    }
+
     private func startCapture() async {
-        guard self.isAutomaticCaptureEnabled,
+        guard self.trainingRunIsCurrent, !self.isCancelled, self.isAutomaticCaptureEnabled,
               self.capturePhase == .idle,
               !self.asr.isRunning,
               self.sampleCount < CustomDictionaryTrainingMerge.maxSamples
@@ -250,6 +303,8 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             return
         }
 
+        let generation = self.trainingGeneration
+        self.activeCaptureToken = nil
         self.stopRequestedDuringStart = false
         self.didStartAudioCapture = false
         self.discardCurrentCapture = false
@@ -259,9 +314,10 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
 
         await self.asr.start(forDictionaryTraining: true) { [weak self] in
             guard let self else { return }
+            self.activeCaptureToken = self.asr.dictionaryCaptureToken
             self.didStartAudioCapture = true
             self.capturePhase = .recording
-            if self.stopRequestedDuringStart || self.isCancelled {
+            if self.stopRequestedDuringStart || self.isCancelled || !self.trainingRunIsCurrent || self.trainingGeneration != generation {
                 self.statusMessage = "Stopping..."
                 self.stopTask?.cancel()
                 self.stopTask = Task { await self.finishCapture() }
@@ -269,18 +325,18 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
                 self.statusMessage = "Listening..."
             }
         }
-        guard self.asr.isRunning else {
+        guard self.didStartAudioCapture, self.asr.isRunning, self.asr.dictionaryCaptureToken == self.activeCaptureToken else {
             self.capturePhase = .idle
             self.stopRequestedDuringStart = false
             self.isAutomaticCaptureEnabled = false
             guard !self.didStartAudioCapture else { return }
-            guard !self.isCancelled else { return }
+            guard !self.isCancelled, self.trainingRunIsCurrent else { return }
             self.hasError = true
             self.statusMessage = "Couldn't start recording. Check microphone access and try again."
             return
         }
 
-        if self.stopRequestedDuringStart || self.isCancelled {
+        if self.stopRequestedDuringStart || self.isCancelled || !self.trainingRunIsCurrent || self.trainingGeneration != generation {
             await self.finishCapture()
             return
         }
@@ -308,7 +364,7 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     private func handleAutomaticSpeechEnd() {
-        guard self.isAutomaticCaptureEnabled,
+        guard self.trainingRunIsCurrent, !self.isCancelled, self.isAutomaticCaptureEnabled,
               self.capturePhase == .starting || self.capturePhase == .recording
         else {
             return
@@ -326,8 +382,18 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
         self.hasError = false
         self.statusMessage = "Checking..."
 
+        // A settings change may already have stopped this capture. Never stop normal dictation.
+        guard let captureToken = self.activeCaptureToken, self.asr.dictionaryCaptureToken == captureToken else {
+            self.capturePhase = .idle
+            self.isAutomaticCaptureEnabled = false
+            self.discardCurrentCapture = false
+            return
+        }
+        let generation = self.trainingGeneration
         let transcript = await self.asr.stop(forDictionaryTraining: true)
-        let shouldDiscard = self.discardCurrentCapture || self.isCancelled
+        self.activeCaptureToken = nil
+        let shouldDiscard = self.discardCurrentCapture || self.isCancelled || !self.trainingRunIsCurrent || self.trainingGeneration != generation
+        if shouldDiscard { self.isAutomaticCaptureEnabled = false }
         self.capturePhase = .idle
         self.discardCurrentCapture = false
         guard !shouldDiscard else { return }
@@ -336,10 +402,9 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
     }
 
     private func continueAutomaticCaptureIfNeeded() async {
-        guard self.isAutomaticCaptureEnabled,
+        guard self.trainingRunIsCurrent, !self.isCancelled, self.isAutomaticCaptureEnabled,
               !self.isReady,
-              self.sampleCount < CustomDictionaryTrainingMerge.maxSamples,
-              !self.isCancelled
+              self.sampleCount < CustomDictionaryTrainingMerge.maxSamples
         else {
             self.isAutomaticCaptureEnabled = false
             return
@@ -418,7 +483,7 @@ final class AutomaticDictionaryTrainingSession: ObservableObject {
             replacement: self.intendedText,
             triggers: triggers
         )
-        if let evidence = self.candidate.audioEvidence, let entry = mergedEntries.first(where: {
+        if DictionaryMatcherExperiment.sharedFeaturesEnabled, let evidence = self.candidate.audioEvidence, let entry = mergedEntries.first(where: {
             $0.replacement.caseInsensitiveCompare(self.intendedText) == .orderedSame
         }) {
             // Scheduled work runs after this synchronous text save returns.

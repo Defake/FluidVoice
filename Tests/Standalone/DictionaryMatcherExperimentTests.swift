@@ -15,11 +15,38 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
     }
 
     static func main() async throws {
+        let keys = ["DictionarySharedFeatureMatcherEnabled", "DictionaryTemporalMatcherEnabled", "DictionaryNegativeLearningEnabled", "DictionaryNegativeComparisonEnabled", "DictionaryPronunciationGeneration"]
+        let savedPreferences = keys.map { UserDefaults.standard.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, savedPreferences) { UserDefaults.standard.set(value, forKey: key) } }
+        for key in keys { UserDefaults.standard.set(true, forKey: key) }
+        UserDefaults.standard.set(false, forKey: keys[0])
+        self.expect(!DictionaryMatcherExperiment.positiveEnabled && !DictionaryMatcherExperiment.needsFrames, "Off overrides legacy matching preferences")
+        self.expect(!DictionaryMatcherExperiment.collectNegatives && !DictionaryMatcherExperiment.compareNegatives, "Off disables negative audio learning and comparisons")
+        UserDefaults.standard.set(true, forKey: keys[0])
+        UserDefaults.standard.set(false, forKey: keys[1])
+        self.expect(DictionaryMatcherExperiment.positiveEnabled && DictionaryMatcherExperiment.needsFrames, "On selects fast matching independently of legacy preference")
+        let beforeToggle = DictionaryMatcherExperiment.generation
+        DictionaryMatcherExperiment.setEnabled(false)
+        DictionaryMatcherExperiment.setEnabled(true)
+        self.expect(DictionaryMatcherExperiment.generation != beforeToggle, "Rapid off-on invalidates earlier pronunciation work")
         let positive = DictionaryMatchFrames(hiddenSize: 2, values: [1, 0, 1, 0, 1, 0])
         let negative = DictionaryMatchFrames(hiddenSize: 2, values: [0, 1, 0, 1, 0, 1])
         let refs = [positive, positive, positive]
         self.expect(DictionaryExperimentalMatcher.positive(query: positive, references: refs)?.accepted == true, "Accept identical positives")
         self.expect(DictionaryExperimentalMatcher.positive(query: negative, references: refs)?.accepted == false, "Reject a different sequence")
+        let contextual = DictionaryMatchFrames(hiddenSize: 2, values: [0.6, 0.8, 0.6, 0.8, 0.6, 0.8])
+        let sharedDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextual, references: refs)
+        self.expect(sharedDecision?.accepted == true, "Shared sentence features use their calibrated operating point")
+        self.expect(DictionaryExperimentalMatcher.positive(query: contextual, references: refs)?.accepted == false, "Shared thresholds must not loosen isolated-query scoring")
+        let weakContext = DictionaryMatchFrames(hiddenSize: 2, values: [0.58, 0.814616, 0.58, 0.814616, 0.58, 0.814616])
+        let weakShared = await DictionaryExperimentalMatcher.compareSharedFeatures(query: weakContext, references: refs)
+        self.expect(weakShared?.accepted == false, "Shared matching still rejects weak overall similarity")
+        let missingShared = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextual, references: [positive])
+        self.expect(missingShared == nil, "Missing reference features must not accept a candidate")
+        let contextualChunk = DictionaryMatchFrames(hiddenSize: 2, values: [0.56, 0.828493, 0.56, 0.828493, 0.56, 0.828493])
+        let chunkDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextualChunk, references: refs, chunked: true)
+        let shortDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextualChunk, references: refs)
+        self.expect(chunkDecision?.accepted == true && shortDecision?.accepted == false, "Long-window calibration must not loosen the short-recording operating point")
         self.expect(DictionaryExperimentalMatcher.positive(query: positive, references: [positive]) == nil, "Missing enrollments fallback")
         self.expect(DictionaryExperimentalMatcher.metrics(reference: positive, query: .init(hiddenSize: 2, values: [.nan, 0])) == nil, "Reject nonfinite values")
         self.expect(!DictionaryMatchFrames(hiddenSize: 2, values: []).isValid, "Reject empty frames")

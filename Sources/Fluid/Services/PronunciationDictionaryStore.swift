@@ -111,8 +111,10 @@ actor PronunciationDictionaryStore {
         label: String,
         modelKey: String,
         enrollments: [PronunciationEnrollmentCapture],
-        automaticMatchingEnabled: Bool = false
+        automaticMatchingEnabled: Bool = false,
+        canPersist: @Sendable () -> Bool = { true }
     ) throws {
+        guard canPersist() else { throw CancellationError() }
         guard let first = enrollments.first, !first.values.isEmpty else { return }
         guard enrollments.allSatisfy({ $0.modelKey == modelKey && $0.values.count == first.values.count }) else {
             throw PronunciationDictionaryStoreError.inconsistentEnrollment
@@ -127,6 +129,7 @@ actor PronunciationDictionaryStore {
         var writtenInspectionIDs: [UUID] = []
         do {
             for index in prepared.indices {
+                guard canPersist() else { throw CancellationError() }
                 guard let evidence = prepared[index].pendingInspection else { continue }
                 guard evidence.isValid, evidence.duration <= 15,
                       evidence.frames.allSatisfy({ $0.hiddenSize == first.values.count })
@@ -175,6 +178,7 @@ actor PronunciationDictionaryStore {
         } else {
             profiles.append(profile)
         }
+        guard canPersist() else { throw CancellationError() }
         try self.persist(Document(
             version: 1,
             profiles: profiles
@@ -295,8 +299,10 @@ actor PronunciationDictionaryStore {
         evidenceID: UUID,
         evidence: DictionaryLearningAudioEvidence,
         capture: PronunciationEnrollmentCapture,
-        expectedRevision: Revision
+        expectedRevision: Revision,
+        canPersist: @Sendable () -> Bool = { true }
     ) throws -> Bool {
+        guard canPersist() else { throw CancellationError() }
         guard self.revision(for: entryID) == expectedRevision else {
             throw PronunciationDictionaryStoreError.staleEvidence
         }
@@ -363,7 +369,8 @@ actor PronunciationDictionaryStore {
                 dictionaryEntryID: entryID,
                 label: label,
                 modelKey: capture.modelKey,
-                enrollments: [enrolled]
+                enrollments: [enrolled],
+                canPersist: canPersist
             )
         } catch {
             try? FileManager.default.removeItem(at: url)

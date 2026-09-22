@@ -828,6 +828,13 @@ final class ASRService: ObservableObject {
     private let audioCaptureReadinessGate = AudioCaptureReadinessGate()
     private let firstPCMTimeoutNanoseconds: UInt64 = 2_000_000_000
     private var audioCaptureStartGeneration: UInt64 = 0
+    private var isPronunciationTrainingStart = false
+    private var pronunciationTrainingStartGeneration: String?
+    private var isPronunciationTrainingStartCurrent: Bool {
+        !self.isPronunciationTrainingStart || (DictionaryMatcherExperiment.sharedFeaturesEnabled &&
+            self.pronunciationTrainingStartGeneration == DictionaryMatcherExperiment.generation)
+    }
+
     private var pendingAudioCaptureBackendStart: Task<Void, Error>?
     private var mediaPlaybackService = MediaPlaybackService.shared
     private var audioCaptureAttemptID: UInt64 = 0
@@ -1832,13 +1839,17 @@ final class ASRService: ObservableObject {
 
     private func checkCaptureStartGeneration(_ generation: UInt64) throws {
         try Task.checkCancellation()
-        guard generation == self.audioCaptureStartGeneration, self.isTerminating == false else {
+        guard generation == self.audioCaptureStartGeneration, self.isTerminating == false,
+              self.isPronunciationTrainingStartCurrent
+        else {
             throw CancellationError()
         }
     }
 
     private func startAVAudioEngineCapture() async throws {
+        let startGeneration = self.audioCaptureStartGeneration
         await self.audioEngineRetirementDrain.waitForScheduledReleases()
+        try self.checkCaptureStartGeneration(startGeneration)
         self.benchmarkLog("audio_backend kind=av_audio_engine reason=faster_recording_start_disabled")
         try self.configureSession()
         try await self.startEngine()
@@ -1970,14 +1981,29 @@ final class ASRService: ObservableObject {
     }
 
     func originalAudioEnrollment(_ evidence: DictionaryLearningAudioEvidence) async throws -> PronunciationEnrollmentCapture {
+        let generation = DictionaryMatcherExperiment.generation
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled else { throw CancellationError() }
         try Task.checkCancellation()
         guard self.activeExclusiveActivity == nil else { throw CancellationError() }
         #if arch(arm64)
         if let provider = self.fluidAudioProvider,
            let capture = try await provider.originalAudioEnrollment(evidence)
-        { return capture }
+        {
+            try Task.checkCancellation()
+            guard DictionaryMatcherExperiment.sharedFeaturesEnabled,
+                  DictionaryMatcherExperiment.generation == generation else { throw CancellationError() }
+            return capture
+        }
         #endif
-        return try await OriginalAudioEmbeddingExtractor.extract(evidence)
+        try Task.checkCancellation()
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled,
+              DictionaryMatcherExperiment.generation == generation,
+              self.activeExclusiveActivity == nil else { throw CancellationError() }
+        let capture = try await OriginalAudioEmbeddingExtractor.extract(evidence)
+        try Task.checkCancellation()
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled,
+              DictionaryMatcherExperiment.generation == generation else { throw CancellationError() }
+        return capture
     }
 
     func consumeDictionaryLearningRecording() -> DictionaryLearningRecording? {
@@ -2577,6 +2603,7 @@ final class ASRService: ObservableObject {
         forDictionaryTraining: Bool = false,
         onCaptureStarted: (@MainActor () -> Void)? = nil
     ) async -> AudioCaptureStartOutcome {
+        guard !forDictionaryTraining || DictionaryMatcherExperiment.sharedFeaturesEnabled else { return .failed }
         DebugLogger.shared.info("🎤 START() called - beginning recording session", source: "ASRService")
 
         guard self.micStatus == .authorized else {
@@ -2609,7 +2636,13 @@ final class ASRService: ObservableObject {
         self.audioCaptureStartGeneration &+= 1
         let startGeneration = self.audioCaptureStartGeneration
         self.isStarting = true
-        defer { self.finishAudioCaptureStart() }
+        self.isPronunciationTrainingStart = forDictionaryTraining
+        self.pronunciationTrainingStartGeneration = forDictionaryTraining ? DictionaryMatcherExperiment.generation : nil
+        defer {
+            self.pronunciationTrainingStartGeneration = nil
+            self.isPronunciationTrainingStart = false
+            self.finishAudioCaptureStart()
+        }
 
         // A prior stop may already have disabled capture while its final live-preview
         // operation still owns the shared PCM buffer. Reserve this start immediately,
@@ -2621,7 +2654,8 @@ final class ASRService: ObservableObject {
                 return .failed
             }
             guard startGeneration == self.audioCaptureStartGeneration,
-                  self.isTerminating == false
+                  self.isTerminating == false,
+                  self.isPronunciationTrainingStartCurrent
             else {
                 DebugLogger.shared.debug(
                     "Audio capture start cancelled while waiting for the previous buffer handoff",
@@ -2640,7 +2674,8 @@ final class ASRService: ObservableObject {
         self.audioEngineStandbyTask = nil
         await self.waitForPendingAudioRouteRecoveryBeforeStart()
         guard startGeneration == self.audioCaptureStartGeneration,
-              self.isTerminating == false
+              self.isTerminating == false,
+              self.isPronunciationTrainingStartCurrent
         else {
             if handedOffMicrophonePreview {
                 await self.stopHandedOffMicrophonePreviewAfterCancelledStart()
@@ -2712,6 +2747,7 @@ final class ASRService: ObservableObject {
             var forcedInputUID: String?
             self.audioStartAttemptInputUID = nil
             while true {
+                try self.checkCaptureStartGeneration(startGeneration)
                 let routeGenerationAtStart = self.audioRouteRecoveryGeneration
                 do {
                     try await self.startCancellableAudioCapture(
@@ -2766,7 +2802,8 @@ final class ASRService: ObservableObject {
                     }
                     guard retryBluetoothInput || fallbackAttempt <= maximumStartAttempts,
                           startGeneration == self.audioCaptureStartGeneration,
-                          self.isTerminating == false
+                          self.isTerminating == false,
+                          self.isPronunciationTrainingStartCurrent
                     else {
                         throw error
                     }
@@ -2780,6 +2817,7 @@ final class ASRService: ObservableObject {
                     startAttempt += 1
                     continue
                 }
+                try self.checkCaptureStartGeneration(startGeneration)
                 self.benchmarkLog(
                     "first_pcm_wait_begin attempt=\(startAttempt) " +
                         "attemptID=\(readinessAttemptID) " +
@@ -2793,7 +2831,8 @@ final class ASRService: ObservableObject {
                     timeoutNanoseconds: self.firstPCMTimeoutNanoseconds
                 )
                 guard startGeneration == self.audioCaptureStartGeneration,
-                      self.isTerminating == false
+                      self.isTerminating == false,
+                      self.isPronunciationTrainingStartCurrent
                 else {
                     throw CancellationError()
                 }
@@ -3032,6 +3071,7 @@ final class ASRService: ObservableObject {
             throw CancellationError()
         }
 
+        try self.checkCaptureStartGeneration(startGeneration)
         self.audioCaptureAttemptID &+= 1
         let attemptID = self.audioCaptureAttemptID
         self.audioCaptureReadinessGate.arm(
@@ -3093,6 +3133,11 @@ final class ASRService: ObservableObject {
         // A start waiting for the previous session's PCM handoff must wake to
         // observe the generation change; the old stop keeps ownership of the gate.
         self.recordingBufferHandoffGate.releasePendingWaiters()
+    }
+
+    func cancelPendingPronunciationTrainingStart() async {
+        guard self.isPronunciationTrainingStart else { return }
+        await self.cancelPendingAudioCaptureStart(reason: "pronunciation_disabled")
     }
 
     func cancelPendingAudioCaptureStart(reason: String) async {

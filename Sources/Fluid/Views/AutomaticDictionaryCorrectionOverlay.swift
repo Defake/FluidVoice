@@ -615,6 +615,7 @@ extension Notification.Name {
 }
 
 private struct AutomaticDictionaryCorrectionOverlayView: View {
+    @AppStorage("DictionarySharedFeatureMatcherEnabled") private var pronunciationEnabled = false
     @ObservedObject var session: AutomaticDictionaryTrainingSession
     @ObservedObject private var settings = SettingsStore.shared
 
@@ -663,6 +664,18 @@ private struct AutomaticDictionaryCorrectionOverlayView: View {
         .onAppear {
             self.startProgressAnimation()
         }
+        .onChange(of: self.pronunciationEnabled) { _, enabled in
+            if !enabled { self.session.disablePronunciationTraining() }
+        }
+    }
+
+    private var correctionChoiceDescription: String {
+        if self.session.candidate.negativeCorrection != nil {
+            return "Confirm only if you said a different word, not a spelling change."
+        }
+        return self.pronunciationEnabled
+            ? "Save only this correction, or teach FluidVoice other pronunciations."
+            : "Save this text correction to your dictionary."
     }
 
     private var choiceContent: some View {
@@ -671,7 +684,7 @@ private struct AutomaticDictionaryCorrectionOverlayView: View {
 
             self.correctionPair
 
-            Text(self.session.candidate.negativeCorrection == nil ? "Save only this correction, or teach FluidVoice other pronunciations." : "Confirm only if you said a different word, not a spelling change.")
+            Text(self.correctionChoiceDescription)
                 .font(.fluidSystem(size: 11))
                 .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
@@ -679,26 +692,28 @@ private struct AutomaticDictionaryCorrectionOverlayView: View {
             HStack(spacing: 8) {
                 if self.session.candidate.negativeCorrection != nil {
                     CorrectionOverlayActionButton(title: "That Was a Wrong Match", systemImage: "xmark.circle", style: .accent, accent: self.accent, action: self.session.confirmWrongMatch)
-                        .disabled(self.session.capturePhase != .idle)
+                        .disabled(!self.pronunciationEnabled || self.session.capturePhase != .idle)
                     CorrectionOverlayActionButton(title: "Ignore", systemImage: "minus", style: .secondary, accent: self.accent, action: self.onIgnore)
                 } else {
-                CorrectionOverlayActionButton(
-                    title: "Train by Voice",
-                    systemImage: "mic.fill",
-                    style: .secondary,
-                    accent: self.accent,
-                    action: self.session.beginTraining
-                )
+                    if self.pronunciationEnabled {
+                        CorrectionOverlayActionButton(
+                            title: "Train by Voice",
+                            systemImage: "mic.fill",
+                            style: .secondary,
+                            accent: self.accent,
+                            action: self.session.beginTraining
+                        )
+                    }
 
-                CorrectionOverlayActionButton(
-                    title: "Add This Correction",
-                    systemImage: "plus",
-                    style: .accent,
-                    accent: self.accent,
-                    action: self.session.addOnlyCorrection
-                )
+                    CorrectionOverlayActionButton(
+                        title: "Add This Correction",
+                        systemImage: "plus",
+                        style: .accent,
+                        accent: self.accent,
+                        action: self.session.addOnlyCorrection
+                    )
 
-                self.moreOptionsMenu
+                    self.moreOptionsMenu
                 }
             }
             if self.session.hasError {

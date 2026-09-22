@@ -220,7 +220,7 @@ final class AutomaticDictionaryCorrectionTracker {
                 )
                 guard !Task.isCancelled, let self else { return }
                 if let seed {
-                    self.installObserver(for: seed, learningRecording: learningRecording)
+                    self.installObserver(for: seed, learningRecording: DictionaryMatcherExperiment.sharedFeaturesEnabled ? learningRecording : nil)
                     return
                 }
             }
@@ -484,7 +484,7 @@ final class AutomaticDictionaryCorrectionTracker {
             allowsInsertionAtEnd: true
         )
         var context: DictionaryLearningCorrectionContext?
-        if let recording = self.session?.learningRecording, let range = candidate?.sourceUTF16Range {
+        if DictionaryMatcherExperiment.sharedFeaturesEnabled, let recording = self.session?.learningRecording, let range = candidate?.sourceUTF16Range {
             let before = pending.beforeValue as NSString
             let insertion = pending.insertedRange
             if insertion.location >= 0, insertion.location <= before.length,
@@ -523,10 +523,11 @@ final class AutomaticDictionaryCorrectionTracker {
         }
 
         let generation = self.suggestionGeneration
+        let pronunciationGeneration = DictionaryMatcherExperiment.generation
         self.evidencePreparationTask = Task { @MainActor [weak self, context] in
             let observedText = candidate.heardText
             let evidence = await Task.detached(priority: .utility) {
-                guard let context else { return DictionaryLearningAudioEvidence?.none }
+                guard DictionaryMatcherExperiment.sharedFeaturesEnabled, pronunciationGeneration == DictionaryMatcherExperiment.generation, let context else { return DictionaryLearningAudioEvidence?.none }
                 return try? DictionaryLearningAlignmentResolver.resolve(
                     recording: context.recording,
                     deliveredTextBeforeEdit: context.deliveredTextBeforeEdit,
@@ -541,7 +542,7 @@ final class AutomaticDictionaryCorrectionTracker {
                   !DictionaryCorrectionOverlayController.shared.isPresented
             else { return }
             var prepared = candidate
-            prepared.audioEvidence = evidence
+            prepared.audioEvidence = DictionaryMatcherExperiment.sharedFeaturesEnabled && pronunciationGeneration == DictionaryMatcherExperiment.generation ? evidence : nil
             self.evidencePreparationTask = nil
             AutomaticDictionarySuggestionPolicy.shared.markShown(prepared)
             DictionaryCorrectionOverlayController.shared.show(candidate: prepared) { outcome in

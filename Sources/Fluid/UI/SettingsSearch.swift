@@ -442,8 +442,8 @@ enum SettingsSearchIndex {
         ),
         .init(
             target: .dictionaryMatcherExperiments,
-            title: "Dictionary Matching Experiments",
-            terms: ["pronunciation positive negative false match correction learn examples clear experimental"]
+            title: "Learn from your pronunciation",
+            terms: ["pronunciation voice training matching dictionary experimental"]
         ),
         .init(
             target: .historyPerformance,

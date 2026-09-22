@@ -1,12 +1,22 @@
 import Accelerate
 import Foundation
 
-/// Independent opt-ins. Off returns the existing matcher unchanged.
+/// Master pronunciation switch. Off disables all audio matching and enrollment.
 nonisolated enum DictionaryMatcherExperiment {
-    static var positiveEnabled: Bool { UserDefaults.standard.bool(forKey: "DictionaryTemporalMatcherEnabled") }
-    static var collectNegatives: Bool { UserDefaults.standard.bool(forKey: "DictionaryNegativeLearningEnabled") }
-    static var compareNegatives: Bool { UserDefaults.standard.bool(forKey: "DictionaryNegativeComparisonEnabled") }
-    static var needsFrames: Bool { positiveEnabled || collectNegatives || compareNegatives }
+    static var sharedFeaturesEnabled: Bool { UserDefaults.standard.bool(forKey: "DictionarySharedFeatureMatcherEnabled") }
+    static let didChangeNotification = Notification.Name("DictionaryPronunciationDidChange")
+    static var generation: String { UserDefaults.standard.string(forKey: "DictionaryPronunciationGeneration") ?? "initial" }
+    static func setEnabled(_ enabled: Bool) {
+        guard self.sharedFeaturesEnabled != enabled else { return }
+        UserDefaults.standard.set(UUID().uuidString, forKey: "DictionaryPronunciationGeneration")
+        UserDefaults.standard.set(enabled, forKey: "DictionarySharedFeatureMatcherEnabled")
+        NotificationCenter.default.post(name: self.didChangeNotification, object: nil)
+    }
+
+    static var positiveEnabled: Bool { sharedFeaturesEnabled }
+    static var collectNegatives: Bool { sharedFeaturesEnabled && UserDefaults.standard.bool(forKey: "DictionaryNegativeLearningEnabled") }
+    static var compareNegatives: Bool { sharedFeaturesEnabled && UserDefaults.standard.bool(forKey: "DictionaryNegativeComparisonEnabled") }
+    static var needsFrames: Bool { sharedFeaturesEnabled }
     static let version = "parakeet-exact-rms005-frames-v1"
 }
 
@@ -104,7 +114,13 @@ nonisolated enum DictionaryExperimentalMatcher {
         return Metrics(mean: Float(values.reduce(0, +) / Double(n)), lower: Float(values[lo] + (values[hi] - values[lo]) * (index - Double(lo))))
     }
 
-    static func positive(query: DictionaryMatchFrames, references: [DictionaryMatchFrames]) -> Decision? {
+    /// Separate operating point for sentence-context queries against isolated enrollment frames.
+    /// These development-set cutoffs must never be applied to isolated query encodings.
+    @concurrent static func compareSharedFeatures(query: DictionaryMatchFrames, references: [DictionaryMatchFrames], chunked: Bool = false) async -> Decision? {
+        self.positive(query: query, references: references, meanThreshold: chunked ? 0.55 : 0.59, lowerThreshold: chunked ? 0.35 : 0.50)
+    }
+
+    static func positive(query: DictionaryMatchFrames, references: [DictionaryMatchFrames], meanThreshold: Float = 0.70, lowerThreshold: Float = 0.55) -> Decision? {
         guard references.count >= 3, references.count <= 10 else { return nil }
         var calibration: [Metrics] = []
         for i in references.indices {
@@ -118,7 +134,7 @@ nonisolated enum DictionaryExperimentalMatcher {
         let scores = references.compactMap { self.metrics(reference: $0, query: query) }
         guard scores.count == references.count else { return nil }
         let a = (scores.map(\.mean).max() ?? -1) / mean, b = (scores.map(\.lower).max() ?? -1) / lower
-        return Decision(accepted: a >= 0.70 && b >= 0.55, meanRelative: a, lowerRelative: b)
+        return Decision(accepted: a >= meanThreshold && b >= lowerThreshold, meanRelative: a, lowerRelative: b)
     }
 
     static func similarity(_ a: DictionaryMatchFrames, _ b: DictionaryMatchFrames) -> Float? {

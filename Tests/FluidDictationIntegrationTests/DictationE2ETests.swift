@@ -3892,3 +3892,115 @@ extension DictationE2ETests {
     }
 }
 #endif
+
+extension DictationE2ETests {
+    #if arch(arm64)
+    func testSharedPronunciationFrameSelectionAndInvalidRanges() {
+        let features = EncoderFeatureSequence(hiddenSize: 2, frameCount: 4, values: [1, 0, 0, 1, 1, 1, 0.5, 0.5])
+        XCTAssertEqual(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 1281..<2561)?.values, [0, 1, 1, 1])
+        XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: -1..<100))
+        XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 0..<0))
+        XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 9000..<10000))
+    }
+
+    func testSharedFeatureDictionaryCorpusReplay() async throws {
+        guard let path = ProcessInfo.processInfo.environment["FLUIDVOICE_SHARED_DICTIONARY_FIXTURE"] else {
+            throw XCTSkip("Set FLUIDVOICE_SHARED_DICTIONARY_FIXTURE to the private local regression corpus")
+        }
+        struct Archive: Decodable { let profiles: [PronunciationDictionaryProfile] }
+        struct Job: Decodable { let id: String; let word: String; let path: String; let positive: Bool }
+        let root = URL(fileURLWithPath: path)
+        let jobs = try JSONDecoder().decode([Job].self, from: Data(contentsOf: root.appendingPathComponent("jobs.json")))
+        let keys = ["DictionarySharedFeatureMatcherEnabled", "DictionaryTemporalMatcherEnabled", "DictionaryNegativeLearningEnabled", "DictionaryNegativeComparisonEnabled", "DictionaryPronunciationDebugCapture", "DictionaryEdgeMatchingEnabled"]
+        let previous = keys.map { UserDefaults.standard.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, previous) { UserDefaults.standard.set(value, forKey: key) } }
+        for key in keys { UserDefaults.standard.set(false, forKey: key) }
+        UserDefaults.standard.set(true, forKey: keys[0])
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("shared-dictionary-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = PronunciationDictionaryStore(fileURL: folder.appendingPathComponent("profiles.json"))
+        var entries: [SettingsStore.CustomDictionaryEntry] = []
+        for word in Set(jobs.map(\.word)).sorted() {
+            let archive = try PropertyListDecoder().decode(Archive.self, from: Data(contentsOf: root.appendingPathComponent(word + ".plist")))
+            let profile = try XCTUnwrap(archive.profiles.first)
+            var enrollments = profile.enrollments
+            for i in enrollments.indices {
+                let id = try XCTUnwrap(enrollments[i].inspectionID)
+                enrollments[i].pendingInspection = try PropertyListDecoder().decode(DictionaryAudioInspection.self, from: Data(contentsOf: root.appendingPathComponent(id.uuidString + ".plist")))
+            }
+            try await store.upsert(dictionaryEntryID: profile.dictionaryEntryID, label: word, modelKey: profile.modelKey, enrollments: enrollments)
+            entries.append(.init(id: profile.dictionaryEntryID, triggers: [], replacement: word))
+        }
+        let savedProfiles = await store.allProfiles()
+        let existingProfile = try XCTUnwrap(savedProfiles.first)
+        do {
+            try await store.upsert(dictionaryEntryID: existingProfile.dictionaryEntryID, label: "MustNotSave", modelKey: existingProfile.modelKey, enrollments: existingProfile.enrollments, canPersist: { false })
+            XCTFail("Disabled pending save must fail")
+        } catch is CancellationError { }
+        let profilesAfterRejectedSave = await store.allProfiles()
+        XCTAssertEqual(profilesAfterRejectedSave.map(\.label), savedProfiles.map(\.label), "Rejecting a pending save preserves existing voice profiles")
+        let provider = FluidAudioProvider(modelOverride: .parakeetTDTv2, configureWordBoosting: false, enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: true, customDictionaryEntries: entries), pronunciationStore: store)
+        try await provider.prepare()
+        let savedEntries = SettingsStore.shared.customDictionaryEntries
+        defer { SettingsStore.shared.customDictionaryEntries = savedEntries }
+        SettingsStore.shared.customDictionaryEntries = [.init(triggers: ["test replacement key"], replacement: "ReplacementValue")]
+        for enabled in [false, true, false] {
+            UserDefaults.standard.set(enabled, forKey: keys[0])
+            XCTAssertEqual(ASRService.applyCustomDictionary("test replacement key"), "ReplacementValue", "Text rules work across pronunciation toggles")
+        }
+        // Master off must defeat saved profiles and every legacy audio switch.
+        for key in keys { UserDefaults.standard.set(true, forKey: key) }
+        UserDefaults.standard.set(false, forKey: keys[0])
+        let probe = try XCTUnwrap(jobs.first { $0.positive })
+        let pcm = try Data(contentsOf: URL(fileURLWithPath: probe.path)).withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+        let plain = FluidAudioProvider(modelOverride: .parakeetTDTv2, configureWordBoosting: false, enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: false, customDictionaryEntries: []), pronunciationStore: store)
+        try await plain.prepare()
+        let baseline = try await plain.transcribeFinal(pcm)
+        let disabled = try await provider.transcribeFinal(pcm)
+        XCTAssertEqual(disabled.text, baseline.text, "Off must preserve ordinary recognition despite saved profiles")
+        XCTAssertNil(disabled.dictionaryLearningAlignment, "Off must not retain pronunciation learning alignment")
+        do {
+            _ = try await provider.transcribeDictionaryTraining(pcm, capturePronunciation: true)
+            XCTFail("Off must reject voice enrollment")
+        } catch is CancellationError { }
+        for key in keys { UserDefaults.standard.set(false, forKey: key) }
+        UserDefaults.standard.set(true, forKey: keys[0])
+        var falsePositives: [String] = [], falseNegatives: [String] = []
+        var longFalsePositives: [String] = [], longFalseNegatives: [String] = []
+        for job in jobs {
+            let samples = try Data(contentsOf: URL(fileURLWithPath: job.path)).withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+            provider.resetStreamingPreviewCache()
+            let result = try await provider.transcribeFinal(samples)
+            let accepted = result.text.contains(job.word)
+            if accepted && !job.positive { falsePositives.append(job.id) }
+            if !accepted && job.positive { falseNegatives.append(job.id) }
+            print("SHARED_CORPUS id=\(job.id) positive=\(job.positive) accepted=\(accepted)")
+            if job.id == "page" { XCTAssertFalse(accepted, "Page must remain unchanged") }
+            do {
+                let long = Array(repeating: samples, count: max(3, 480_000 / samples.count + 1)).flatMap { $0 }
+                provider.resetStreamingPreviewCache()
+                for end in stride(from: 32_000, to: long.count - 16_000, by: 32_000) {
+                    if let start = provider.incrementalPreviewDeltaStart(totalSampleCount: end) {
+                        _ = try await provider.transcribeStreamingDelta(Array(long[start..<end]), totalSampleCount: end)
+                    } else { _ = try await provider.transcribeStreaming(Array(long.prefix(end))) }
+                }
+                let stop = ProcessInfo.processInfo.systemUptime
+                let finalized = try await provider.transcribeFinal(long)
+                print("SHARED_LONG id=\(job.id) stopMs=\((ProcessInfo.processInfo.systemUptime - stop) * 1000)")
+                let longAccepted = finalized.text.contains(job.word)
+                if longAccepted && !job.positive { longFalsePositives.append(job.id) }
+                if !longAccepted && job.positive { longFalseNegatives.append(job.id) }
+                print("SHARED_LONG_DECISION id=\(job.id) positive=\(job.positive) accepted=\(longAccepted)")
+                if job.id == "page" { XCTAssertFalse(longAccepted, "Page must remain rejected in longer recordings") }
+
+            }
+        }
+        print("SHARED_CORPUS fp=\(falsePositives) fn=\(falseNegatives)")
+        print("SHARED_LONG_CORPUS fp=\(longFalsePositives) fn=\(longFalseNegatives)")
+        XCTAssertTrue(falseNegatives.isEmpty)
+        XCTAssertLessThanOrEqual(falsePositives.count, 3)
+        XCTAssertTrue(longFalseNegatives.isEmpty)
+        XCTAssertLessThanOrEqual(longFalsePositives.count, 5)
+    }
+    #endif
+}

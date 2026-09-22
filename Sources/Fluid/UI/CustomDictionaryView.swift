@@ -44,6 +44,7 @@ struct CustomDictionaryView: View {
     @State private var trainingReplacement = ""
     @State private var trainingSaveID: UUID?
     @State private var trainingVariants: [String] = []
+    @AppStorage("DictionarySharedFeatureMatcherEnabled") private var pronunciationEnabled = false
     @State private var pronunciationMatchingEnabled = SettingsStore.shared.pronunciationMatchingEnabled
     @State private var trainingPronunciationEnrollments: [PronunciationEnrollmentCapture] = []
     @State private var trainingSampleCount = 0
@@ -83,7 +84,7 @@ struct CustomDictionaryView: View {
     }
 
     private var activePronunciationMatching: Bool {
-        SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching
+        self.pronunciationEnabled && SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching
     }
 
     private var pronunciationMatchingBinding: Binding<Bool> {
@@ -106,7 +107,7 @@ struct CustomDictionaryView: View {
             return true
         }
         guard !self.trainingStopRequestedDuringStart, !self.isTrainingProcessing else { return false }
-        return self.isTrainingRecording || self.canRecordTrainingSample || self.canRetryTrainingAfterMaximum
+        return self.isTrainingRecording || (self.pronunciationEnabled && (self.canRecordTrainingSample || self.canRetryTrainingAfterMaximum))
     }
 
     private var trainingRecorderIsStop: Bool {
@@ -160,7 +161,7 @@ struct CustomDictionaryView: View {
     }
 
     private var canRecordTrainingSample: Bool {
-        !self.normalizedTrainingReplacement.isEmpty &&
+        self.pronunciationEnabled && !self.normalizedTrainingReplacement.isEmpty &&
             !self.isTrainingProcessing &&
             !self.asr.isRunning &&
             self.trainingSampleCount < CustomDictionaryTrainingMerge.maxSamples
@@ -356,6 +357,23 @@ struct CustomDictionaryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .parakeetVocabularyDidChange)) { _ in
             guard !self.formattingOnly else { return }
             self.entries = SettingsStore.shared.customDictionaryEntries
+        }
+        .onChange(of: self.pronunciationEnabled) { _, enabled in
+            guard !enabled else { return }
+            self.isAutomaticTrainingEnabled = false
+            DictionaryTrainingEndpointMonitor.shared.stop()
+            self.trainingPronunciationEnrollments = []
+            self.trainingSaveID = nil
+            self.isTrainingProcessing = false
+            if self.isTrainingRecording {
+                Task {
+                    if self.isTrainingStarting {
+                        await self.asr.cancelPendingPronunciationTrainingStart()
+                    } else {
+                        await self.stopTrainingSample()
+                    }
+                }
+            }
         }
         .onDisappear {
             guard !self.formattingOnly else { return }
@@ -823,12 +841,12 @@ struct CustomDictionaryView: View {
     }
 
     private var voiceMatchingSettingsRow: some View {
-        VoiceMatchingSettingsRow(
-            isEnabled: self.pronunciationMatchingBinding,
-            isDisabled: self.isTrainingRecording || self.isTrainingProcessing,
-            isAdvancedAvailable: SettingsStore.shared.selectedSpeechModel.supportsPronunciationMatching,
-            onChange: self.handlePronunciationMatchingChange(enabled:)
-        )
+        Text(self.pronunciationEnabled
+            ? "Pronunciation dictionary is on. Voice training uses the fast sound-order matcher."
+            : "Voice training is off. Enable “Learn from your pronunciation” in Settings → Experimental.")
+            .font(self.theme.typography.caption)
+            .foregroundStyle(self.theme.palette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var trainingRecorderPanel: some View {
@@ -2235,7 +2253,7 @@ struct CustomDictionaryView: View {
     }
 
     private func startTrainingSample() async {
-        guard self.isAutomaticTrainingEnabled, self.canRecordTrainingSample else {
+        guard self.pronunciationEnabled, self.isAutomaticTrainingEnabled, self.canRecordTrainingSample else {
             self.isAutomaticTrainingEnabled = false
             return
         }
@@ -2296,8 +2314,11 @@ struct CustomDictionaryView: View {
         self.trainingHasError = false
         self.trainingStatusMessage = ""
 
+        let pronunciationGeneration = DictionaryMatcherExperiment.generation
         let transcript = await self.asr.stop(forDictionaryTraining: true, captureDictionaryPronunciation: self.activePronunciationMatching)
         self.isTrainingProcessing = false
+        guard self.pronunciationEnabled,
+              DictionaryMatcherExperiment.generation == pronunciationGeneration else { return }
         guard !CustomDictionaryTrainingMerge.isOversizedResponse(transcript, intendedReplacement: self.normalizedTrainingReplacement) else {
             self.isAutomaticTrainingEnabled = false
             self.trainingHasError = true
@@ -2429,8 +2450,9 @@ struct CustomDictionaryView: View {
         let replacementText = self.normalizedTrainingReplacement
         let enrollments = self.trainingPronunciationEnrollments
         let savePronunciation = self.activePronunciationMatching
+        let pronunciationGeneration = DictionaryMatcherExperiment.generation
         let filtered = await VoiceTrainingAliasFilter.filter(self.trainingVariants)
-        guard self.trainingSaveID == saveID, !Task.isCancelled else { return }
+        guard self.trainingSaveID == saveID, !Task.isCancelled, self.pronunciationEnabled else { return }
         DebugLogger.shared.info(
             "VOICE_TRAINING_ALIAS_FILTER accepted=\(filtered.accepted.count) rejected=\(filtered.rejected.count) available=\(filtered.lookupAvailable)",
             source: "CustomDictionary"
@@ -2459,7 +2481,8 @@ struct CustomDictionaryView: View {
                     label: replacementText,
                     modelKey: modelKey,
                     enrollments: enrollments,
-                    automaticMatchingEnabled: true
+                    automaticMatchingEnabled: true,
+                    canPersist: { DictionaryMatcherExperiment.sharedFeaturesEnabled && DictionaryMatcherExperiment.generation == pronunciationGeneration }
                 )
             } catch {
                 self.isTrainingProcessing = false
@@ -2472,7 +2495,7 @@ struct CustomDictionaryView: View {
                 return
             }
         }
-        guard self.trainingSaveID == saveID, !Task.isCancelled else { return }
+        guard self.trainingSaveID == saveID, !Task.isCancelled, self.pronunciationEnabled else { return }
         self.entries = updatedEntries
         self.saveEntries()
         self.wizardSavedWord = replacementText

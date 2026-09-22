@@ -14,6 +14,7 @@ final class DictionaryAudioLearningService {
         let evidenceID: UUID
         let evidence: DictionaryLearningAudioEvidence
         let expiresAt: Date
+        let pronunciationGeneration: String
     }
 
     private let store: PronunciationDictionaryStore
@@ -33,10 +34,10 @@ final class DictionaryAudioLearningService {
             try await AppServices.shared.asr.originalAudioEnrollment(evidence)
         },
         canProcess: @escaping @MainActor () -> Bool = {
-            SettingsStore.shared.automaticDictionaryLearningEnabled && AppServices.shared.asr.activeExclusiveActivity == nil
+            DictionaryMatcherExperiment.sharedFeaturesEnabled && SettingsStore.shared.automaticDictionaryLearningEnabled && AppServices.shared.asr.activeExclusiveActivity == nil
         },
         isCurrent: @escaping @MainActor (SettingsStore.CustomDictionaryEntry) -> Bool = {
-            SettingsStore.shared.customDictionaryEntries.contains($0)
+            DictionaryMatcherExperiment.sharedFeaturesEnabled && SettingsStore.shared.customDictionaryEntries.contains($0)
         }
     ) {
         self.store = store
@@ -55,6 +56,7 @@ final class DictionaryAudioLearningService {
         evidenceID: UUID,
         evidence: DictionaryLearningAudioEvidence
     ) {
+        guard DictionaryMatcherExperiment.sharedFeaturesEnabled else { return }
         guard !evidence.samples.isEmpty, evidence.samples.count <= 238_080 else { return }
         guard !self.queue.contains(where: { $0.evidenceID == evidenceID }) else { return }
         self.pruneExpired()
@@ -70,7 +72,8 @@ final class DictionaryAudioLearningService {
             entry: entry,
             evidenceID: evidenceID,
             evidence: evidence,
-            expiresAt: Date().addingTimeInterval(self.lifetime)
+            expiresAt: Date().addingTimeInterval(self.lifetime),
+            pronunciationGeneration: DictionaryMatcherExperiment.generation
         ))
         self.drain()
         self.scheduleExpiry()
@@ -88,7 +91,7 @@ final class DictionaryAudioLearningService {
                 self.drain()
                 self.scheduleExpiry()
             }
-            guard self.isCurrent(request.entry) else { return }
+            guard self.isCurrent(request.entry), request.pronunciationGeneration == DictionaryMatcherExperiment.generation else { return }
             do {
                 let revision = await self.store.revision(for: request.entry.id)
                 let capture = try await self.extract(request.evidence)
@@ -100,7 +103,8 @@ final class DictionaryAudioLearningService {
                     evidenceID: request.evidenceID,
                     evidence: request.evidence,
                     capture: capture,
-                    expectedRevision: revision
+                    expectedRevision: revision,
+                    canPersist: { DictionaryMatcherExperiment.sharedFeaturesEnabled && request.pronunciationGeneration == DictionaryMatcherExperiment.generation }
                 )
                 // An edit can happen while awaiting the store actor. Roll back only this event.
                 if Task.isCancelled || !self.isCurrent(request.entry) {

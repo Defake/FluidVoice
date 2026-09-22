@@ -2,8 +2,8 @@ import Foundation
 
 /// Local opt-in. Both switches default off in a fresh installation.
 nonisolated enum DictionaryPronunciationExperiment {
-    static var enabled: Bool { UserDefaults.standard.bool(forKey: "DictionaryEdgeMatchingEnabled") || DictionaryMatcherExperiment.positiveEnabled }
-    static var captureEnabled: Bool { UserDefaults.standard.bool(forKey: "DictionaryPronunciationDebugCapture") }
+    static var enabled: Bool { DictionaryMatcherExperiment.sharedFeaturesEnabled }
+    static var captureEnabled: Bool { enabled && UserDefaults.standard.bool(forKey: "DictionaryPronunciationDebugCapture") }
 
     /// Only the outer quiet edges are removed. Internal pauses and low-energy consonants remain.
     static func trimmedRange(_ samples: [Float], within range: Range<Int>? = nil) -> Range<Int>? {
