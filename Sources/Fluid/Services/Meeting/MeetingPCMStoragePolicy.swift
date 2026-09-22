@@ -22,7 +22,7 @@ nonisolated enum MeetingPCMStoragePolicy {
     /// mono.  The count is intentionally bounded to the supported topology.
     static func pcmBytesPerSecond(trackCount: Int) -> Int64 {
         let channels = trackCount >= 2 ? 3 : 1
-        return sampleRate * bytesPerSample * Int64(channels)
+        return self.sampleRate * self.bytesPerSample * Int64(channels)
     }
 
     static func estimatedPCMBytes(
@@ -31,7 +31,7 @@ nonisolated enum MeetingPCMStoragePolicy {
     ) -> Int64 {
         guard duration.isFinite, duration > 0 else { return 0 }
         let seconds = Int64(ceil(duration))
-        return pcmBytesPerSecond(trackCount: trackCount) * seconds
+        return self.pcmBytesPerSecond(trackCount: trackCount) * seconds
     }
 
     /// Free-space floor required before starting a capture.  The safety multiplier covers file
@@ -42,13 +42,13 @@ nonisolated enum MeetingPCMStoragePolicy {
         duration: TimeInterval = Self.defaultMeetingDuration
     ) -> Int64 {
         let pcm = Double(estimatedPCMBytes(trackCount: trackCount, duration: duration))
-        let protectedPCM = Int64(ceil(pcm * safetyMultiplier))
-        return protectedPCM + materializationHeadroomBytes + stagingHeadroomBytes
+        let protectedPCM = Int64(ceil(pcm * self.safetyMultiplier))
+        return protectedPCM + self.materializationHeadroomBytes + self.stagingHeadroomBytes
     }
 
     static func requiredFreeSpaceDescription(trackCount: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        return formatter.string(fromByteCount: requiredFreeBytes(trackCount: trackCount))
+        return formatter.string(fromByteCount: self.requiredFreeBytes(trackCount: trackCount))
     }
 }

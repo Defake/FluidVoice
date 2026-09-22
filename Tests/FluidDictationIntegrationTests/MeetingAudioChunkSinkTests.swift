@@ -1,16 +1,16 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
 import CryptoKit
 import Darwin
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
 private final class MeetingPCMFailureCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
-    func increment() { lock.lock(); count += 1; lock.unlock() }
-    func value() -> Int { lock.lock(); defer { lock.unlock() }; return count }
+    func increment() { self.lock.lock(); self.count += 1; self.lock.unlock() }
+    func value() -> Int { self.lock.lock(); defer { lock.unlock() }; return self.count }
 }
 
 /// P1a's sink fixtures intentionally use real ready CMSampleBuffers.  These tests stay in the
@@ -31,8 +31,8 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         XCTAssertEqual(copied.buffer.format.channelCount, 1)
         XCTAssertEqual(copied.buffer.frameLength, 512)
         XCTAssertEqual(copied.pts.seconds, 1.25, accuracy: 0.000_001)
-        let copiedSamples = Array(UnsafeBufferPointer(
-            start: try XCTUnwrap(copied.buffer.floatChannelData?[0]),
+        let copiedSamples = try Array(UnsafeBufferPointer(
+            start: XCTUnwrap(copied.buffer.floatChannelData?[0]),
             count: Int(copied.buffer.frameLength)
         ))
         XCTAssertTrue(copiedSamples.allSatisfy { abs($0 - 0.25) < 0.000_001 })
@@ -43,13 +43,19 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         XCTAssertGreaterThan(mono.frameLength, 0)
 
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "test", sourceDisplayName: "Test",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "test",
+            sourceDisplayName: "Test",
             format: nil,
             timebase: MeetingTimebaseMetadata(
-                startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1,
+                startedHostTime: 0,
+                machTimebaseNumerator: 1,
+                machTimebaseDenominator: 1,
                 firstPresentationTime: nil
             ),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         let failures = MeetingPCMFailureCounter()
         let writer = try MeetingAudioChunkWriter(
@@ -70,10 +76,14 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         let root = try self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .applicationAudio, sourceIdentifier: "test", sourceDisplayName: "Test",
+            id: UUID(),
+            kind: .applicationAudio,
+            sourceIdentifier: "test",
+            sourceDisplayName: "Test",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         let failures = MeetingPCMFailureCounter()
         let writer = try MeetingAudioChunkWriter(track: track, sessionDirectory: root, chunkDuration: 60) { event in
@@ -81,34 +91,38 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         }
         let tags: [UInt32?] = [nil, kAudioChannelLayoutTag_Mono, nil, kAudioChannelLayoutTag_DiscreteInOrder | 1]
         for (index, tag) in tags.enumerated() {
-            writer.enqueue(try self.makeRawSampleBuffer(channelCount: 1, layoutTag: tag, frameCount: 480, pts: Double(index) * 0.01))
+            try writer.enqueue(self.makeRawSampleBuffer(channelCount: 1, layoutTag: tag, frameCount: 480, pts: Double(index) * 0.01))
         }
         let result = await writer.stop()
         let chunk = try XCTUnwrap(result.chunks.first)
         XCTAssertEqual(result.chunks.count, 1)
         XCTAssertEqual(chunk.finalizationState, .finalized)
-        XCTAssertEqual(chunk.captureAnalysisAsset?.frameCount, 1_920)
+        XCTAssertEqual(chunk.captureAnalysisAsset?.frameCount, 1920)
         XCTAssertEqual(failures.value(), 0)
         XCTAssertEqual(chunk.discontinuities, [])
         let file = try AVAudioFile(forReading: root.appendingPathComponent(chunk.relativeFilePath), commonFormat: .pcmFormatFloat32, interleaved: true)
-        XCTAssertEqual(file.length, 1_920)
+        XCTAssertEqual(file.length, 1920)
     }
 
     func testWriterRotatesExactlyOnceForGenuineMonoToStereoChange() async throws {
         let root = try self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .applicationAudio, sourceIdentifier: "test", sourceDisplayName: "Test",
+            id: UUID(),
+            kind: .applicationAudio,
+            sourceIdentifier: "test",
+            sourceDisplayName: "Test",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         let failures = MeetingPCMFailureCounter()
         let writer = try MeetingAudioChunkWriter(track: track, sessionDirectory: root, chunkDuration: 60) { event in
             if case .interrupted(.writerFailure, _, _) = event { failures.increment() }
         }
-        writer.enqueue(try self.makeRawSampleBuffer(channelCount: 1, layoutTag: nil, frameCount: 480, pts: 0))
-        writer.enqueue(try self.makeRawSampleBuffer(channelCount: 2, layoutTag: kAudioChannelLayoutTag_Stereo, frameCount: 480, pts: 0.01))
+        try writer.enqueue(self.makeRawSampleBuffer(channelCount: 1, layoutTag: nil, frameCount: 480, pts: 0))
+        try writer.enqueue(self.makeRawSampleBuffer(channelCount: 2, layoutTag: kAudioChannelLayoutTag_Stereo, frameCount: 480, pts: 0.01))
         let result = await writer.stop()
         XCTAssertEqual(result.chunks.count, 2)
         XCTAssertEqual(result.chunks.map { $0.captureAnalysisAsset?.frameCount }, [480, 480])
@@ -132,25 +146,31 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
 
     func testPCMFormatContractCanonicalizesEquivalentMonoAndStereoLayouts() throws {
         let monoNil = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: true))
-        let mono = try XCTUnwrap(AVAudioFormat(
-            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: true,
-            channelLayout: try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Mono))
+        let mono = try XCTUnwrap(try AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 48_000,
+            interleaved: true,
+            channelLayout: XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Mono))
         ))
-        let discrete0 = try XCTUnwrap(AVAudioFormat(
-            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: true,
-            channelLayout: try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 1))
+        let discrete0 = try XCTUnwrap(try AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 48_000,
+            interleaved: true,
+            channelLayout: XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 1))
         ))
         let stereoNil = try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: true))
-        let stereo = try XCTUnwrap(AVAudioFormat(
-            commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: true,
-            channelLayout: try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Stereo))
+        let stereo = try XCTUnwrap(try AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 48_000,
+            interleaved: true,
+            channelLayout: XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Stereo))
         ))
 
         XCTAssertEqual(try MeetingPCMFormatContract(audioFormat: monoNil), try MeetingPCMFormatContract(audioFormat: mono))
         XCTAssertEqual(try MeetingPCMFormatContract(audioFormat: mono), try MeetingPCMFormatContract(audioFormat: discrete0))
         XCTAssertEqual(try MeetingPCMFormatContract(audioFormat: stereoNil), try MeetingPCMFormatContract(audioFormat: stereo))
         XCTAssertNotEqual(try MeetingPCMFormatContract(audioFormat: monoNil), try MeetingPCMFormatContract(audioFormat: stereoNil))
-        XCTAssertThrowsError(try MeetingPCMFormatContract(audioFormat: try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: true))))
+        XCTAssertThrowsError(try MeetingPCMFormatContract(audioFormat: XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000, channels: 1, interleaved: true))))
     }
 
     func testMonoAndStereoPreserveFramesPTSAndPublishCAF() async throws {
@@ -179,14 +199,16 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
             )
             let readBuffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 17))
             try file.read(into: readBuffer)
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             let read = Array(UnsafeBufferPointer(start: readBuffer.audioBufferList.pointee.mBuffers.mData!.assumingMemoryBound(to: Float.self), count: samples.count))
             XCTAssertEqual(read, samples)
-            let digest = SHA256.hash(data: try Data(contentsOf: finalURL)).map { String(format: "%02x", $0) }.joined()
+            let digest = try SHA256.hash(data: Data(contentsOf: finalURL)).map { String(format: "%02x", $0) }.joined()
             XCTAssertEqual(finalization.sha256, digest)
             XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("tracks/application/000001.partial.caf").path))
-            let mode = (try FileManager.default.attributesOfItem(atPath: finalURL.path)[.posixPermissions] as? NSNumber)?.intValue
+            let mode = try (FileManager.default.attributesOfItem(atPath: finalURL.path)[.posixPermissions] as? NSNumber)?.intValue
             XCTAssertEqual(mode, Int(0o600))
-            let parentMode = (try FileManager.default.attributesOfItem(atPath: finalURL.deletingLastPathComponent().path)[.posixPermissions] as? NSNumber)?.intValue
+            let parentMode = try (FileManager.default.attributesOfItem(atPath: finalURL.deletingLastPathComponent().path)[.posixPermissions] as? NSNumber)?.intValue
             XCTAssertEqual(parentMode, Int(0o700))
         }
     }
@@ -271,6 +293,8 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
         let file = try AVAudioFile(forReading: root.appendingPathComponent("noninterleaved.caf"), commonFormat: .pcmFormatFloat32, interleaved: true)
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 6))
         try file.read(into: buffer)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let values = Array(UnsafeBufferPointer(start: buffer.audioBufferList.pointee.mBuffers.mData!.assumingMemoryBound(to: Float.self), count: 12))
         XCTAssertEqual(values, [0.1, 1.1, 0.2, 1.2, 0.3, 1.3, 0.4, 1.4, 0.5, 1.5, 0.6, 1.6])
     }
@@ -335,46 +359,109 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
     private func makeRawSampleBuffer(channelCount: Int, layoutTag: UInt32?, frameCount: Int, pts: Double) throws -> CMSampleBuffer {
         let bytesPerFrame = channelCount * MemoryLayout<Float>.size
         var asbd = AudioStreamBasicDescription(
-            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagsNativeFloatPacked,
-            mBytesPerPacket: UInt32(bytesPerFrame), mFramesPerPacket: 1, mBytesPerFrame: UInt32(bytesPerFrame),
-            mChannelsPerFrame: UInt32(channelCount), mBitsPerChannel: 32, mReserved: 0
+            mSampleRate: 48_000,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagsNativeFloatPacked,
+            mBytesPerPacket: UInt32(bytesPerFrame),
+            mFramesPerPacket: 1,
+            mBytesPerFrame: UInt32(bytesPerFrame),
+            mChannelsPerFrame: UInt32(channelCount),
+            mBitsPerChannel: 32,
+            mReserved: 0
         )
         var description: CMAudioFormatDescription?
         let layout = layoutTag.flatMap { AVAudioChannelLayout(layoutTag: $0) }
         let layoutStatus: OSStatus
         if let layout, let layoutData = MeetingPCMFormatContract.layoutData(layout) {
             layoutStatus = layoutData.withUnsafeBytes { bytes in
-                CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd,
-                    layoutSize: layoutData.count, layout: bytes.baseAddress!.assumingMemoryBound(to: AudioChannelLayout.self),
-                    magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
+                CMAudioFormatDescriptionCreate(
+                    allocator: kCFAllocatorDefault,
+                    asbd: &asbd,
+                    layoutSize: layoutData.count,
+                    // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+                    // swiftlint:disable:next force_unwrapping
+                    layout: bytes.baseAddress!.assumingMemoryBound(to: AudioChannelLayout.self),
+                    magicCookieSize: 0,
+                    magicCookie: nil,
+                    extensions: nil,
+                    formatDescriptionOut: &description
+                )
             }
         } else {
-            layoutStatus = CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: &asbd,
-                layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description)
+            layoutStatus = CMAudioFormatDescriptionCreate(
+                allocator: kCFAllocatorDefault,
+                asbd: &asbd,
+                layoutSize: 0,
+                layout: nil,
+                magicCookieSize: 0,
+                magicCookie: nil,
+                extensions: nil,
+                formatDescriptionOut: &description
+            )
         }
         XCTAssertEqual(layoutStatus, noErr)
         let values = Array(repeating: Float(0.25), count: frameCount * channelCount)
         let bytes = values.withUnsafeBytes { Data($0) }
         var block: CMBlockBuffer?
-        XCTAssertEqual(CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil,
-            blockLength: bytes.count, blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
-            dataLength: bytes.count, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block), noErr)
+        XCTAssertEqual(CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: bytes.count,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: bytes.count,
+            flags: kCMBlockBufferAssureMemoryNowFlag,
+            blockBufferOut: &block
+        ), noErr)
         let blockBuffer = try XCTUnwrap(block)
-        XCTAssertEqual(bytes.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: bytes.count) }, noErr)
-        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 48_000), presentationTimeStamp: CMTime(seconds: pts, preferredTimescale: 48_000), decodeTimeStamp: .invalid)
+        XCTAssertEqual(
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
+            bytes.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer, offsetIntoDestination: 0, dataLength: bytes.count) },
+            noErr
+        )
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 48_000),
+            presentationTimeStamp: CMTime(seconds: pts, preferredTimescale: 48_000),
+            decodeTimeStamp: .invalid
+        )
         var sample: CMSampleBuffer?
-        XCTAssertEqual(CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, formatDescription: try XCTUnwrap(description), sampleCount: frameCount, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sample), noErr)
+        XCTAssertEqual(
+            try CMSampleBufferCreateReady(
+                allocator: kCFAllocatorDefault,
+                dataBuffer: blockBuffer,
+                formatDescription: XCTUnwrap(description),
+                sampleCount: frameCount,
+                sampleTimingEntryCount: 1,
+                sampleTimingArray: &timing,
+                sampleSizeEntryCount: 0,
+                sampleSizeArray: nil,
+                sampleBufferOut: &sample
+            ),
+            noErr
+        )
         return try XCTUnwrap(sample)
     }
 
     private func makeSampleBuffer(format: AVAudioFormat, interleavedSamples: [Float], frameCount: Int, pts: Double) throws -> CMSampleBuffer {
         let bytes = interleavedSamples.withUnsafeBytes { Data($0) }
         var block: CMBlockBuffer?
-        var status = CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
-                                                        blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
-                                                        dataLength: bytes.count, flags: 0, blockBufferOut: &block)
+        var status = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: bytes.count,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: bytes.count,
+            flags: 0,
+            blockBufferOut: &block
+        )
         guard status == noErr, let block else { throw NSError(domain: "P1a", code: Int(status)) }
         status = bytes.withUnsafeBytes { ptr in
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             CMBlockBufferReplaceDataBytes(with: ptr.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes.count)
         }
         guard status == noErr else { throw NSError(domain: "P1a", code: Int(status)) }
@@ -387,9 +474,17 @@ final class MeetingAudioChunkSinkTests: XCTestCase {
             decodeTimeStamp: .invalid
         )
         var sampleBuffer: CMSampleBuffer?
-        status = CMSampleBufferCreateReady(allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format.formatDescription, sampleCount: frameCount,
-                                           sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil,
-                                           sampleBufferOut: &sampleBuffer)
+        status = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: block,
+            formatDescription: format.formatDescription,
+            sampleCount: frameCount,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &sampleBuffer
+        )
         guard status == noErr, let sampleBuffer else { throw NSError(domain: "P1a", code: Int(status)) }
         return sampleBuffer
     }

@@ -686,7 +686,10 @@ final class MenuBarManager: NSObject, ObservableObject, NSMenuDelegate {
                 "menuRefreshUs=\(Int((ProcessInfo.processInfo.systemUptime - windowHideReturnedAt) * 1_000_000))",
             source: "StopTiming"
         )
-        DebugLogger.shared.debug("STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))", source: "StopTiming")
+        DebugLogger.shared.debug(
+            "STOP_TRACE phase=hide_dispatched closingAnimation=\(SettingsStore.shared.overlayClosingAnimationEnabled) elapsedMs=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1000))",
+            source: "StopTiming"
+        )
         self.overlayBench(
             "finish_hide_dispatched elapsedMs=\(Int(((ProcessInfo.processInfo.systemUptime - startedAt) * 1000).rounded()))"
         )

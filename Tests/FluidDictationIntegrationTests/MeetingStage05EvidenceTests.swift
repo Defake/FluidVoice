@@ -1,78 +1,126 @@
 #if DEBUG
 
-@testable import FluidVoice_Debug
 import CoreAudio
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
 final class MeetingStage05EvidenceTests: XCTestCase {
-    private func window(_ id: UInt32 = 1, bundle: String? = "com.google.Chrome",
-                        pid: Int32 = 42, title: String? = MeetingStage05StimulusHandshake.readyTitle
+    private func window(
+        _ id: UInt32 = 1,
+        bundle: String? = "com.google.Chrome",
+        pid: Int32 = 42,
+        title: String? = MeetingStage05StimulusHandshake.readyTitle
     ) -> MeetingExternalReferenceTrialAWindowCandidate {
         .init(windowID: id, owningBundleIdentifier: bundle, owningProcessID: pid, title: title)
     }
 
     func testReadySelectionRequiresExactlyOneOwnedExactReadyWindow() {
-        let ready = window()
+        let ready = self.window()
         XCTAssertEqual(
             MeetingStage05StimulusHandshake.selectReadyWindow(
-                from: [ready, window(2, title: "Unrelated")], targetBundleIdentifier: "com.google.Chrome"),
-            ready)
+                from: [ready, self.window(2, title: "Unrelated")], targetBundleIdentifier: "com.google.Chrome"
+            ),
+            ready
+        )
         XCTAssertNil(MeetingStage05StimulusHandshake.selectReadyWindow(
-            from: [ready, window(2)], targetBundleIdentifier: "com.google.Chrome"))
+            from: [ready, self.window(2)], targetBundleIdentifier: "com.google.Chrome"
+        ))
         XCTAssertNil(MeetingStage05StimulusHandshake.selectReadyWindow(
-            from: [window(bundle: "com.apple.Safari")], targetBundleIdentifier: "com.google.Chrome"))
+            from: [self.window(bundle: "com.apple.Safari")], targetBundleIdentifier: "com.google.Chrome"
+        ))
         XCTAssertNil(MeetingStage05StimulusHandshake.selectReadyWindow(
-            from: [window(0)], targetBundleIdentifier: "com.google.Chrome"))
+            from: [self.window(0)], targetBundleIdentifier: "com.google.Chrome"
+        ))
     }
 
     func testReadyToPlayingTransitionSucceedsForSameWindowOwnerAndPID() {
-        let ready = window()
-        let playing = window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")
+        let ready = self.window()
+        let playing = self.window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")
         let decision = MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [playing], targetBundleIdentifier: "com.google.Chrome",
-            now: 0.5, deadline: 2)
+            for: ready,
+            current: [playing],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        )
         XCTAssertEqual(decision, .success(playing))
     }
 
     func testPlayingTransitionRejectsAmbiguityAndIdentityChanges() {
-        let ready = window()
-        let playing = window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")
+        let ready = self.window()
+        let playing = self.window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [playing, window(2, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 11s")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.ambiguous))
+            for: ready,
+            current: [playing, self.window(2, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 11s")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.ambiguous))
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [window(bundle: "com.apple.Safari", title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.ownerChanged))
+            for: ready,
+            current: [self.window(bundle: "com.apple.Safari", title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.ownerChanged))
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [window(pid: 43, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.processChanged))
+            for: ready,
+            current: [self.window(pid: 43, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.processChanged))
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [window(2, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.windowChanged))
+            for: ready,
+            current: [self.window(2, title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.windowChanged))
     }
 
     func testPlayingTransitionRejectsTimeoutMalformedAndInsufficientRemainingTime() {
-        let ready = window()
+        let ready = self.window()
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [ready], targetBundleIdentifier: "com.google.Chrome",
-            now: 2, deadline: 2), .failure(.timeout))
+            for: ready,
+            current: [ready],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 2,
+            deadline: 2
+        ), .failure(.timeout))
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [window(title: "FluidVoice C2 Diagnostic Stimulus — COMPLETE")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.malformedState))
+            for: ready,
+            current: [self.window(title: "FluidVoice C2 Diagnostic Stimulus — COMPLETE")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.malformedState))
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 21s")],
-            targetBundleIdentifier: "com.google.Chrome", now: 0.5, deadline: 2), .failure(.remainingInsufficient))
+            for: ready,
+            current: [self.window(title: "FluidVoice C2 Diagnostic Stimulus — PLAYING — 21s")],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 0.5,
+            deadline: 2
+        ), .failure(.remainingInsufficient))
     }
 
     func testHandshakeDecisionMayWaitBeforePlaybackWithoutStartingCapture() {
-        let ready = window()
+        let ready = self.window()
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [ready], targetBundleIdentifier: "com.google.Chrome",
-            now: 7.99, deadline: 8), .waiting)
+            for: ready,
+            current: [ready],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 7.99,
+            deadline: 8
+        ), .waiting)
         XCTAssertEqual(MeetingStage05StimulusHandshake.decision(
-            for: ready, current: [ready], targetBundleIdentifier: "com.google.Chrome",
-            now: 8, deadline: 8), .failure(.timeout))
+            for: ready,
+            current: [ready],
+            targetBundleIdentifier: "com.google.Chrome",
+            now: 8,
+            deadline: 8
+        ), .failure(.timeout))
     }
 
     func testPlayingCountdownParserRequiresTheExactBoundedTitle() {
@@ -123,10 +171,16 @@ final class MeetingStage05EvidenceTests: XCTestCase {
 
     func testNativeMonoFloat32FormatIsAcceptedWithoutConversion() {
         let asbd = AudioStreamBasicDescription(
-            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+            mSampleRate: 48_000,
+            mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4,
-            mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0)
+            mBytesPerPacket: 4,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4,
+            mChannelsPerFrame: 1,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
         XCTAssertEqual(MeetingStage05NativePCMFormat.from(asbd)?.codec, "pcm_f32le")
         XCTAssertEqual(MeetingStage05NativePCMFormat.from(asbd)?.bytesPerFrame, 4)
     }
@@ -143,15 +197,27 @@ final class MeetingStage05EvidenceTests: XCTestCase {
 
     func testStereoAndIntegerFormatsFailClosed() {
         let stereo = AudioStreamBasicDescription(
-            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+            mSampleRate: 48_000,
+            mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 8, mFramesPerPacket: 1, mBytesPerFrame: 8,
-            mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0)
+            mBytesPerPacket: 8,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 8,
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
         let integer = AudioStreamBasicDescription(
-            mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+            mSampleRate: 48_000,
+            mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 2, mFramesPerPacket: 1, mBytesPerFrame: 2,
-            mChannelsPerFrame: 1, mBitsPerChannel: 16, mReserved: 0)
+            mBytesPerPacket: 2,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 2,
+            mChannelsPerFrame: 1,
+            mBitsPerChannel: 16,
+            mReserved: 0
+        )
         XCTAssertNil(MeetingStage05NativePCMFormat.from(stereo))
         XCTAssertNil(MeetingStage05NativePCMFormat.from(integer))
     }
@@ -159,11 +225,11 @@ final class MeetingStage05EvidenceTests: XCTestCase {
     func testConsentAndCaptureAreExplicitlyOptIn() {
         XCTAssertFalse(MeetingStage05EvidenceAutorun.requested(environment: [:]))
         XCTAssertFalse(MeetingStage05EvidenceAutorun.consentConfirmed(environment: [
-            MeetingStage05EvidenceAutorun.consentEnvironmentKey: "1"
+            MeetingStage05EvidenceAutorun.consentEnvironmentKey: "1",
         ]))
         XCTAssertTrue(MeetingStage05EvidenceAutorun.consentConfirmed(environment: [
             MeetingStage05EvidenceAutorun.consentEnvironmentKey:
-                MeetingStage05EvidenceAutorun.consentToken
+                MeetingStage05EvidenceAutorun.consentToken,
         ]))
         let complete = [
             MeetingStage05EvidenceAutorun.environmentKey: "1",
@@ -177,7 +243,7 @@ final class MeetingStage05EvidenceTests: XCTestCase {
         ]
         XCTAssertTrue(MeetingStage05EvidenceAutorun.requested(environment: complete))
         XCTAssertFalse(MeetingStage05EvidenceAutorun.requested(environment: complete.merging([
-            MeetingStage05EvidenceAutorun.consentEnvironmentKey: "1"
+            MeetingStage05EvidenceAutorun.consentEnvironmentKey: "1",
         ]) { _, new in new }))
         let operatorMedia = complete.merging([
             MeetingStage05EvidenceAutorun.operatorMediaConsentEnvironmentKey:
@@ -186,7 +252,7 @@ final class MeetingStage05EvidenceTests: XCTestCase {
         XCTAssertTrue(MeetingStage05EvidenceAutorun.requested(environment: operatorMedia))
         XCTAssertTrue(MeetingStage05EvidenceAutorun.operatorMediaRequested(environment: operatorMedia))
         XCTAssertFalse(MeetingStage05EvidenceAutorun.requested(environment: operatorMedia.merging([
-            MeetingStage05EvidenceAutorun.operatorMediaConsentEnvironmentKey: "1"
+            MeetingStage05EvidenceAutorun.operatorMediaConsentEnvironmentKey: "1",
         ]) { _, new in new }))
         XCTAssertEqual(MeetingStage05EvidenceAutorun.remainingStimulusSeconds(
             "FluidVoice C2 Diagnostic Stimulus — PLAYING — 24s"), 24)
@@ -205,9 +271,13 @@ final class MeetingStage05EvidenceTests: XCTestCase {
             height: CGFloat = 720
         ) -> Bool {
             MeetingStage05EvidenceAutorun.operatorMediaWindowIsEligible(
-                windowID: id, owningBundleIdentifier: bundle, owningProcessID: pid,
-                frameWidth: width, frameHeight: height,
-                targetBundleIdentifier: "com.google.Chrome")
+                windowID: id,
+                owningBundleIdentifier: bundle,
+                owningProcessID: pid,
+                frameWidth: width,
+                frameHeight: height,
+                targetBundleIdentifier: "com.google.Chrome"
+            )
         }
         XCTAssertTrue(eligible())
         XCTAssertFalse(eligible(id: 0))

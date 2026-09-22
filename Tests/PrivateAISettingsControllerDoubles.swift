@@ -6,30 +6,36 @@ struct PrivateAIModelDownloadProgress: Equatable, Sendable {
     init(initialExpectedBytes: Int?) {}
     func withFallbackExpectedBytes(_ bytes: Int?) -> Self { self }
 }
+
 struct PrivateAIRegisteredModel: Sendable {
     let id: String
     var canDownload = true
     var artifact: Artifact { Artifact() }
     struct Artifact { var byteCount: Int? = 10 }
 }
+
 struct PrivateAIModelUpdateStatus {
     enum State { case current, updateAvailable }
     var state: State
 }
+
 struct PrivateAIModelUpdateToken: Sendable { let id = UUID() }
 struct PrivateAIStatus { enum State { case ready, failed }; var state: State; var message: String? }
 enum PrivateAIModelRegistry {
     static let defaultModel = PrivateAIRegisteredModel(id: "mini")
     static func model(id: String) -> PrivateAIRegisteredModel? {
-        modelIDs().contains(id) ? PrivateAIRegisteredModel(id: id) : nil
+        self.modelIDs().contains(id) ? PrivateAIRegisteredModel(id: id) : nil
     }
+
     static func modelIDs() -> [String] { ["mini", "pico"] }
-    static func canonicalModelID(for id: String) -> String? { model(id: id)?.id }
+    static func canonicalModelID(for id: String) -> String? { self.model(id: id)?.id }
 }
+
 struct PrivateAIProviderFeature { static let shared = Self(); let providerID = "fi" }
 enum PrivateAIProviderPromptFormat {
     static func verifiedModelID(settings: SettingsStore) -> String? { "mini" }
 }
+
 final class SettingsStore {
     enum PrivateAIBackendPreference { case auto, mlx; var displayName: String { "test" } }
     var privateAIBackendPreference: PrivateAIBackendPreference = .auto
@@ -40,13 +46,15 @@ final class SettingsStore {
     var availableModelsByProvider = ["external": ["external-model"]]
     static func clampPrivateAIContextTokenLimit(_ value: Int) -> Int { max(1, value) }
 }
+
 @MainActor
 final class UserDefaults {
     static let standard = UserDefaults()
     var writes = 0
-    func set(_ value: String, forKey key: String) { writes += 1 }
-    func removeObject(forKey key: String) { writes += 1 }
+    func set(_ value: String, forKey key: String) { self.writes += 1 }
+    func removeObject(forKey key: String) { self.writes += 1 }
 }
+
 @MainActor
 final class AIEnhancementSettingsViewModel {
     enum ConnectionStatus { case success }
@@ -63,25 +71,28 @@ final class AIEnhancementSettingsViewModel {
     var smartSelectionCount = 0
     var smartSelected = false
     func selectPrivateAIPromptIfAvailable() {
-        guard verified else { return }
-        smartSelectionCount += 1
-        smartSelected = true
+        guard self.verified else { return }
+        self.smartSelectionCount += 1
+        self.smartSelected = true
     }
+
     func providerKey(for id: String) -> String { id }
     func refreshProviderItems() {}
     func connectionErrorMessage(for id: String) -> String { "test failure" }
-    func resetVerification(for id: String) { resetCount += 1 }
+    func resetVerification(for id: String) { self.resetCount += 1 }
     func updateConnectionStatus(_ status: ConnectionStatus, for id: String) {}
     func verifyPrivateAIProvider(model: PrivateAIRegisteredModel) async -> Bool {
-        verificationCount += 1
-        return verified
+        self.verificationCount += 1
+        return self.verified
     }
 }
+
 struct DebugLogger {
     static let shared = Self()
     func info(_ message: String, source: String) {}
     func error(_ message: String, source: String) {}
 }
+
 @MainActor
 final class PrivateAIIntegrationService {
     struct LoadedModelState { var state: PrivateAIStatus.State; var modelID: String }
@@ -102,37 +113,41 @@ final class PrivateAIIntegrationService {
     static var suspendRead = false
     static var loadContinuation: CheckedContinuation<PrivateAIStatus, Never>?
     static var suspendLoad = false
-    static func isModelInstalled(_ model: PrivateAIRegisteredModel) -> Bool { installed }
-    static func canRemoveInstalledModel(_ model: PrivateAIRegisteredModel) -> Bool { installed }
+    static func isModelInstalled(_ model: PrivateAIRegisteredModel) -> Bool { self.installed }
+    static func canRemoveInstalledModel(_ model: PrivateAIRegisteredModel) -> Bool { self.installed }
     static func modelUpdateStatus(_ model: PrivateAIRegisteredModel) async -> PrivateAIModelUpdateStatus { .init(state: .current) }
     static func prepareModel(
         _ model: PrivateAIRegisteredModel,
         progressHandler: (@Sendable (PrivateAIModelDownloadProgress) async -> Void)? = nil
     ) async throws -> URL {
-        downloads += 1
-        lastProgress = progressHandler
-        if failDownload { throw PrivateAISettingsBoundaryTests.Failure.expected }
+        self.downloads += 1
+        self.lastProgress = progressHandler
+        if self.failDownload { throw PrivateAISettingsBoundaryTests.Failure.expected }
         await progressHandler?(.init(initialExpectedBytes: 10))
-        return modelDirectoryURL
+        return self.modelDirectoryURL
     }
+
     static func updateModel(
         _ model: PrivateAIRegisteredModel,
         progressHandler: (@Sendable (PrivateAIModelDownloadProgress) async -> Void)? = nil
     ) async throws -> PrivateAIModelUpdateToken {
-        _ = try await prepareModel(model, progressHandler: progressHandler)
+        _ = try await self.prepareModel(model, progressHandler: progressHandler)
         return .init()
     }
-    static func commitModelUpdate(_ token: PrivateAIModelUpdateToken) async { commits += 1 }
-    static func rollbackModelUpdate(_ token: PrivateAIModelUpdateToken) async { rollbacks += 1 }
+
+    static func commitModelUpdate(_ token: PrivateAIModelUpdateToken) async { self.commits += 1 }
+    static func rollbackModelUpdate(_ token: PrivateAIModelUpdateToken) async { self.rollbacks += 1 }
     func loadedModelState() async -> LoadedModelState? {
         if Self.suspendRead { return await withCheckedContinuation { Self.readContinuation = $0 } }
         return nil
     }
+
     func loadModel(_ model: PrivateAIRegisteredModel) async throws -> PrivateAIStatus {
         Self.loads += 1
         if Self.suspendLoad { return await withCheckedContinuation { Self.loadContinuation = $0 } }
         return .init(state: .ready)
     }
+
     func unloadCachedRuntime(reason: String) async {}
     func unloadAndRemoveInstalledModel(_ model: PrivateAIRegisteredModel, reason: String) async throws { Self.removals += 1 }
 }
@@ -140,7 +155,7 @@ final class PrivateAIIntegrationService {
 @MainActor
 enum PrivateAIControllerChecks {
     static func eventually(_ predicate: () -> Bool) async {
-        for _ in 0..<10000 {
+        for _ in 0..<10_000 {
             if predicate() { return }
             await Task.yield()
         }
@@ -150,7 +165,9 @@ enum PrivateAIControllerChecks {
     static func run(check: (Bool, String) -> Void) async {
         let vm = AIEnhancementSettingsViewModel()
         let controller = PrivateAISettingsController(viewModel: vm)
-        for _ in 0..<50 { controller.previewModel("pico"); controller.previewModel("mini") }
+        for _ in 0..<50 {
+            controller.previewModel("pico"); controller.previewModel("mini")
+        }
         controller.previewModel("pico")
         controller.previewModel("invalid")
         check(controller.previewModelID == "pico" && controller.privateAISelectedModelID == "mini", "Controller preview remains separate and rejects invalid IDs")
@@ -163,7 +180,7 @@ enum PrivateAIControllerChecks {
 
         let writesBeforeCardRead = UserDefaults.standard.writes
         controller.refreshPrivateAIModelUpdateStatus(PrivateAIRegisteredModel(id: "mini"))
-        await eventually { controller.privateAIModelUpdateStatusByID["mini"] != nil }
+        await self.eventually { controller.privateAIModelUpdateStatusByID["mini"] != nil }
         check(controller.privateAIModelUpdateStatusByID["mini"]?.state == .current, "Inactive card receives its own update status")
         check(controller.privateAISelectedModelID == "pico" && UserDefaults.standard.writes == writesBeforeCardRead, "Card update read never selects or persists another model")
         let verificationBeforeInactiveAction = vm.verificationCount
@@ -176,12 +193,12 @@ enum PrivateAIControllerChecks {
         controller.downloadPrivateAIModel(pico)
         controller.persistPrivateAIModelSelection("mini")
         check(controller.isBusy && controller.privateAISelectedModelID == "pico", "Busy controller rejects duplicate action/model switching")
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(PrivateAIIntegrationService.downloads == 1 && vm.verificationCount == 0, "Failed download never verifies and only starts once")
         check(controller.privateAILoadState.failureMessage(for: "pico") != nil, "Failure is visible and releases busy state")
         PrivateAIIntegrationService.failDownload = false
         controller.downloadPrivateAIModel(pico)
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(controller.privateAILoadState.isLoaded("pico") && vm.verificationCount == 1, "Download retry verifies and completes")
         await PrivateAIIntegrationService.lastProgress?(.init(initialExpectedBytes: 10))
         check(controller.privateAILoadState.isLoaded("pico"), "Late progress from finished download cannot replace ready state")
@@ -189,10 +206,13 @@ enum PrivateAIControllerChecks {
         controller.privateAIModelUpdateStatusByID["pico"] = .init(state: .updateAvailable)
         vm.verified = false
         controller.updatePrivateAIModel(pico)
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(PrivateAIIntegrationService.rollbacks == 1 && PrivateAIIntegrationService.commits == 0, "Real controller update path rolls back failed verification")
         check(controller.privateAILoadState.failureMessage(for: "pico") != nil, "Update verification failure remains visible")
-        check(controller.privateAILoadState.failureMessage(for: "pico")?.contains("test failure") == true, "Update error includes provider-specific detail, not literal interpolation")
+        check(
+            controller.privateAILoadState.failureMessage(for: "pico")?.contains("test failure") == true,
+            "Update error includes provider-specific detail, not literal interpolation"
+        )
 
         let writesBeforeNoop = UserDefaults.standard.writes
         let previewBeforeUpcoming = controller.previewModelID
@@ -202,7 +222,10 @@ enum PrivateAIControllerChecks {
             controller.persistPrivateAIModelSelection(upcoming.id)
             check(PrivateAIModelRegistry.model(id: upcoming.id) == nil, "Coming-soon previews are not runtime models")
         }
-        check(controller.previewModelID == previewBeforeUpcoming && controller.privateAISelectedModelID == selectionBeforeUpcoming, "Coming-soon identifiers cannot alter runtime selection")
+        check(
+            controller.previewModelID == previewBeforeUpcoming && controller.privateAISelectedModelID == selectionBeforeUpcoming,
+            "Coming-soon identifiers cannot alter runtime selection"
+        )
         check(UserDefaults.standard.writes == writesBeforeNoop, "Coming-soon identifiers never persist")
         controller.persistPrivateAIModelSelection("invalid")
         controller.persistPrivateAIModelSelection("pico")
@@ -217,7 +240,7 @@ enum PrivateAIControllerChecks {
         let writesBeforeDeletion = UserDefaults.standard.writes
         controller.deletePrivateAIModel(pico)
         controller.deletePrivateAIModel(pico)
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(PrivateAIIntegrationService.removals == 1 && controller.privateAILoadState == .idle, "Confirmed deletion runs once and returns to idle")
         check(UserDefaults.standard.writes == writesBeforeDeletion && vm.selectedProviderID == "external", "Deletion does not change model selection or shortcut provider")
         PrivateAIIntegrationService.installed = false
@@ -225,34 +248,38 @@ enum PrivateAIControllerChecks {
         PrivateAIIntegrationService.suspendRead = true
         controller.privateAILoadState = .idle
         controller.refreshPrivateAILoadState()
-        await eventually { PrivateAIIntegrationService.readContinuation != nil }
+        await self.eventually { PrivateAIIntegrationService.readContinuation != nil }
         PrivateAIIntegrationService.installed = true
         PrivateAIIntegrationService.suspendLoad = true
         controller.loadPrivateAIModel(pico)
-        await eventually { PrivateAIIntegrationService.loadContinuation != nil }
+        await self.eventually { PrivateAIIntegrationService.loadContinuation != nil }
         PrivateAIIntegrationService.readContinuation?.resume(returning: nil)
         PrivateAIIntegrationService.readContinuation = nil
-        for _ in 0..<20 { await Task.yield() }
+        for _ in 0..<20 {
+            await Task.yield()
+        }
         check(controller.privateAILoadState.isLoading("pico") && controller.isBusy, "Late idle read cannot erase a newer load")
         controller.previewModel("mini")
         controller.activatePreviewModel()
         check(controller.privateAISelectedModelID == "pico" && controller.previewModelID == "mini", "Pending load permits preview but not activation")
         PrivateAIIntegrationService.loadContinuation?.resume(returning: .init(state: .ready))
         PrivateAIIntegrationService.loadContinuation = nil
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(controller.privateAILoadState.isLoaded("pico"), "Load completion stays attached to activated model, not preview")
         var activations = 0
         vm.verified = false
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(activations == 0 && vm.smartSelectionCount == 0, "Failed activation must not switch shortcut routing")
         controller.refreshPrivateAILoadState()
-        for _ in 0..<20 { await Task.yield() }
+        for _ in 0..<20 {
+            await Task.yield()
+        }
         check(controller.privateAILoadState.failureMessage(for: "mini") != nil, "Passive runtime refresh preserves failed activation")
         vm.verified = true
         controller.usePreviewModel(isInstalled: true) { activations += 1 }
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(activations == 1 && controller.privateAILoadState.isLoaded("mini"), "Explicit activation calls routing once after successful verification")
         check(vm.smartSelected && vm.smartSelectionCount == 1, "Successful explicit activation selects Smart once")
         check(vm.selectedProviderID == "external" && vm.selectedModel == "external-model", "Activation preserves external editor configuration")
@@ -267,7 +294,7 @@ enum PrivateAIControllerChecks {
             reportedError = error
         })
         controller.verifyPrivateAIConnection(.init(id: "mini"), onCompletion: { _ in completionCount += 100 })
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(completionCount == 1 && reportedError == nil, "Manual verification reports success once; duplicate clicks do not report")
         check(!vm.smartSelected && vm.smartSelectionCount == 1, "Verification preserves manually selected Basic")
         vm.verified = false
@@ -275,13 +302,13 @@ enum PrivateAIControllerChecks {
             completionCount += 1
             reportedError = error
         })
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(completionCount == 2 && reportedError?.contains("test failure") == true, "Manual verification reports the actual failure")
         controller.verifyPrivateAIConnection(.init(id: "pico"), onCompletion: { _ in completionCount += 100 })
         check(completionCount == 2 && UserDefaults.standard.writes == writesBeforeVerification, "Inactive verification has no result or persistence side effects")
         vm.verified = true
         controller.usePreviewModel(isInstalled: true) {}
-        await eventually { !controller.isBusy }
+        await self.eventually { !controller.isBusy }
         check(vm.smartSelected && vm.smartSelectionCount == 2, "Another explicit activation switches Basic back to Smart")
     }
 }

@@ -1961,8 +1961,11 @@ private struct MeetingSetupCanvas: View {
             self.sourceEntry("In person · mic only", systemImage: "person.2", selected: self.draft.mode == .inRoom) {
                 self.draft.mode = .inRoom
             }
-            self.sourceEntry("Automatic · follows a detected call", systemImage: "wand.and.stars",
-                             selected: self.draft.mode == .onlineCall && self.draft.usesAutomaticApplication) {
+            self.sourceEntry(
+                "Automatic · follows a detected call",
+                systemImage: "wand.and.stars",
+                selected: self.draft.mode == .onlineCall && self.draft.usesAutomaticApplication
+            ) {
                 self.draft.mode = .onlineCall
                 self.draft.usesAutomaticApplication = true
                 self.draft.selectedApplicationID = nil
@@ -2018,12 +2021,15 @@ private struct MeetingSetupCanvas: View {
 
     private var recordingFooter: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-            Label(self.resolvedApplication != nil
-                ? "Stays on this Mac. Use headphones for clearer speaker separation."
-                : "Stays on this Mac. Place it where everyone can be heard.", systemImage: "lock")
-                .font(self.theme.typography.caption)
-                .foregroundStyle(self.theme.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            Label(
+                self.resolvedApplication != nil
+                    ? "Stays on this Mac. Use headphones for clearer speaker separation."
+                    : "Stays on this Mac. Place it where everyone can be heard.",
+                systemImage: "lock"
+            )
+            .font(self.theme.typography.caption)
+            .foregroundStyle(self.theme.palette.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
 
             if let errorMessage, !errorMessage.isEmpty {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -2054,7 +2060,7 @@ private struct MeetingSetupCanvas: View {
         if !self.readiness.isCheckingSources,
            self.readiness.showScreenRecordingSettingsAction ||
            (!self.canStart && (self.readiness.showMicrophoneSettingsAction ||
-               !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil))
+                   !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil))
         {
             Button(
                 self.readiness.showMicrophoneSettingsAction ? "Allow microphone access" :

@@ -8,7 +8,7 @@ import Foundation
 /// Every ambiguity resolves to no prompt: a false negative here is free, a false positive is not.
 @MainActor
 final class MeetingAutoDetector {
-    // MARK: Tunables (Phase A plan v2)
+    // MARK: - Tunables (Phase A plan v2)
 
     static let coincidenceWindowSeconds: TimeInterval = 30
     static let confirmDeadlineSeconds: TimeInterval = 30
@@ -152,7 +152,7 @@ final class MeetingAutoDetector {
         self.isBrowserDetectionEnabled = isBrowserDetectionEnabled
     }
 
-    // MARK: Lifecycle
+    // MARK: - Lifecycle
 
     func start() {
         guard self.pollTask == nil else { return }
@@ -227,7 +227,7 @@ final class MeetingAutoDetector {
         for (pid, record) in self.records where record.tier == .browserTier2 {
             guard self.isCurrentRun(runGeneration), self.isBrowserDetectionEnabled() else { return }
             let lastPoll = self.lastBrowserPollAt[pid]
-            guard lastPoll == nil || now.timeIntervalSince(lastPoll!) >= 2 else { continue }
+            guard lastPoll.map { now.timeIntervalSince($0) >= 2 } ?? true else { continue }
             let url = await self.browserTabReader.frontmostTabURL(bundleIdentifier: record.bundleIdentifier, processID: pid)
             guard self.isCurrentRun(runGeneration), self.isBrowserDetectionEnabled(),
                   self.records[pid]?.incarnation == record.incarnation
@@ -237,7 +237,7 @@ final class MeetingAutoDetector {
         }
     }
 
-    // MARK: Workspace events
+    // MARK: - Workspace events
 
     func handleWorkspaceEvent(_ event: WorkspaceEvent, at now: Date) {
         guard let tier = MeetingAppRegistry.tier(forBundleIdentifier: event.bundleIdentifier) else { return }
@@ -279,18 +279,16 @@ final class MeetingAutoDetector {
         DebugLogger.shared.log("record-armed bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
     }
 
-    // MARK: Mic activity
+    // MARK: - Mic activity
 
     func handleMicEdge(_ edge: MicActivityEdge, at now: Date) {
         guard edge.isActive else {
             self.lastMicReleaseAt = now
-            for pid in self.records.keys {
-                if self.records[pid]?.audioEvidenceSource == .device {
-                    self.records[pid]?.audioEvidenceAt = nil
-                    self.records[pid]?.audioEvidenceSource = nil
-                    if let bundleIdentifier = self.records[pid]?.bundleIdentifier {
-                        DebugLogger.shared.log("audio-evidence-end path=device bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
-                    }
+            for pid in self.records.keys where self.records[pid]?.audioEvidenceSource == .device {
+                self.records[pid]?.audioEvidenceAt = nil
+                self.records[pid]?.audioEvidenceSource = nil
+                if let bundleIdentifier = self.records[pid]?.bundleIdentifier {
+                    DebugLogger.shared.log("audio-evidence-end path=device bundle=\(bundleIdentifier)", source: "MeetingAutoDetector")
                 }
             }
             return
@@ -407,7 +405,7 @@ final class MeetingAutoDetector {
         return delta >= -5 && delta <= Self.frontmostLeadSeconds
     }
 
-    // MARK: Window evidence (Tier 1)
+    // MARK: - Window evidence (Tier 1)
 
     func handleWindowSnapshot(_ snapshots: [WindowSnapshot], at now: Date) {
         for pid in self.records.keys where self.records[pid]?.tier == .nativeTier1 {
@@ -488,7 +486,7 @@ final class MeetingAutoDetector {
         self.onHealthChanged?(health)
     }
 
-    // MARK: Browser evidence (Tier 2)
+    // MARK: - Browser evidence (Tier 2)
 
     func handleBrowserTabURL(_ url: BrowserTabURL?, pid: Int32, bundleIdentifier: String, at now: Date) {
         guard let url, MeetingInCallURLMatcher.isInCallURL(host: url.host, path: url.path) else {
@@ -514,7 +512,7 @@ final class MeetingAutoDetector {
         self.attemptConfirm(pid: pid, at: now)
     }
 
-    // MARK: Confirm + episode lifecycle
+    // MARK: - Confirm + episode lifecycle
 
     private func attemptConfirm(pid: Int32, at now: Date) {
         guard let record = self.records[pid],
@@ -579,7 +577,14 @@ final class MeetingAutoDetector {
         DebugLogger.shared.log("confirm-accepted bundle=\(record.bundleIdentifier)", source: "MeetingAutoDetector")
         DebugLogger.shared.log("prompt-requested bundle=\(record.bundleIdentifier)", source: "MeetingAutoDetector")
         let cta: PromptCTA = readiness == .ready ? .record : .setup
-        self.onPromptRequested?(PromptRequest(episodeID: episode.id, bundleIdentifier: episode.bundleIdentifier, pid: pid, tier: episode.tier, cta: cta, serviceName: Self.serviceName(forEvidenceKey: evidenceKey)))
+        self.onPromptRequested?(PromptRequest(
+            episodeID: episode.id,
+            bundleIdentifier: episode.bundleIdentifier,
+            pid: pid,
+            tier: episode.tier,
+            cta: cta,
+            serviceName: Self.serviceName(forEvidenceKey: evidenceKey)
+        ))
     }
 
     private func logConfirmRejected(_ reason: String, bundleIdentifier: String) {
@@ -594,7 +599,7 @@ final class MeetingAutoDetector {
         }
     }
 
-    // MARK: Prompt outcomes
+    // MARK: - Prompt outcomes
 
     enum StartError: LocalizedError, Equatable {
         case cannotStart
@@ -686,7 +691,7 @@ final class MeetingAutoDetector {
         self.episodesByKey[key] = episode
     }
 
-    // MARK: Tick — grace, release, episode teardown, still-recording nudge
+    // MARK: - Tick — grace, release, episode teardown, still-recording nudge
 
     func tick(at now: Date) {
         defer { self.publishAutomaticTarget() }
@@ -747,7 +752,7 @@ final class MeetingAutoDetector {
         self.onStillRecordingNudge?()
     }
 
-    // MARK: Disarm on lock / sleep / fast-user-switch — mic bits are unreliable across these.
+    // MARK: - Disarm on lock / sleep / fast-user-switch — mic bits are unreliable across these.
 
     func disarmAndClearTransientState() {
         self.audioQueryUnknown = false

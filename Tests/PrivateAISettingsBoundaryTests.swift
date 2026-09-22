@@ -21,7 +21,9 @@ struct PrivateAISettingsBoundaryTests {
         check(PrivateAIModelCarouselNavigation.position(of: "full", in: ["pico", "mini", "full"], current: "mini") == 1, "Three-model carousel places the next card right")
         var session = PrivateAISettingsSession(selectedModelID: "mini")
         let initialRevision = session.revision
-        for id in ["pico", "mini", "pico"] { session.preview(id) }
+        for id in ["pico", "mini", "pico"] {
+            session.preview(id)
+        }
         check(session.previewModelID == "pico", "Preview follows browsing")
         check(session.selectedModelID == "mini", "Browsing must not activate")
         check(session.revision == initialRevision, "Browsing must not invalidate active work")
@@ -142,7 +144,10 @@ struct PrivateAISettingsBoundaryTests {
         let card = try String(contentsOfFile: "Sources/Fluid/UI/AISettings/FluidModelShowcaseCard.swift", encoding: .utf8)
         check(!card.contains(".popover("), "Model information stays inside its card")
         check(card.contains("Button { self.showsInfo.toggle() }"), "Information toggles only local presentation state")
-        check(card.contains("self.reduceMotion ? nil") && card.contains("ZStack(alignment: .topLeading)"), "Inline information respects reduced motion and shares stable content bounds")
+        check(
+            card.contains("self.reduceMotion ? nil") && card.contains("ZStack(alignment: .topLeading)"),
+            "Inline information respects reduced motion and shares stable content bounds"
+        )
         print("Passed \(checks) FI boundary/controller assertions")
     }
 }

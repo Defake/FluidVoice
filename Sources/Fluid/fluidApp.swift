@@ -18,18 +18,18 @@ struct FluidApp: App {
     var body: some Scene {
         WindowGroup(id: "main") {
             #if DEBUG
-                if MeetingExternalReferenceTrialAGate.autorunEnabled(environment: ProcessInfo.processInfo.environment)
-                    || MeetingSCKPairedDiagnosticGate.autorunEnabled()
-                    || MeetingStage05EvidenceAutorun.requested()
-                    || ProcessInfo.processInfo.environment["FLUIDVOICE_MIC_PHASE1"] != nil
-                    || ProcessInfo.processInfo.environment["FLUIDVOICE_VPIO_ACOUSTIC"] == "1"
-                {
-                    Color.clear
-                } else {
-                    self.applicationContent
-                }
-            #else
+            if MeetingExternalReferenceTrialAGate.autorunEnabled(environment: ProcessInfo.processInfo.environment)
+                || MeetingSCKPairedDiagnosticGate.autorunEnabled()
+                || MeetingStage05EvidenceAutorun.requested()
+                || ProcessInfo.processInfo.environment["FLUIDVOICE_MIC_PHASE1"] != nil
+                || ProcessInfo.processInfo.environment["FLUIDVOICE_VPIO_ACOUSTIC"] == "1"
+            {
+                Color.clear
+            } else {
                 self.applicationContent
+            }
+            #else
+            self.applicationContent
             #endif
         }
         .defaultSize(width: 1000, height: 700)

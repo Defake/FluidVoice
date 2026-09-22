@@ -194,7 +194,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertNil(h.detector.automaticTarget)
     }
 
-    // MARK: Generic HAL ownership resolver
+    // MARK: - Generic HAL ownership resolver
 
     func testAudioResolverMapsHelpersInsideEachRegisteredNativeBundle() {
         let apps = [
@@ -206,32 +206,58 @@ final class MeetingAutoDetectorTests: XCTestCase {
         ]
         for (bundle, root) in apps {
             let result = MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
-                processes: [.init(processID: 900, bundleIdentifier: "helper.unknown", executablePath: root + "/Contents/Helpers/Module.app/Contents/MacOS/Module", isInputRunning: true, isOutputRunning: false)],
-                owners: [.init(processID: 42, bundleIdentifier: bundle, bundlePath: root)], queryState: .valid
+                processes: [.init(
+                    processID: 900,
+                    bundleIdentifier: "helper.unknown",
+                    executablePath: root + "/Contents/Helpers/Module.app/Contents/MacOS/Module",
+                    isInputRunning: true,
+                    isOutputRunning: false
+                )],
+                owners: [.init(processID: 42, bundleIdentifier: bundle, bundlePath: root)],
+                queryState: .valid
             ))
             XCTAssertEqual(result?[42], true, "helper attribution should work for \(bundle)")
         }
     }
 
     func testAudioResolverRejectsPrefixSpoofRelativeMissingAndAmbiguousOwners() {
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         func resolve(_ processPath: String?, owners: [MeetingProcessOwner]) -> [Int32: Bool]? {
             MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
                 processes: [.init(processID: 1, bundleIdentifier: nil, executablePath: processPath, isInputRunning: true, isOutputRunning: false)],
-                owners: owners, queryState: .valid
+                owners: owners,
+                queryState: .valid
             ))
         }
         let owner = MeetingProcessOwner(processID: 10, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")
         XCTAssertEqual(resolve("/Applications/Teams.app.evil/Contents/MacOS/x", owners: [owner]), [:])
         XCTAssertNil(resolve(nil, owners: [owner]))
         XCTAssertNil(resolve("Applications/Teams.app/Contents/MacOS/x", owners: [owner]))
-        XCTAssertNil(resolve("/Applications/Teams.app/Contents/MacOS/x", owners: [owner, .init(processID: 11, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")]))
-        XCTAssertEqual(resolve("/Applications/Teams.app/Contents/MacOS/x", owners: [.init(processID: 10, bundleIdentifier: "com.google.Chrome", bundlePath: "/Applications/Teams.app")]), [:], "browser owners must never become native audio owners")
-        XCTAssertEqual(resolve("/Applications/Teams.app/Contents/MacOS/x", owners: [.init(processID: 10, bundleIdentifier: "com.microsoft.teams2", bundlePath: "relative/Teams.app")]), [:])
+        XCTAssertNil(resolve(
+            "/Applications/Teams.app/Contents/MacOS/x",
+            owners: [owner, .init(processID: 11, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")]
+        ))
+        XCTAssertEqual(
+            resolve("/Applications/Teams.app/Contents/MacOS/x", owners: [.init(processID: 10, bundleIdentifier: "com.google.Chrome", bundlePath: "/Applications/Teams.app")]),
+            [:],
+            "browser owners must never become native audio owners"
+        )
+        XCTAssertEqual(
+            resolve("/Applications/Teams.app/Contents/MacOS/x", owners: [.init(processID: 10, bundleIdentifier: "com.microsoft.teams2", bundlePath: "relative/Teams.app")]),
+            [:]
+        )
     }
 
     func testAudioResolverRejectsBrowserOwnerAndUnknownQuery() {
         let browser = MeetingProcessOwner(processID: 3, bundleIdentifier: "com.google.Chrome", bundlePath: "/Applications/Chrome.app")
-        let process = AudioProcessDescriptor(processID: 4, bundleIdentifier: nil, executablePath: "/Applications/Chrome.app/Contents/MacOS/Chrome", isInputRunning: true, isOutputRunning: true)
+        let process = AudioProcessDescriptor(
+            processID: 4,
+            bundleIdentifier: nil,
+            executablePath: "/Applications/Chrome.app/Contents/MacOS/Chrome",
+            isInputRunning: true,
+            isOutputRunning: true
+        )
         XCTAssertNil(MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(processes: [process], owners: [browser], queryState: .unknown)))
     }
 
@@ -247,7 +273,8 @@ final class MeetingAutoDetectorTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let result = MeetingAudioProcessResolver.activeOwnerInputByPID(snapshot: .init(
             processes: [.init(processID: 1, bundleIdentifier: nil, executablePath: link.path + "/Module", isInputRunning: true, isOutputRunning: false)],
-            owners: [.init(processID: 2, bundleIdentifier: "com.microsoft.teams2", bundlePath: app.path)], queryState: .valid
+            owners: [.init(processID: 2, bundleIdentifier: "com.microsoft.teams2", bundlePath: app.path)],
+            queryState: .valid
         ))
         XCTAssertEqual(result, [:])
     }
@@ -257,8 +284,15 @@ final class MeetingAutoDetectorTests: XCTestCase {
         h.detector.handleWorkspaceEvent(.init(kind: .activated, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
         h.detector.handleWindowSnapshot([.init(processID: 5, windowID: 9, title: nil, layer: 0)], at: h.clock.now())
         h.audioProcessActivity.snapshotOverride = .init(
-            processes: [.init(processID: 55, bundleIdentifier: "teams.helper", executablePath: "/Applications/com.microsoft.teams2.app/Contents/Helpers/Module", isInputRunning: false, isOutputRunning: true)],
-            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/com.microsoft.teams2.app")], queryState: .valid
+            processes: [.init(
+                processID: 55,
+                bundleIdentifier: "teams.helper",
+                executablePath: "/Applications/com.microsoft.teams2.app/Contents/Helpers/Module",
+                isInputRunning: false,
+                isOutputRunning: true
+            )],
+            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/com.microsoft.teams2.app")],
+            queryState: .valid
         )
         await h.detector.pollAudioProcessActivity(at: h.clock.now())
         XCTAssertTrue(h.prompts.isEmpty)
@@ -277,8 +311,15 @@ final class MeetingAutoDetectorTests: XCTestCase {
         let h = DetectorHarness()
         h.detector.handleWorkspaceEvent(.init(kind: .launched, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
         h.audioProcessActivity.snapshotOverride = .init(
-            processes: [.init(processID: 55, bundleIdentifier: "teams.helper", executablePath: "/Applications/Teams.app/Contents/Helpers/Module", isInputRunning: true, isOutputRunning: true)],
-            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")], queryState: .valid
+            processes: [.init(
+                processID: 55,
+                bundleIdentifier: "teams.helper",
+                executablePath: "/Applications/Teams.app/Contents/Helpers/Module",
+                isInputRunning: true,
+                isOutputRunning: true
+            )],
+            owners: [.init(processID: 5, bundleIdentifier: "com.microsoft.teams2", bundlePath: "/Applications/Teams.app")],
+            queryState: .valid
         )
         h.audioProcessActivity.beforeSnapshot = {
             h.detector.handleWorkspaceEvent(.init(kind: .terminated, bundleIdentifier: "com.microsoft.teams2", processID: 5), at: h.clock.now())
@@ -376,7 +417,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 1)
     }
 
-    // MARK: Prompt suppression
+    // MARK: - Prompt suppression
 
     func testPromptSuppressionAllowsDetectedMeetingAppFullScreen() {
         let reason = MeetingDetectionPromptController.suppressionReason(
@@ -595,7 +636,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         )
     }
 
-    // MARK: Coincidence window
+    // MARK: - Coincidence window
 
     func testParkedTabWithLateMicNeverPrompts() {
         let h = DetectorHarness()
@@ -609,7 +650,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(h.prompts.isEmpty, "evidence older than the 30s coincidence window must not confirm")
     }
 
-    // MARK: Fail-closed on unreadable AXURL
+    // MARK: - Fail-closed on unreadable AXURL
 
     func testUnreadableAXURLNeverPrompts() {
         let h = DetectorHarness()
@@ -619,14 +660,14 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(h.prompts.isEmpty)
     }
 
-    // MARK: YouTube-hostname never matches
+    // MARK: - YouTube-hostname never matches
 
     func testYouTubeNeverMatchesInCallURL() {
         XCTAssertFalse(MeetingInCallURLMatcher.isInCallURL(host: "www.youtube.com", path: "/watch"))
         XCTAssertFalse(MeetingInCallURLMatcher.isInCallURL(host: "youtube.com", path: "/live/abc-defg-hij"))
     }
 
-    // MARK: Tier-1 frontmost-at-edge gate
+    // MARK: - Tier-1 frontmost-at-edge gate
 
     func testZoomConfirmsOnlyWhenFrontmostNearTheMicEdge() {
         let h = DetectorHarness()
@@ -694,7 +735,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(windowOnly.prompts.isEmpty)
     }
 
-    // MARK: Backfill arms only
+    // MARK: - Backfill arms only
 
     func testBackfillAlonesNeverConfirms() {
         let h = DetectorHarness()
@@ -740,7 +781,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(h.prompts.isEmpty, "native apps keep the activation rule; their windows persist all day")
     }
 
-    // MARK: Episode dedup + back-to-back re-arm
+    // MARK: - Episode dedup + back-to-back re-arm
 
     func testDuplicateConfirmDoesNotReprompt() {
         let h = DetectorHarness()
@@ -750,11 +791,11 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 1, "the same window key must not re-arm while still live")
     }
 
-    func testBackToBackMeetingAfterReleaseRearmsTheSameWindow() {
+    func testBackToBackMeetingAfterReleaseRearmsTheSameWindow() throws {
         let h = DetectorHarness()
         let firstEpisode = h.confirmZoom()
         XCTAssertNotNil(firstEpisode)
-        h.detector.timeoutDismissed(episodeID: firstEpisode!)
+        h.detector.timeoutDismissed(episodeID: try XCTUnwrap(firstEpisode))
 
         // Window disappears; after grace + the 60s release window the episode is evicted.
         h.detector.handleWindowSnapshot([], at: h.clock.now())
@@ -814,11 +855,11 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 2)
     }
 
-    // MARK: Stop mid-call, no re-prompt
+    // MARK: - Stop mid-call, no re-prompt
 
-    func testStoppingOurRecordingMidCallDoesNotReprompt() {
+    func testStoppingOurRecordingMidCallDoesNotReprompt() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         XCTAssertTrue(h.detector.startTapped(episodeID: episodeID))
 
         // The window is still there (the user is still in the call) — no eviction, no re-prompt.
@@ -832,34 +873,34 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 1, "stopping our own recording must not retire a still-live episode")
     }
 
-    // MARK: Manual start consumes the episode
+    // MARK: - Manual start consumes the episode
 
-    func testStartTappedIsSingleShot() {
+    func testStartTappedIsSingleShot() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         XCTAssertTrue(h.detector.startTapped(episodeID: episodeID))
         XCTAssertFalse(h.detector.startTapped(episodeID: episodeID), "a second Start on the same episode must be a no-op")
     }
 
-    func testStartTappedFailsWhenPreflightNoLongerPasses() {
+    func testStartTappedFailsWhenPreflightNoLongerPasses() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         h.gate.preflightResult = false
         XCTAssertFalse(h.detector.startTapped(episodeID: episodeID))
     }
 
-    func testCanStartDoesNotConsumeEpisode() {
+    func testCanStartDoesNotConsumeEpisode() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         XCTAssertTrue(h.detector.canStart(episodeID: episodeID))
         XCTAssertTrue(h.detector.canStart(episodeID: episodeID), "canStart must not consume")
         XCTAssertTrue(h.detector.startTapped(episodeID: episodeID))
         XCTAssertFalse(h.detector.canStart(episodeID: episodeID))
     }
 
-    func testAdoptStartedEpisodeSkipsPreflightAndStartTappedStaysSingleShot() {
+    func testAdoptStartedEpisodeSkipsPreflightAndStartTappedStaysSingleShot() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         h.gate.preflightResult = false
         XCTAssertFalse(h.detector.startTapped(episodeID: episodeID))
         h.detector.adoptStartedEpisode(episodeID: episodeID)
@@ -868,18 +909,18 @@ final class MeetingAutoDetectorTests: XCTestCase {
         h.detector.adoptStartedEpisode(episodeID: episodeID)
     }
 
-    func testAdoptStartedEpisodeAfterTimeoutOwnsTheEpisodeAndResetsDismissals() {
+    func testAdoptStartedEpisodeAfterTimeoutOwnsTheEpisodeAndResetsDismissals() throws {
         let h = DetectorHarness()
         var suggested = false
         h.detector.onSuggestDisablingAutoDetect = { suggested = true }
 
         for pid: Int32 in [1, 2] {
-            let episodeID = h.confirmZoom(pid: pid)!
+            let episodeID = try XCTUnwrap(h.confirmZoom(pid: pid))
             h.detector.dismissTapped(episodeID: episodeID, at: h.clock.now())
             h.advance(3600)
         }
 
-        let timedOut = h.confirmZoom(pid: 3)!
+        let timedOut = try XCTUnwrap(h.confirmZoom(pid: 3))
         h.detector.timeoutDismissed(episodeID: timedOut)
         XCTAssertFalse(h.detector.startTapped(episodeID: timedOut))
         XCTAssertFalse(h.detector.canStart(episodeID: timedOut))
@@ -890,12 +931,12 @@ final class MeetingAutoDetectorTests: XCTestCase {
         h.detector.tick(at: h.clock.now())
         XCTAssertEqual(h.nudges, 1, "adopting after timeout must still arm the still-recording nudge")
 
-        let dismissedEpisode = h.confirmZoom(pid: 4)!
+        let dismissedEpisode = try XCTUnwrap(h.confirmZoom(pid: 4))
         h.detector.dismissTapped(episodeID: dismissedEpisode, at: h.clock.now())
         XCTAssertFalse(suggested, "adopting after timeout must still reset the rolling counter")
     }
 
-    // MARK: Preflight gate silence
+    // MARK: - Preflight gate silence
 
     func testMissingScreenRecordingAtConfirmRequestsSetup() {
         let h = DetectorHarness()
@@ -981,11 +1022,11 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.first?.cta, .record)
     }
 
-    // MARK: Dismissal suppression + rolling counter
+    // MARK: - Dismissal suppression + rolling counter
 
-    func testExplicitDismissSuppressesTheBundleForThirtyMinutes() {
+    func testExplicitDismissSuppressesTheBundleForThirtyMinutes() throws {
         let h = DetectorHarness()
-        let firstEpisode = h.confirmZoom(pid: 1)!
+        let firstEpisode = try XCTUnwrap(h.confirmZoom(pid: 1))
         h.detector.dismissTapped(episodeID: firstEpisode, at: h.clock.now())
 
         h.detector.handleWindowSnapshot([], at: h.clock.now()) // window loss + eviction so the same window can re-arm
@@ -1001,9 +1042,9 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 1, "the bundle stays suppressed for 30 minutes after an explicit dismiss")
     }
 
-    func testTimeoutDismissDoesNotSuppressOrCount() {
+    func testTimeoutDismissDoesNotSuppressOrCount() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         h.detector.timeoutDismissed(episodeID: episodeID)
 
         h.detector.handleWindowSnapshot([], at: h.clock.now())
@@ -1019,38 +1060,38 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.prompts.count, 2, "a 20s auto-dismiss must not suppress the bundle")
     }
 
-    func testThreeDismissalsWithinFourteenDaysSuggestsDisabling() {
+    func testThreeDismissalsWithinFourteenDaysSuggestsDisabling() throws {
         let h = DetectorHarness()
         var suggested = false
         h.detector.onSuggestDisablingAutoDetect = { suggested = true }
 
         for pid: Int32 in [1, 2, 3] {
-            let episodeID = h.confirmZoom(pid: pid)!
+            let episodeID = try XCTUnwrap(h.confirmZoom(pid: pid))
             h.detector.dismissTapped(episodeID: episodeID, at: h.clock.now())
             h.advance(3600)
         }
         XCTAssertTrue(suggested)
     }
 
-    func testAcceptedStartResetsTheDismissalCounter() {
+    func testAcceptedStartResetsTheDismissalCounter() throws {
         let h = DetectorHarness()
         var suggested = false
         h.detector.onSuggestDisablingAutoDetect = { suggested = true }
 
         for pid: Int32 in [1, 2] {
-            let episodeID = h.confirmZoom(pid: pid)!
+            let episodeID = try XCTUnwrap(h.confirmZoom(pid: pid))
             h.detector.dismissTapped(episodeID: episodeID, at: h.clock.now())
             h.advance(3600)
         }
-        let acceptedEpisode = h.confirmZoom(pid: 3)!
+        let acceptedEpisode = try XCTUnwrap(h.confirmZoom(pid: 3))
         XCTAssertTrue(h.detector.startTapped(episodeID: acceptedEpisode))
 
-        let dismissedEpisode = h.confirmZoom(pid: 4)!
+        let dismissedEpisode = try XCTUnwrap(h.confirmZoom(pid: 4))
         h.detector.dismissTapped(episodeID: dismissedEpisode, at: h.clock.now())
         XCTAssertFalse(suggested, "an accepted Start must reset the rolling counter")
     }
 
-    // MARK: Lock / sleep disarm
+    // MARK: - Lock / sleep disarm
 
     func testDisarmClearsAllTransientState() {
         let h = DetectorHarness()
@@ -1064,10 +1105,10 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(h.prompts.isEmpty, "disarm must drop frontmost/window evidence so a later edge cannot confirm")
     }
 
-    func testEvictingUnconsumedEpisodeInvalidatesAndConsumedDoesNot() {
+    func testEvictingUnconsumedEpisodeInvalidatesAndConsumedDoesNot() throws {
         let h = DetectorHarness()
-        let unconsumed = h.confirmZoom(pid: 1)!
-        let consumed = h.confirmZoom(pid: 2)!
+        let unconsumed = try XCTUnwrap(h.confirmZoom(pid: 1))
+        let consumed = try XCTUnwrap(h.confirmZoom(pid: 2))
         XCTAssertTrue(h.detector.startTapped(episodeID: consumed))
 
         h.detector.handleWindowSnapshot([], at: h.clock.now())
@@ -1076,21 +1117,21 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.invalidated, [unconsumed])
     }
 
-    func testDisarmInvalidatesUnconsumedEpisodesOnly() {
+    func testDisarmInvalidatesUnconsumedEpisodesOnly() throws {
         let h = DetectorHarness()
-        let unconsumed = h.confirmZoom(pid: 1)!
-        let consumed = h.confirmZoom(pid: 2)!
+        let unconsumed = try XCTUnwrap(h.confirmZoom(pid: 1))
+        let consumed = try XCTUnwrap(h.confirmZoom(pid: 2))
         XCTAssertTrue(h.detector.startTapped(episodeID: consumed))
 
         h.detector.disarmAndClearTransientState()
         XCTAssertEqual(h.invalidated, [unconsumed])
     }
 
-    // MARK: Still-recording nudge
+    // MARK: - Still-recording nudge
 
-    func testStillRecordingNudgeFiresOnceAfterWindowGoneSixtySeconds() {
+    func testStillRecordingNudgeFiresOnceAfterWindowGoneSixtySeconds() throws {
         let h = DetectorHarness()
-        let episodeID = h.confirmZoom()!
+        let episodeID = try XCTUnwrap(h.confirmZoom())
         XCTAssertTrue(h.detector.startTapped(episodeID: episodeID))
 
         h.detector.handleWindowSnapshot([], at: h.clock.now())
@@ -1102,7 +1143,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertEqual(h.nudges, 1, "the nudge fires once per session")
     }
 
-    // MARK: Registry / URL matcher sanity
+    // MARK: - Registry / URL matcher sanity
 
     func testRegistryTierLookup() {
         XCTAssertEqual(MeetingAppRegistry.tier(forBundleIdentifier: "us.zoom.xos"), .nativeTier1)
@@ -1123,7 +1164,7 @@ final class MeetingAutoDetectorTests: XCTestCase {
         XCTAssertTrue(MeetingInCallURLMatcher.isInCallURL(host: "meet.jit.si", path: "/SomeRoomName"))
     }
 
-    // MARK: windowID preference in MeetingWindowSelector
+    // MARK: - windowID preference in MeetingWindowSelector
 
     func testWindowSelectorPrefersPreferredWindowIDWhenEligible() {
         let candidates = [

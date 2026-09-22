@@ -6,18 +6,21 @@ final class UserDefaults {
     var values: [String: [String]] = [:]
     // Match Foundation UserDefaults, including an absent key.
     // swiftlint:disable:next discouraged_optional_collection
-    func stringArray(forKey key: String) -> [String]? { values[key] }
-    func set(_ value: [String], forKey key: String) { values[key] = value }
+    func stringArray(forKey key: String) -> [String]? { self.values[key] }
+    func set(_ value: [String], forKey key: String) { self.values[key] = value }
 }
+
 struct PrivateAIProviderFeature {
     static let shared = PrivateAIProviderFeature()
     let providerID = "fluid"
 }
+
 struct ModelRepository {
     static let shared = ModelRepository()
     func isBuiltIn(_ id: String) -> Bool { ["openai", "ollama", "fluid"].contains(id) }
     func defaultModels(for id: String) -> [String] { ["default-model"] }
 }
+
 final class SettingsStore {
     struct SavedProvider {
         var id = UUID().uuidString
@@ -25,11 +28,13 @@ final class SettingsStore {
         let baseURL: String
         let models: [String]
     }
+
     struct Configuration: Equatable {
         var providerID: String
         var modelName = "model"
         var shortcut = "keep-shortcut"
     }
+
     var selectedProviderID = "fluid"
     var selectedModel: String? = "mini"
     var rewriteModeSelectedProviderID = ""
@@ -41,12 +46,14 @@ final class SettingsStore {
     var dictationPromptConfigurations: [String: Configuration] = [:]
     var verifiedProviderFingerprints: [String: String] = [:]
 }
+
 final class AIEnhancementSettingsViewModel {
     struct ProviderItemData {
         let id: String
         let name: String
         let isBuiltIn: Bool
     }
+
     let settings = SettingsStore()
     var isTestingConnection = false
     var isFetchingModels = false
@@ -63,25 +70,29 @@ final class AIEnhancementSettingsViewModel {
     var keySaves = 0
     var persistedKeys: [String: String] = [:]
     func providerKey(for id: String) -> String { id }
-    func providerAPIKey(for id: String) -> String { providerAPIKeys[id] ?? "" }
-    func updateProviderAPIKey(_ value: String, for id: String) { providerAPIKeys[id] = value }
+    func providerAPIKey(for id: String) -> String { self.providerAPIKeys[id] ?? "" }
+    func updateProviderAPIKey(_ value: String, for id: String) { self.providerAPIKeys[id] = value }
     func saveProviderAPIKeys(invalidating id: String) -> Bool {
-        keySaves += 1
-        guard !failKeychain else { return false }
-        persistedKeys = providerAPIKeys
+        self.keySaves += 1
+        guard !self.failKeychain else { return false }
+        self.persistedKeys = self.providerAPIKeys
         return true
     }
-    func hasProviderAPIKeyDraft(for id: String) -> Bool { providerAPIKeys[id] != nil }
+
+    func hasProviderAPIKeyDraft(for id: String) -> Bool { self.providerAPIKeys[id] != nil }
     func refreshProviderItems() {
-        let items = [ProviderItemData(id: "openai", name: "OpenAI", isBuiltIn: true),
-                     ProviderItemData(id: "ollama", name: "Ollama", isBuiltIn: true),
-                     ProviderItemData(id: "fluid", name: "Fluid", isBuiltIn: true)]
-            + savedProviders.map { ProviderItemData(id: $0.id, name: $0.name, isBuiltIn: false) }
-        cachedAddedProviderItems = addedProviderItems(from: items)
+        let items = [
+            ProviderItemData(id: "openai", name: "OpenAI", isBuiltIn: true),
+            ProviderItemData(id: "ollama", name: "Ollama", isBuiltIn: true),
+            ProviderItemData(id: "fluid", name: "Fluid", isBuiltIn: true),
+        ]
+            + self.savedProviders.map { ProviderItemData(id: $0.id, name: $0.name, isBuiltIn: false) }
+        self.cachedAddedProviderItems = addedProviderItems(from: items)
     }
-    func saveSavedProviders() { saves += 1; refreshProviderItems() }
+
+    func saveSavedProviders() { self.saves += 1; self.refreshProviderItems() }
     func clearEditProviderDraft() {}
-    func finishConfiguringProvider() { selectedProviderID = settings.selectedProviderID }
+    func finishConfiguringProvider() { self.selectedProviderID = self.settings.selectedProviderID }
     func refreshVerifiedProviders() {}
     func selectSoleVerifiedProviderIfNeeded() {}
 }
@@ -105,8 +116,10 @@ final class AIEnhancementSettingsViewModel {
         draft.baseURL = "http://localhost:1234/v1"
         draft.apiKey = "test-key"
         vm.failKeychain = true
-        check(!vm.addProvider(draft) && vm.savedProviders.isEmpty && vm.providerAPIKeys.isEmpty && vm.saves == 0,
-              "Keychain failure keeps records, keys, and model maps unchanged")
+        check(
+            !vm.addProvider(draft) && vm.savedProviders.isEmpty && vm.providerAPIKeys.isEmpty && vm.saves == 0,
+            "Keychain failure keeps records, keys, and model maps unchanged"
+        )
         vm.failKeychain = false
         check(vm.addProvider(draft) && vm.savedProviders.count == 1, "Explicit Add saves a custom provider")
         check(vm.settings.selectedProviderID == "fluid" && vm.selectedModelByProvider["fluid"] == "mini", "Adding does not change current route/model")
@@ -134,8 +147,10 @@ final class AIEnhancementSettingsViewModel {
         check(source.contains("if isCustom || managementLayout"), "Built-in management exposes removal")
         let makeDefault = source.components(separatedBy: "private func makePrimaryDefaultProvider")[1]
             .components(separatedBy: "private func modelBinding")[0]
-        check(makeDefault.contains("saveManagedProviderAPIKeyIfNeeded") && !makeDefault.contains("saveProviderAPIKeys"),
-              "Making a provider default only persists an active credential edit")
+        check(
+            makeDefault.contains("saveManagedProviderAPIKeyIfNeeded") && !makeDefault.contains("saveProviderAPIKeys"),
+            "Making a provider default only persists an active credential edit"
+        )
         let removal = AIEnhancementSettingsViewModel()
         removal.providerAPIKeys = ["openai": "remove-key", "other": "keep-key"]
         removal.settings.dictationPromptConfigurations = [
@@ -172,7 +187,10 @@ final class AIEnhancementSettingsViewModel {
         removal.settings.selectedProviderID = "ollama"
         let keySavesBeforeKeylessRemoval = removal.keySaves
         removal.failKeychain = true
-        check(removal.deleteCurrentProvider() && removal.settings.selectedProviderID.isEmpty && removal.settings.selectedModel == nil, "Removing the default clears its model without selecting another provider")
+        check(
+            removal.deleteCurrentProvider() && removal.settings.selectedProviderID.isEmpty && removal.settings.selectedModel == nil,
+            "Removing the default clears its model without selecting another provider"
+        )
         check(removal.keySaves == keySavesBeforeKeylessRemoval, "Removing a keyless provider does not require a Keychain write")
         removal.selectedProviderID = "fluid"
         check(!removal.deleteCurrentProvider(), "External provider removal cannot remove private AI")
@@ -186,7 +204,10 @@ final class AIEnhancementSettingsViewModel {
         check(!closing.saveManagedProviderBeforeClosing("openai"), "Keychain failure keeps Manage open")
         check(closing.providerAPIKeys["openai"] == "edited-key" && closing.settings.selectedProviderID == "fluid", "Failed close preserves the draft and default")
         closing.failKeychain = false
-        check(closing.saveManagedProviderBeforeClosing("openai") && closing.persistedKeys["openai"] == "edited-key", "Done persists an edited key without verification or model refresh")
+        check(
+            closing.saveManagedProviderBeforeClosing("openai") && closing.persistedKeys["openai"] == "edited-key",
+            "Done persists an edited key without verification or model refresh"
+        )
         let savedCount = closing.keySaves
         closing.selectedProviderID = "fluid"
         check(closing.saveManagedProviderBeforeClosing("openai") && closing.keySaves == savedCount, "Removal cleanup must not save a different selected provider")

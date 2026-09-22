@@ -47,7 +47,10 @@ struct DictionaryNegativeCorrection {}
         let punctuated = self.candidate("I met Barat.", "I met Barath.")
         self.expect(punctuated?.heardText == "Barat" && punctuated?.correctedText == "Barath", "Sentence punctuation")
         let before = "Title: I met Barat"
-        self.expect(AutomaticDictionaryCorrectionDetector.candidate(before: before, after: "Heading: I met Barat", insertedRange: (before as NSString).range(of: "I met Barat")) == nil, "Outside insertion")
+        self.expect(
+            AutomaticDictionaryCorrectionDetector.candidate(before: before, after: "Heading: I met Barat", insertedRange: (before as NSString).range(of: "I met Barat")) == nil,
+            "Outside insertion"
+        )
         // Evaluate the accumulated edit, as the observer does after rapid keystrokes.
         for intermediate in ["better t", "better to", "better too", "better tool", "better tools"] {
             self.expect(self.candidate("I use tools", "I use " + intermediate) == nil, "Typed phrase never becomes a word correction")

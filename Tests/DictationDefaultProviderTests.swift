@@ -30,8 +30,12 @@ enum DictationDefaultProviderTests {
         precondition(DictationDefaultProvider.setupIssue(requiresAPIKey: true, hasAPIKey: false, hasModel: true, isVerified: true, verificationFailed: false) == "API key missing")
         precondition(DictationDefaultProvider.setupIssue(requiresAPIKey: false, hasAPIKey: false, hasModel: true, isVerified: true, verificationFailed: false) == nil)
         precondition(DictationDefaultProvider.setupIssue(requiresAPIKey: true, hasAPIKey: true, hasModel: false, isVerified: false, verificationFailed: false) == "Choose a model")
-        precondition(DictationDefaultProvider.setupIssue(requiresAPIKey: true, hasAPIKey: true, hasModel: true, isVerified: false, verificationFailed: false) == nil, "Optional verification must not block a configured provider")
-        precondition(DictationDefaultProvider.setupIssue(requiresAPIKey: true, hasAPIKey: true, hasModel: true, isVerified: false, verificationFailed: true) == "Verification failed")
+        precondition(
+            DictationDefaultProvider.setupIssue(requiresAPIKey: true, hasAPIKey: true, hasModel: true, isVerified: false, verificationFailed: false) == nil,
+            "Optional verification must not block a configured provider"
+        )
+        precondition(DictationDefaultProvider
+            .setupIssue(requiresAPIKey: true, hasAPIKey: true, hasModel: true, isVerified: false, verificationFailed: true) == "Verification failed")
         print("PASS: 10 default-provider cases and 5 setup-status cases")
     }
 }

@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import AVFoundation
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -47,7 +47,7 @@ final class MeetingLiveSilenceEndpointTests: XCTestCase {
         }
 
         let sampleRate = 16_000.0
-        let blockFrames = 2_560  // one 160ms chunk
+        let blockFrames = 2560 // one 160ms chunk
 
         func feed(_ samples: [Float]) async throws {
             var index = 0
@@ -99,6 +99,8 @@ final class MeetingLiveSilenceEndpointTests: XCTestCase {
         else { return nil }
         buffer.frameLength = AVAudioFrameCount(samples.count)
         samples.withUnsafeBufferPointer { source in
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             buffer.floatChannelData?[0].update(from: source.baseAddress!, count: samples.count)
         }
         return buffer

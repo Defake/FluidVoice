@@ -1,7 +1,9 @@
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
-@testable import FluidVoice_Debug
 
+// Match the production component name so its regression suite is easy to find.
+// swiftlint:disable:next type_name
 final class MeetingReferenceAttributionContractsTests: XCTestCase {
     private func result(
         _ outcome: MeetingReferenceAttributionOutcome,
@@ -13,33 +15,61 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         reasons: [MeetingReferenceAttributionReasonCode] = []
     ) -> MeetingReferenceAttributionFrameResult {
         MeetingReferenceAttributionFrameResult(
-            frameIndex: index, epoch: epoch, startSeconds: Double(index) * duration,
-            durationSeconds: duration, outcome: outcome, speechState: speech,
-            residualVariant: residual, reasons: reasons,
+            frameIndex: index,
+            epoch: epoch,
+            startSeconds: Double(index) * duration,
+            durationSeconds: duration,
+            outcome: outcome,
+            speechState: speech,
+            residualVariant: residual,
+            reasons: reasons,
             metrics: MeetingReferenceAttributionMetrics(
-                delaySeconds: 0.04, convergence: 0.9, erlDB: 5, erleDB: 12,
-                originalEnergy: 1, residualEnergy: 0.25,
-                residualToOriginalEnergyRatio: 0.25),
-            fallback: outcome == .unscored ? .originalMicrophone : .none)
+                delaySeconds: 0.04,
+                convergence: 0.9,
+                erlDB: 5,
+                erleDB: 12,
+                originalEnergy: 1,
+                residualEnergy: 0.25,
+                residualToOriginalEnergyRatio: 0.25
+            ),
+            fallback: outcome == .unscored ? .originalMicrophone : .none
+        )
     }
 
     func testSidecarJSONRoundTripIsNumericOnlyAndPreservesResidualIdentity() throws {
         let configuration = MeetingReferenceAttributionConfiguration(candidateID: "native-multiband")
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "native-multiband", engineVersion: "candidate-a-v1",
+            engineID: "native-multiband",
+            engineVersion: "candidate-a-v1",
             sourceHashes: [
                 .init(name: "accelerate", hash: "sha256:abc"),
-                .init(name: "source", hash: "sha256:def")
-            ], buildHash: "sha256:build", configurationHash: configuration.configurationHash)
+                .init(name: "source", hash: "sha256:def"),
+            ], buildHash: "sha256:build",
+            configurationHash: configuration.configurationHash
+        )
         let frames = [
-            result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech,
-                   residual: .linearResidual, reasons: [.residualSpeechDetected]),
-            result(.likelyPlaybackOnly, duration: 0.1, index: 1, speech: .noSpeech,
-                   residual: .suppressedResidual, reasons: [.playbackAttributed])
+            result(
+                .acceptedNearEndSpeech,
+                duration: 0.1,
+                speech: .nearEndSpeech,
+                residual: .linearResidual,
+                reasons: [.residualSpeechDetected]
+            ),
+            result(
+                .likelyPlaybackOnly,
+                duration: 0.1,
+                index: 1,
+                speech: .noSpeech,
+                residual: .suppressedResidual,
+                reasons: [.playbackAttributed]
+            ),
         ]
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            epochs: [.init(epoch: 0)], frameResults: frames)
+            engineIdentity: identity,
+            configuration: configuration,
+            epochs: [.init(epoch: 0)],
+            frameResults: frames
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(sidecar)
@@ -47,8 +77,13 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
 
         XCTAssertEqual(decoded, sidecar)
         XCTAssertEqual(sidecar.sidecarHash, MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            epochs: [.init(epoch: 0)], frameResults: frames).sidecarHash)
+            engineIdentity: identity,
+            configuration: configuration,
+            epochs: [.init(epoch: 0)],
+            frameResults: frames
+        ).sidecarHash)
+        // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+        // swiftlint:disable:next optional_data_string_conversion
         let json = String(decoding: data, as: UTF8.self)
         for forbidden in ["samples", "transcript", "embedding", "windowTitle", "absolutePath"] {
             XCTAssertFalse(json.contains(forbidden), "sidecar leaked (forbidden)")
@@ -59,18 +94,31 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     func testCanonicalEncodingSortsCountEntriesAndInputOrderDoesNotAffectHash() throws {
         let configuration = MeetingReferenceAttributionConfiguration(candidateID: "canonical")
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
-        let first = result(.acceptedNearEndSpeech, duration: 0.1, index: 0,
-                           speech: .nearEndSpeech,
-                           reasons: [.residualSpeechDetected, .mixedEvidence])
-        let second = result(.unscored, duration: 0.2, index: 1,
-                            reasons: [.referenceGap, .unknownSpeechState])
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
+        let first = self.result(
+            .acceptedNearEndSpeech,
+            duration: 0.1,
+            index: 0,
+            speech: .nearEndSpeech,
+            reasons: [.residualSpeechDetected, .mixedEvidence]
+        )
+        let second = self.result(
+            .unscored,
+            duration: 0.2,
+            index: 1,
+            reasons: [.referenceGap, .unknownSpeechState]
+        )
         let left = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [first, second])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [first, second]
+        )
         let right = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [second, first])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [second, first]
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let leftData = try encoder.encode(left)
@@ -83,14 +131,21 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         XCTAssertTrue(aggregate["outcomeCounts"] is [[String: Any]])
         XCTAssertTrue(aggregate["reasonCounts"] is [[String: Any]])
         let entries = try XCTUnwrap(aggregate["reasonCounts"] as? [[String: Any]])
-        XCTAssertEqual(entries.compactMap { $0["reason"] as? String },
-                       entries.compactMap { $0["reason"] as? String }.sorted())
+        XCTAssertEqual(
+            entries.compactMap { $0["reason"] as? String },
+            entries.compactMap { $0["reason"] as? String }.sorted()
+        )
     }
 
     func testFailOpenPreservesUnknownAndOriginalFallback() {
         let frame = MeetingReferenceAttributionFrame(
-            frameIndex: 4, epoch: 2, startSeconds: .nan, durationSeconds: .nan,
-            microphone: .init(samples: [0], valid: [true]), reference: nil)
+            frameIndex: 4,
+            epoch: 2,
+            startSeconds: .nan,
+            durationSeconds: .nan,
+            microphone: .init(samples: [0], valid: [true]),
+            reference: nil
+        )
         let output = MeetingReferenceAttributionFrameResult.failOpen(frame: frame, reason: .referenceAbsent)
 
         XCTAssertEqual(output.outcome, .unscored)
@@ -103,8 +158,13 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         XCTAssertFalse(output.reasons.contains(.noSpeechMeasured))
 
         let unsafe = MeetingReferenceAttributionFrameResult(
-            frameIndex: 0, epoch: 0, startSeconds: 0, durationSeconds: 0.01,
-            outcome: .acceptedNearEndSpeech, speechState: .unknown)
+            frameIndex: 0,
+            epoch: 0,
+            startSeconds: 0,
+            durationSeconds: 0.01,
+            outcome: .acceptedNearEndSpeech,
+            speechState: .unknown
+        )
         XCTAssertEqual(unsafe.outcome, .unscored)
         XCTAssertEqual(unsafe.fallback, .originalMicrophone)
     }
@@ -115,25 +175,31 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
             result(.acceptedNearEndSpeech, duration: 0.3, index: 1, speech: .nearEndSpeech),
             result(.mixedOrUncertain, duration: 0.2, index: 2, speech: .mixedSpeech),
             result(.scopeLimited, duration: 0.1, index: 3, reasons: [.referenceScopeLimited]),
-            result(.unscored, duration: 0.3, index: 4, reasons: [.referenceGap, .unknownSpeechState])
+            result(.unscored, duration: 0.3, index: 4, reasons: [.referenceGap, .unknownSpeechState]),
         ]
         let aggregate = MeetingReferenceAttributionAggregate(frameResults: frames)
 
-        XCTAssertEqual(aggregate.coverage.totalDurationSeconds, 1, accuracy: 0.000001)
-        XCTAssertEqual(aggregate.coverage.scoredDurationSeconds, 0.6, accuracy: 0.000001)
-        XCTAssertEqual(aggregate.coverage.likelyPlaybackOnlyDurationSeconds, 0.1, accuracy: 0.000001)
-        XCTAssertEqual(aggregate.coverage.acceptedNearEndSpeechDurationSeconds, 0.3, accuracy: 0.000001)
-        XCTAssertEqual(aggregate.coverage.unscoredFraction, 0.3, accuracy: 0.000001)
+        XCTAssertEqual(aggregate.coverage.totalDurationSeconds, 1, accuracy: 0.000_001)
+        XCTAssertEqual(aggregate.coverage.scoredDurationSeconds, 0.6, accuracy: 0.000_001)
+        XCTAssertEqual(aggregate.coverage.likelyPlaybackOnlyDurationSeconds, 0.1, accuracy: 0.000_001)
+        XCTAssertEqual(aggregate.coverage.acceptedNearEndSpeechDurationSeconds, 0.3, accuracy: 0.000_001)
+        XCTAssertEqual(aggregate.coverage.unscoredFraction, 0.3, accuracy: 0.000_001)
         XCTAssertEqual(aggregate.outcomeCounts[.acceptedNearEndSpeech], 1)
         XCTAssertEqual(aggregate.outcomeCounts[.unscored], 1)
         XCTAssertEqual(aggregate.reasonCounts[.referenceGap], 1)
     }
 
     func testScopeLimitedAndUnknownRemainDistinctFromMeasuredNoSpeech() {
-        let scopeLimited = result(.scopeLimited, duration: 0.1, reasons: [.referenceScopeLimited])
-        let unknown = result(.unscored, duration: 0.1, index: 1, reasons: [.referenceAbsent, .unknownSpeechState])
-        let silence = result(.likelyPlaybackOnly, duration: 0.1, index: 2, speech: .silence,
-                             residual: .suppressedResidual, reasons: [.silenceMeasured])
+        let scopeLimited = self.result(.scopeLimited, duration: 0.1, reasons: [.referenceScopeLimited])
+        let unknown = self.result(.unscored, duration: 0.1, index: 1, reasons: [.referenceAbsent, .unknownSpeechState])
+        let silence = self.result(
+            .likelyPlaybackOnly,
+            duration: 0.1,
+            index: 2,
+            speech: .silence,
+            residual: .suppressedResidual,
+            reasons: [.silenceMeasured]
+        )
         let aggregate = MeetingReferenceAttributionAggregate(frameResults: [scopeLimited, unknown, silence])
 
         XCTAssertEqual(aggregate.outcomeCounts[.scopeLimited], 1)
@@ -150,25 +216,37 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         XCTAssertEqual(first.configurationHash, second.configurationHash)
 
         let one = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1",
+            engineID: "engine",
+            engineVersion: "1",
             sourceHashes: [.init(name: "z", hash: "2"), .init(name: "a", hash: "1")],
-            configurationHash: first.configurationHash)
+            configurationHash: first.configurationHash
+        )
         let two = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1",
+            engineID: "engine",
+            engineVersion: "1",
             sourceHashes: [.init(name: "a", hash: "1"), .init(name: "z", hash: "2")],
-            configurationHash: second.configurationHash)
+            configurationHash: second.configurationHash
+        )
         XCTAssertEqual(one.stableIdentity, two.stableIdentity)
         XCTAssertNotEqual(one.stableIdentity, MeetingReferenceAttributionEngineIdentity(
-            engineID: "different", engineVersion: "1", configurationHash: first.configurationHash).stableIdentity)
+            engineID: "different", engineVersion: "1", configurationHash: first.configurationHash
+        ).stableIdentity)
     }
 
     func testInvalidNonFiniteMetricsAndCoverageDoNotBecomeMeasuredValues() {
         let metrics = MeetingReferenceAttributionMetrics(
-            delaySeconds: .infinity, delayJitterSeconds: -.nan, convergence: 2,
-            erlDB: .nan, erleDB: -.infinity, candidateScore: -0.1,
-            originalEnergy: -.infinity, residualEnergy: .nan,
-            residualToOriginalEnergyRatio: -0.1, processingMilliseconds: .nan,
-            peakMemoryBytes: -1)
+            delaySeconds: .infinity,
+            delayJitterSeconds: -.nan,
+            convergence: 2,
+            erlDB: .nan,
+            erleDB: -.infinity,
+            candidateScore: -0.1,
+            originalEnergy: -.infinity,
+            residualEnergy: .nan,
+            residualToOriginalEnergyRatio: -0.1,
+            processingMilliseconds: .nan,
+            peakMemoryBytes: -1
+        )
         XCTAssertNil(metrics.delaySeconds)
         XCTAssertNil(metrics.delayJitterSeconds)
         XCTAssertNil(metrics.convergence)
@@ -181,39 +259,61 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         XCTAssertNil(metrics.peakMemoryBytes)
 
         XCTAssertNil(MeetingReferenceAttributionCoverage(
-            totalDurationSeconds: 1, scoredDurationSeconds: 1.1,
-            likelyPlaybackOnlyDurationSeconds: 0, acceptedNearEndSpeechDurationSeconds: 0,
-            mixedOrUncertainDurationSeconds: 0, scopeLimitedDurationSeconds: 0,
-            unscoredDurationSeconds: 0, frameCount: 1))
+            totalDurationSeconds: 1,
+            scoredDurationSeconds: 1.1,
+            likelyPlaybackOnlyDurationSeconds: 0,
+            acceptedNearEndSpeechDurationSeconds: 0,
+            mixedOrUncertainDurationSeconds: 0,
+            scopeLimitedDurationSeconds: 0,
+            unscoredDurationSeconds: 0,
+            frameCount: 1
+        ))
     }
 
     func testFrameValidationRejectsBadShapeNonFinitePCMAndOverflowTiming() {
         let badShape = MeetingReferenceAttributionFrame(
-            frameIndex: 0, epoch: 0, startSeconds: 0, durationSeconds: 0.01,
-            microphone: .init(samples: [0, 1], valid: [true]), reference: nil)
+            frameIndex: 0,
+            epoch: 0,
+            startSeconds: 0,
+            durationSeconds: 0.01,
+            microphone: .init(samples: [0, 1], valid: [true]),
+            reference: nil
+        )
         XCTAssertFalse(badShape.isValid)
         XCTAssertTrue(badShape.validationReasons.contains(.invalidInput))
         XCTAssertThrowsError(try badShape.validate())
 
         let badPCM = MeetingReferenceAttributionFrame(
-            frameIndex: 0, epoch: 0, startSeconds: 0, durationSeconds: 0.01,
-            microphone: .init(samples: [.nan], valid: [true]), reference: nil)
+            frameIndex: 0,
+            epoch: 0,
+            startSeconds: 0,
+            durationSeconds: 0.01,
+            microphone: .init(samples: [.nan], valid: [true]),
+            reference: nil
+        )
         XCTAssertTrue(badPCM.validationReasons.contains(.nonFiniteInput))
 
         let overflow = MeetingReferenceAttributionFrame(
-            frameIndex: 0, epoch: 0, startSeconds: .greatestFiniteMagnitude,
+            frameIndex: 0,
+            epoch: 0,
+            startSeconds: .greatestFiniteMagnitude,
             durationSeconds: .greatestFiniteMagnitude,
-            microphone: .init(samples: [0], valid: [true]), reference: nil)
+            microphone: .init(samples: [0], valid: [true]),
+            reference: nil
+        )
         XCTAssertFalse(overflow.hasValidTiming)
     }
 
     func testFrameResultDecodeRejectsOutcomeSpeechAndFallbackContradictions() throws {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)]
+        )
         var object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: JSONEncoder().encode(sidecar)) as? [String: Any])
         var frames = try XCTUnwrap(object["frameResults"] as? [[String: Any]])
@@ -224,8 +324,10 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     }
 
     func testPlaybackOnlyConflictingSpeechDegradesAndNoncanonicalReasonsAreRejected() throws {
-        let conflicting = result(
-            .likelyPlaybackOnly, duration: 0.1, speech: .nearEndSpeech,
+        let conflicting = self.result(
+            .likelyPlaybackOnly,
+            duration: 0.1,
+            speech: .nearEndSpeech,
             reasons: [.playbackAttributed]
         )
         XCTAssertEqual(conflicting.outcome, .mixedOrUncertain)
@@ -234,12 +336,18 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
 
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
+            engineIdentity: identity,
+            configuration: configuration,
             frameResults: [result(
-                .likelyPlaybackOnly, duration: 0.1, speech: .noSpeech,
-                reasons: [.playbackAttributed, .noSpeechMeasured])])
+                .likelyPlaybackOnly,
+                duration: 0.1,
+                speech: .noSpeech,
+                reasons: [.playbackAttributed, .noSpeechMeasured]
+            )]
+        )
         var object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: JSONEncoder().encode(sidecar)) as? [String: Any])
         var frames = try XCTUnwrap(object["frameResults"] as? [[String: Any]])
@@ -248,16 +356,20 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         object["frameResults"] = frames
         let noncanonical = try JSONSerialization.data(withJSONObject: object)
         XCTAssertThrowsError(try JSONDecoder().decode(
-            MeetingReferenceAttributionSidecar.self, from: noncanonical))
+            MeetingReferenceAttributionSidecar.self, from: noncanonical
+        ))
     }
 
     func testSidecarDecodeRejectsAggregateEpochAndConfigurationMismatches() throws {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)]
+        )
         let encoder = JSONEncoder()
         var object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: encoder.encode(sidecar)) as? [String: Any])
@@ -267,7 +379,8 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         object["engineIdentity"] = identityObject
         XCTAssertThrowsError(try JSONDecoder().decode(
             MeetingReferenceAttributionSidecar.self,
-            from: JSONSerialization.data(withJSONObject: object)))
+            from: JSONSerialization.data(withJSONObject: object)
+        ))
 
         object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: encoder.encode(sidecar)) as? [String: Any])
@@ -276,7 +389,8 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         object["epochs"] = epochs
         XCTAssertThrowsError(try JSONDecoder().decode(
             MeetingReferenceAttributionSidecar.self,
-            from: JSONSerialization.data(withJSONObject: object)))
+            from: JSONSerialization.data(withJSONObject: object)
+        ))
 
         object = try XCTUnwrap(JSONSerialization.jsonObject(
             with: encoder.encode(sidecar)) as? [String: Any])
@@ -287,17 +401,21 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         object["aggregate"] = aggregate
         XCTAssertThrowsError(try JSONDecoder().decode(
             MeetingReferenceAttributionSidecar.self,
-            from: JSONSerialization.data(withJSONObject: object)))
+            from: JSONSerialization.data(withJSONObject: object)
+        ))
     }
 
     func testProgrammaticSidecarExposesDuplicateFrameKeyAsInvalid() {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
-        let frame = result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
+        let frame = self.result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [frame, frame])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [frame, frame]
+        )
         XCTAssertEqual(sidecar.validationError, .invalid("duplicate epoch/frame key"))
         XCTAssertFalse(sidecar.isValid)
     }
@@ -305,11 +423,15 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     func testProgrammaticDuplicateEpochsDoNotTrapAndRemainInvalid() {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
-        let frame = result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
+        let frame = self.result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech)
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            epochs: [.init(epoch: 0), .init(epoch: 0)], frameResults: [frame])
+            engineIdentity: identity,
+            configuration: configuration,
+            epochs: [.init(epoch: 0), .init(epoch: 0)],
+            frameResults: [frame]
+        )
 
         XCTAssertEqual(sidecar.epochs.count, 2)
         XCTAssertEqual(sidecar.validationError, .invalid("duplicate epoch"))
@@ -318,33 +440,68 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
 
     func testContradictoryFrameResultsNormalizeToDecodableFailOpenValues() throws {
         let cases: [MeetingReferenceAttributionFrameResult] = [
-            result(.acceptedNearEndSpeech, duration: 0.1, speech: .playbackSpeech,
-                   residual: .linearResidual, reasons: [.residualSpeechDetected]),
-            result(.likelyPlaybackOnly, duration: 0.1, index: 1, speech: .unknown,
-                   residual: .suppressedResidual),
+            result(
+                .acceptedNearEndSpeech,
+                duration: 0.1,
+                speech: .playbackSpeech,
+                residual: .linearResidual,
+                reasons: [.residualSpeechDetected]
+            ),
+            result(
+                .likelyPlaybackOnly,
+                duration: 0.1,
+                index: 1,
+                speech: .unknown,
+                residual: .suppressedResidual
+            ),
             MeetingReferenceAttributionFrameResult(
-                frameIndex: 2, epoch: 0, startSeconds: 0.2, durationSeconds: 0.1,
-                outcome: .unscored, speechState: .nearEndSpeech,
-                residualVariant: .linearResidual, fallback: .none),
+                frameIndex: 2,
+                epoch: 0,
+                startSeconds: 0.2,
+                durationSeconds: 0.1,
+                outcome: .unscored,
+                speechState: .nearEndSpeech,
+                residualVariant: .linearResidual,
+                fallback: .none
+            ),
             MeetingReferenceAttributionFrameResult(
-                frameIndex: 3, epoch: 0, startSeconds: 0.3, durationSeconds: 0.1,
-                outcome: .scopeLimited, speechState: .unknown, fallback: .originalMicrophone),
+                frameIndex: 3,
+                epoch: 0,
+                startSeconds: 0.3,
+                durationSeconds: 0.1,
+                outcome: .scopeLimited,
+                speechState: .unknown,
+                fallback: .originalMicrophone
+            ),
             MeetingReferenceAttributionFrameResult(
-                frameIndex: -1, epoch: 0, startSeconds: 0.4, durationSeconds: 0.1,
-                outcome: .mixedOrUncertain, speechState: .mixedSpeech),
+                frameIndex: -1,
+                epoch: 0,
+                startSeconds: 0.4,
+                durationSeconds: 0.1,
+                outcome: .mixedOrUncertain,
+                speechState: .mixedSpeech
+            ),
             MeetingReferenceAttributionFrameResult(
-                frameIndex: 5, epoch: 0, startSeconds: .greatestFiniteMagnitude,
-                durationSeconds: .greatestFiniteMagnitude, outcome: .mixedOrUncertain,
-                speechState: .mixedSpeech)
+                frameIndex: 5,
+                epoch: 0,
+                startSeconds: .greatestFiniteMagnitude,
+                durationSeconds: .greatestFiniteMagnitude,
+                outcome: .mixedOrUncertain,
+                speechState: .mixedSpeech
+            ),
         ]
 
         for (offset, value) in cases.enumerated() {
             let data = try JSONEncoder().encode(value)
             let decoded = try JSONDecoder().decode(
-                MeetingReferenceAttributionFrameResult.self, from: data)
+                MeetingReferenceAttributionFrameResult.self, from: data
+            )
             XCTAssertEqual(decoded, value)
-            XCTAssertEqual(decoded.fallback, decoded.outcome == .unscored
-                           ? .originalMicrophone : .none)
+            XCTAssertEqual(
+                decoded.fallback,
+                decoded.outcome == .unscored
+                    ? .originalMicrophone : .none
+            )
             if decoded.outcome == .unscored {
                 XCTAssertEqual(decoded.speechState, .unknown)
                 XCTAssertNil(decoded.residualVariant)
@@ -356,26 +513,31 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     func testSidecarDecodeRejectsOverlapAndAdversarialContractPayloads() throws {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1",
+            engineID: "engine",
+            engineVersion: "1",
             sourceHashes: [.init(name: "source", hash: "sha256:1")],
-            configuration: configuration)
+            configuration: configuration
+        )
         let frames = [
             result(.acceptedNearEndSpeech, duration: 0.1, speech: .nearEndSpeech),
-            result(.likelyPlaybackOnly, duration: 0.1, index: 1, speech: .noSpeech)
+            result(.likelyPlaybackOnly, duration: 0.1, index: 1, speech: .noSpeech),
         ]
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: frames)
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: frames
+        )
         let encoder = JSONEncoder()
 
         func object() throws -> [String: Any] {
             try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(sidecar))
-                          as? [String: Any])
+                as? [String: Any])
         }
         func assertRejects(_ object: [String: Any], _ label: String = "") throws {
             XCTAssertThrowsError(try JSONDecoder().decode(
                 MeetingReferenceAttributionSidecar.self,
-                from: JSONSerialization.data(withJSONObject: object)), label)
+                from: JSONSerialization.data(withJSONObject: object)
+            ), label)
         }
 
         var value = try object()
@@ -392,7 +554,7 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         var duplicateIdentity = try XCTUnwrap(value["engineIdentity"] as? [String: Any])
         duplicateIdentity["sourceHashes"] = [
             ["name": "source", "hash": "sha256:1"],
-            ["name": "source", "hash": "sha256:2"]
+            ["name": "source", "hash": "sha256:2"],
         ]
         value["engineIdentity"] = duplicateIdentity
         try assertRejects(value, "duplicate source")
@@ -440,32 +602,47 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     func testResourceCostRejectsNonFiniteJSON() {
         let data = Data(#"{"processingMilliseconds":1e400,"peakMemoryBytes":null,"derivedSidecarBytes":null,"overBudget":false,"fallback":"none"}"#.utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(
-            MeetingReferenceAttributionResourceCost.self, from: data))
+            MeetingReferenceAttributionResourceCost.self, from: data
+        ))
     }
 
     func testProgrammaticProvenanceAndEpochsRemainCanonicalAndRejectDuplicates() {
         let configuration = MeetingReferenceAttributionConfiguration()
         let duplicateIdentity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1",
+            engineID: "engine",
+            engineVersion: "1",
             sourceHashes: [
                 .init(name: "source", hash: "sha256:1"),
-                .init(name: "source", hash: "sha256:2")
-            ], configuration: configuration)
+                .init(name: "source", hash: "sha256:2"),
+            ], configuration: configuration
+        )
         let frames = [
             result(.acceptedNearEndSpeech, duration: 0.1, epoch: 0, speech: .nearEndSpeech),
-            result(.acceptedNearEndSpeech, duration: 0.1, epoch: 1, index: 1,
-                   speech: .nearEndSpeech)
+            result(
+                .acceptedNearEndSpeech,
+                duration: 0.1,
+                epoch: 1,
+                index: 1,
+                speech: .nearEndSpeech
+            ),
         ]
         let duplicateSourceSidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: duplicateIdentity, configuration: configuration,
-            epochs: [.init(epoch: 0), .init(epoch: 1)], frameResults: frames)
+            engineIdentity: duplicateIdentity,
+            configuration: configuration,
+            epochs: [.init(epoch: 0), .init(epoch: 1)],
+            frameResults: frames
+        )
         XCTAssertFalse(duplicateSourceSidecar.isValid)
 
         let validIdentity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
         let duplicateEpochSidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: validIdentity, configuration: configuration,
-            epochs: [.init(epoch: 2), .init(epoch: 0), .init(epoch: 2)], frameResults: frames)
+            engineIdentity: validIdentity,
+            configuration: configuration,
+            epochs: [.init(epoch: 2), .init(epoch: 0), .init(epoch: 2)],
+            frameResults: frames
+        )
 
         XCTAssertEqual(duplicateEpochSidecar.epochs.map(\.epoch), [0, 2, 2])
         XCTAssertEqual(duplicateEpochSidecar.validationError, .invalid("duplicate epoch"))
@@ -475,13 +652,20 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
     func testSidecarRejectsUnsortedEpochsAndCrossEpochOverlap() throws {
         let configuration = MeetingReferenceAttributionConfiguration()
         let identity = MeetingReferenceAttributionEngineIdentity(
-            engineID: "engine", engineVersion: "1", configuration: configuration)
-        let first = result(.acceptedNearEndSpeech, duration: 0.1, epoch: 0,
-                           speech: .nearEndSpeech)
-        let second = result(.likelyPlaybackOnly, duration: 0.1, epoch: 1, speech: .noSpeech)
+            engineID: "engine", engineVersion: "1", configuration: configuration
+        )
+        let first = self.result(
+            .acceptedNearEndSpeech,
+            duration: 0.1,
+            epoch: 0,
+            speech: .nearEndSpeech
+        )
+        let second = self.result(.likelyPlaybackOnly, duration: 0.1, epoch: 1, speech: .noSpeech)
         let sidecar = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
-            frameResults: [first, second])
+            engineIdentity: identity,
+            configuration: configuration,
+            frameResults: [first, second]
+        )
         XCTAssertEqual(sidecar.epochs.map(\.epoch), [0, 1])
 
         var object = try XCTUnwrap(JSONSerialization.jsonObject(
@@ -489,13 +673,21 @@ final class MeetingReferenceAttributionContractsTests: XCTestCase {
         object["epochs"] = [["epoch": 1], ["epoch": 0]]
         XCTAssertThrowsError(try JSONDecoder().decode(
             MeetingReferenceAttributionSidecar.self,
-            from: JSONSerialization.data(withJSONObject: object)))
+            from: JSONSerialization.data(withJSONObject: object)
+        ))
 
         let overlapping = MeetingReferenceAttributionSidecar(
-            engineIdentity: identity, configuration: configuration,
+            engineIdentity: identity,
+            configuration: configuration,
             frameResults: [first, MeetingReferenceAttributionFrameResult(
-                frameIndex: 0, epoch: 1, startSeconds: 0.05, durationSeconds: 0.1,
-                outcome: .likelyPlaybackOnly, speechState: .noSpeech)])
+                frameIndex: 0,
+                epoch: 1,
+                startSeconds: 0.05,
+                durationSeconds: 0.1,
+                outcome: .likelyPlaybackOnly,
+                speechState: .noSpeech
+            )]
+        )
         XCTAssertEqual(overlapping.validationError, .invalid("non-monotonic frame timing"))
     }
 }

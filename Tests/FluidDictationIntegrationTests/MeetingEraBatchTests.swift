@@ -7,13 +7,21 @@ final class MeetingEraBatchTests: XCTestCase {
     private func track(
         captureMethod: MeetingAudioTrackCaptureMethod? = nil,
         clockDrift: MeetingClockDriftRecord? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         captureEras: [MeetingCaptureEra]? = nil
     ) -> MeetingAudioTrack {
         MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: [], captureMethod: captureMethod, clockDrift: clockDrift,
+            health: .waiting,
+            chunks: [],
+            captureMethod: captureMethod,
+            clockDrift: clockDrift,
             captureEras: captureEras
         )
     }
@@ -24,8 +32,12 @@ final class MeetingEraBatchTests: XCTestCase {
         clockDrift: MeetingClockDriftRecord? = nil
     ) -> MeetingCaptureEra {
         MeetingCaptureEra(
-            method: method, deviceUID: nil, deviceName: nil, roleAtElection: .unknown,
-            startSeconds: startSeconds, clockDrift: clockDrift
+            method: method,
+            deviceUID: nil,
+            deviceName: nil,
+            roleAtElection: .unknown,
+            startSeconds: startSeconds,
+            clockDrift: clockDrift
         )
     }
 
@@ -38,8 +50,15 @@ final class MeetingEraBatchTests: XCTestCase {
         rms: Double = 0
     ) -> MeetingProcessingPipeline.StagedMicrophoneTurn {
         MeetingProcessingPipeline.StagedMicrophoneTurn(
-            chunkID: UUID(), index: 0, clusterID: clusterID, clusterLabel: "spk",
-            start: start, end: end, text: text, overlapsRemote: overlapsRemote, rms: rms
+            chunkID: UUID(),
+            index: 0,
+            clusterID: clusterID,
+            clusterLabel: "spk",
+            start: start,
+            end: end,
+            text: text,
+            overlapsRemote: overlapsRemote,
+            rms: rms
         )
     }
 
@@ -84,7 +103,8 @@ final class MeetingEraBatchTests: XCTestCase {
 
         XCTAssertEqual(MeetingProcessingPipeline.eraIndex(containing: 25, eras: rawEras), 0)
         XCTAssertEqual(
-            MeetingProcessingPipeline.eraIndex(containing: 35, eras: rawEras), 0,
+            MeetingProcessingPipeline.eraIndex(containing: 35, eras: rawEras),
+            0,
             "raw (unconverted) eras misclassify the post-boundary turn as era 0 — this is why conversion is mandatory"
         )
     }
@@ -109,7 +129,7 @@ final class MeetingEraBatchTests: XCTestCase {
     func testWideningAppliesOnlyInsideTheVoiceProcessingEra() {
         let eras = [self.era(.voiceProcessing, startSeconds: 0), self.era(.avCaptureSession, startSeconds: 30)]
         let turns = [
-            self.turn(start: 5, end: 8, overlapsRemote: false),   // inside VPIO era
+            self.turn(start: 5, end: 8, overlapsRemote: false), // inside VPIO era
             self.turn(start: 40, end: 42, overlapsRemote: false), // inside AVCapture era
         ]
         let (classified, widened) = MeetingProcessingPipeline.classifyMicrophoneTurns(
@@ -223,7 +243,7 @@ final class MeetingEraBatchTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(MeetingAudioTrack.self, from: try encoder.encode(track))
+        let decoded = try decoder.decode(MeetingAudioTrack.self, from: encoder.encode(track))
         XCTAssertEqual(decoded.captureEras, eras)
     }
 

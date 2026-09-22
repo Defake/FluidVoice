@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import CoreAudio
+@testable import FluidVoice_Debug
 import XCTest
 
 final class AudioTopologyDiagnosticsTests: XCTestCase {
@@ -58,7 +58,7 @@ final class AudioTopologyDiagnosticsTests: XCTestCase {
 
         XCTAssertEqual(snapshot.events.count, 1)
         XCTAssertTrue(AudioTopologyDiagnostics.hasOpenTopologyPhase(snapshot.events))
-        let line = AudioTopologyDiagnostics.jsonLine(for: try XCTUnwrap(snapshot.events.first))
+        let line = try AudioTopologyDiagnostics.jsonLine(for: XCTUnwrap(snapshot.events.first))
         let object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(line)) as? [String: Any]
         )
@@ -154,12 +154,12 @@ final class AudioTopologyDiagnosticsTests: XCTestCase {
     }
 
     func testConcurrentProducersAndSnapshotsRemainOrdered() {
-        DispatchQueue.concurrentPerform(iterations: 1_000) { index in
+        DispatchQueue.concurrentPerform(iterations: 1000) { index in
             _ = Self.record(.callback, objectID: AudioObjectID(index + 1))
             if index.isMultiple(of: 17) { _ = Self.snapshot() }
         }
         let snapshot = Self.snapshot()
-        XCTAssertEqual(snapshot.latest, 1_000)
+        XCTAssertEqual(snapshot.latest, 1000)
         XCTAssertEqual(snapshot.events.map(\.sequence), snapshot.events.map(\.sequence).sorted())
         XCTAssertEqual(Set(snapshot.events.map(\.sequence)).count, snapshot.events.count)
     }

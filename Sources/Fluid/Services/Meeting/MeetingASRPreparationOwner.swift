@@ -68,10 +68,10 @@ final class MeetingASRPreparationOwner {
         @escaping (ModelPreparationProgress) -> Void
     ) async throws -> Void
     private let drainExecutor: @MainActor (ASRActivityLease) async -> Void
-#if DEBUG
+    #if DEBUG
     var didMarkReadyForTesting: (@MainActor () -> Void)?
     var didBeginWaitingForTesting: (@MainActor () -> Void)?
-#endif
+    #endif
 
     private var slot: Slot?
     private var drainTask: Task<Void, Never>?
@@ -137,7 +137,8 @@ final class MeetingASRPreparationOwner {
                 guard self.drainTask == nil,
                       self.isActiveLease(lease),
                       self.slot?.claimToken == token,
-                      self.slot?.task?.isCancelled == false else {
+                      self.slot?.task?.isCancelled == false
+                else {
                     throw CancellationError()
                 }
                 return provider
@@ -157,7 +158,7 @@ final class MeetingASRPreparationOwner {
             lease: lease, operationID: operationID, progress: progress
         )
         let token = MeetingASRPreparationClaimToken(lease: lease, operationID: operationID)
-        let task = Task { @MainActor [weak self] () throws -> Void in
+        let task = Task { @MainActor [weak self] () throws in
             guard let self else { throw CancellationError() }
             try await self.performPreparation(
                 lease: lease,
@@ -190,9 +191,9 @@ final class MeetingASRPreparationOwner {
     ) async throws -> any TranscriptionProvider {
         do {
             try await withTaskCancellationHandler {
-#if DEBUG
+                #if DEBUG
                 self.didBeginWaitingForTesting?()
-#endif
+                #endif
                 try await task.value
             } onCancel: {
                 task.cancel()
@@ -230,9 +231,9 @@ final class MeetingASRPreparationOwner {
         try self.recheck(lease: lease, operationID: operationID)
         guard self.slot?.operationID == operationID else { throw CancellationError() }
         self.markReady(operationID: operationID)
-#if DEBUG
+        #if DEBUG
         self.didMarkReadyForTesting?()
-#endif
+        #endif
     }
 
     private func recheck(lease: ASRActivityLease, operationID: UUID) throws {

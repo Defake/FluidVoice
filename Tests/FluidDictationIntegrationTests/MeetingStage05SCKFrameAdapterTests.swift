@@ -1,9 +1,9 @@
 #if DEBUG
 
-@testable import FluidVoice_Debug
 import CoreAudio
 import CoreMedia
 import Darwin
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -20,42 +20,76 @@ enum Stage05SyntheticBuffer {
     ) -> CMSampleBuffer? {
         let bytesPerFrame = 4 * channels
         var asbd = AudioStreamBasicDescription(
-            mSampleRate: sampleRate, mFormatID: kAudioFormatLinearPCM,
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: UInt32(bytesPerFrame), mFramesPerPacket: 1,
+            mBytesPerPacket: UInt32(bytesPerFrame),
+            mFramesPerPacket: 1,
             mBytesPerFrame: UInt32(bytesPerFrame),
-            mChannelsPerFrame: UInt32(channels), mBitsPerChannel: 32, mReserved: 0)
+            mChannelsPerFrame: UInt32(channels),
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
         var formatDescription: CMAudioFormatDescription?
         guard CMAudioFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault, asbd: &asbd, layoutSize: 0, layout: nil,
-            magicCookieSize: 0, magicCookie: nil, extensions: nil,
-            formatDescriptionOut: &formatDescription) == noErr, let formatDescription else { return nil }
+            allocator: kCFAllocatorDefault,
+            asbd: &asbd,
+            layoutSize: 0,
+            layout: nil,
+            magicCookieSize: 0,
+            magicCookie: nil,
+            extensions: nil,
+            formatDescriptionOut: &formatDescription
+        ) == noErr, let formatDescription else { return nil }
         let byteCount = frameCount * bytesPerFrame
         var blockBuffer: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: byteCount,
-            blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
-            dataLength: byteCount, flags: 0, blockBufferOut: &blockBuffer) == noErr,
-              let blockBuffer else { return nil }
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: byteCount,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: byteCount,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        ) == noErr,
+            let blockBuffer else { return nil }
         let samples = [Float](repeating: value, count: frameCount * channels)
         guard samples.withUnsafeBytes({
-            CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: blockBuffer,
-                                          offsetIntoDestination: 0, dataLength: byteCount)
+            CMBlockBufferReplaceDataBytes(
+                // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+                // swiftlint:disable:next force_unwrapping
+                with: $0.baseAddress!,
+                blockBuffer: blockBuffer,
+                offsetIntoDestination: 0,
+                dataLength: byteCount
+            )
         }) == noErr else { return nil }
         var timing = CMSampleTimingInfo(
             duration: CMTime(value: 1, timescale: CMTimeScale(sampleRate)),
             presentationTimeStamp: CMTime(seconds: pts, preferredTimescale: 1_000_000_000),
-            decodeTimeStamp: .invalid)
+            decodeTimeStamp: .invalid
+        )
         var sampleBuffer: CMSampleBuffer?
         guard CMSampleBufferCreate(
-            allocator: kCFAllocatorDefault, dataBuffer: blockBuffer, dataReady: true,
-            makeDataReadyCallback: nil, refcon: nil, formatDescription: formatDescription,
-            sampleCount: frameCount, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
-            sampleSizeEntryCount: 0, sampleSizeArray: nil,
-            sampleBufferOut: &sampleBuffer) == noErr, let sampleBuffer else { return nil }
+            allocator: kCFAllocatorDefault,
+            dataBuffer: blockBuffer,
+            dataReady: true,
+            makeDataReadyCallback: nil,
+            refcon: nil,
+            formatDescription: formatDescription,
+            sampleCount: frameCount,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 0,
+            sampleSizeArray: nil,
+            sampleBufferOut: &sampleBuffer
+        ) == noErr, let sampleBuffer else { return nil }
         if discontinuity,
            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: true) as? [NSMutableDictionary],
-           let first = attachments.first {
+           let first = attachments.first
+        {
             first[MeetingStage05SCKFrameAdapter.discontinuityAttachmentKey] = true
         }
         return sampleBuffer
@@ -70,11 +104,16 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         pts: Double, frames: Int? = nil, arrival: Double? = nil,
         value: Float = 0.5, discontinuity: Bool = false
     ) -> MeetingStage05AdapterFrame {
-        let count = frames ?? blockFrames
+        let count = frames ?? self.blockFrames
         return MeetingStage05AdapterFrame(
-            presentationSeconds: pts, durationSeconds: Double(count) / rate,
-            frameCount: count, sampleRateHz: rate, arrivalSeconds: arrival,
-            samples: [Float](repeating: value, count: count), discontinuity: discontinuity)
+            presentationSeconds: pts,
+            durationSeconds: Double(count) / self.rate,
+            frameCount: count,
+            sampleRateHz: self.rate,
+            arrivalSeconds: arrival,
+            samples: [Float](repeating: value, count: count),
+            discontinuity: discontinuity
+        )
     }
 
     private func feedPaired(
@@ -86,16 +125,16 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
             let base = Double(index) * 0.01
             let renderPTS = base + (renderGap.map { index >= $0.at ? $0.seconds : 0 } ?? 0)
             let micPTS = base + (microphoneGap.map { index >= $0.at ? $0.seconds : 0 } ?? 0)
-            XCTAssertNil(adapter.appendRenderFrame(block(pts: renderPTS, value: 0.25)))
-            XCTAssertNil(adapter.appendMicrophoneFrame(block(pts: micPTS, arrival: micPTS, value: 0.5)))
+            XCTAssertNil(adapter.appendRenderFrame(self.block(pts: renderPTS, value: 0.25)))
+            XCTAssertNil(adapter.appendMicrophoneFrame(self.block(pts: micPTS, arrival: micPTS, value: 0.5)))
         }
     }
 
-    // MARK: Contiguous baseline and mock-seam contract
+    // MARK: - Contiguous baseline and mock-seam contract
 
     func testContiguousPairedCallbacksSynchronizeAndValidateRenderBeforeCapture() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: 10)
+        self.feedPaired(adapter, count: 10)
 
         let (drained, result) = adapter.synchronize()
         XCTAssertEqual(drained.renderDiagnostics, MeetingStage05AdapterTrackDiagnostics(accepted: 10))
@@ -128,12 +167,13 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertTrue(MeetingAECDelayContract(renderLeadSeconds: 0.010).validates(events: seam.events))
     }
 
-    // MARK: Gap matrix
+    // MARK: - Gap matrix
 
     private func runRenderGap(gapSeconds: Double, gapIndex: Int = 20, blocks: Int = 40)
-        -> (MeetingStage05AdapterDrain, MeetingSynchronizationResult) {
+        -> (MeetingStage05AdapterDrain, MeetingSynchronizationResult)
+    {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: blocks, renderGap: (gapIndex, gapSeconds))
+        self.feedPaired(adapter, count: blocks, renderGap: (gapIndex, gapSeconds))
         return adapter.synchronize()
     }
 
@@ -154,20 +194,33 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
             frame.adaptationFrozen
                 && frame.captureValidMask.allSatisfy { $0 }
                 && zip(frame.renderSamples, frame.renderValidMask).allSatisfy { $0.1 || $0.0 == 0 }
-        }, file: file, line: line)
-        XCTAssertEqual(result.frames.filter(\.resynchronizationBoundary).map(\.index),
-                       [boundaryIndex], file: file, line: line)
+        }, file: file,
+        line: line)
+        XCTAssertEqual(
+            result.frames.filter(\.resynchronizationBoundary).map(\.index),
+            [boundaryIndex],
+            file: file,
+            line: line
+        )
         XCTAssertEqual(result.frames[resumedIndex].epochID, 1, file: file, line: line)
-        XCTAssertTrue(result.frames[resumedIndex].renderValidMask.allSatisfy { $0 },
-                      file: file, line: line)
+        XCTAssertTrue(
+            result.frames[resumedIndex].renderValidMask.allSatisfy { $0 },
+            file: file,
+            line: line
+        )
     }
 
     func testAdapterDrivenTwoMillisecondRenderJumpYieldsExactly32InvalidSamples() {
-        let (drained, result) = runRenderGap(gapSeconds: 0.002)
+        let (drained, result) = self.runRenderGap(gapSeconds: 0.002)
         XCTAssertEqual(drained.renderDiagnostics.gapCount, 1)
         XCTAssertEqual(drained.renderDiagnostics.acceptedCallbackCount, 40)
-        assertRenderGap(result, gapIndices: 20..<21, invalidRender: 32,
-                        boundaryIndex: 20, resumedIndex: 21)
+        self.assertRenderGap(
+            result,
+            gapIndices: 20..<21,
+            invalidRender: 32,
+            boundaryIndex: 20,
+            resumedIndex: 21
+        )
 
         let resumed = result.frames[21]
         XCTAssertEqual(resumed.epochID, 1)
@@ -188,16 +241,20 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertEqual(seam.observations[20].renderValidCount, 128)
         XCTAssertEqual(seam.observations[20].captureValidCount, 160)
         XCTAssertTrue(seam.observations[20].unknownReasons.contains(.referenceGap))
-        XCTAssertFalse(MeetingAECDelayContract(renderLeadSeconds: 0.010).validates(events: seam.events),
-                       "a frozen hop must be absent from events, so the full contract cannot validate")
+        XCTAssertFalse(
+            MeetingAECDelayContract(renderLeadSeconds: 0.010).validates(events: seam.events),
+            "a frozen hop must be absent from events, so the full contract cannot validate"
+        )
         var seen: [Int: [MeetingAECDelayContractEventKind]] = [:]
-        for event in seam.events { seen[event.frameIndex, default: []].append(event.kind) }
+        for event in seam.events {
+            seen[event.frameIndex, default: []].append(event.kind)
+        }
         XCTAssertTrue(seen.values.allSatisfy { $0 == [.render, .capture] })
         XCTAssertNil(seen[20])
     }
 
     func testRenderGapOfOneSampleFreezesWithoutInventedCoverage() {
-        let (drained, result) = runRenderGap(gapSeconds: 1 / rate)
+        let (drained, result) = self.runRenderGap(gapSeconds: 1 / self.rate)
         XCTAssertEqual(drained.renderDiagnostics.gapCount, 1)
         // A sub-analysis-sample hole cannot produce invalid 16 kHz samples; the reason,
         // freeze, and boundary carry it instead of fabricated silence.
@@ -211,20 +268,30 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
     }
 
     func testRenderGapOfTenMillisecondsIsExactlyOneInvalidHop() {
-        let (drained, result) = runRenderGap(gapSeconds: 0.010)
+        let (drained, result) = self.runRenderGap(gapSeconds: 0.010)
         XCTAssertEqual(drained.renderDiagnostics.gapCount, 1)
-        assertRenderGap(result, gapIndices: 20..<21, invalidRender: 160,
-                        boundaryIndex: 21, resumedIndex: 21)
+        self.assertRenderGap(
+            result,
+            gapIndices: 20..<21,
+            invalidRender: 160,
+            boundaryIndex: 21,
+            resumedIndex: 21
+        )
         XCTAssertEqual(result.frames.count, 41)
         XCTAssertEqual(result.frames[20].renderValidMask, [Bool](repeating: false, count: 160))
         XCTAssertTrue(result.frames[21].adaptationFrozen, "the first resumed hop performs the reset")
     }
 
     func testRenderGapOfHundredMillisecondsSpansTenInvalidHops() {
-        let (drained, result) = runRenderGap(gapSeconds: 0.100)
+        let (drained, result) = self.runRenderGap(gapSeconds: 0.100)
         XCTAssertEqual(drained.renderDiagnostics.gapCount, 1)
-        assertRenderGap(result, gapIndices: 20..<30, invalidRender: 1_600,
-                        boundaryIndex: 30, resumedIndex: 30)
+        self.assertRenderGap(
+            result,
+            gapIndices: 20..<30,
+            invalidRender: 1600,
+            boundaryIndex: 30,
+            resumedIndex: 30
+        )
         XCTAssertEqual(result.frames.count, 50)
         XCTAssertTrue(result.frames[20..<30].allSatisfy {
             $0.renderValidMask.allSatisfy { !$0 } && $0.adaptationFrozen
@@ -236,7 +303,7 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
 
     func testMicrophoneGapOfTwoMillisecondsYieldsExactly32InvalidCaptureSamples() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: 40, microphoneGap: (20, 0.002))
+        self.feedPaired(adapter, count: 40, microphoneGap: (20, 0.002))
         let (drained, result) = adapter.synchronize()
 
         XCTAssertEqual(drained.microphoneDiagnostics.gapCount, 1)
@@ -262,9 +329,11 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         for index in 0..<60 {
             let shift = (index >= 20 ? 0.010 : 0) + (index >= 40 ? 0.020 : 0)
             let pts = Double(index) * 0.01 + shift
-            XCTAssertNil(adapter.appendRenderFrame(block(pts: pts, value: 0.25)))
-            XCTAssertNil(adapter.appendMicrophoneFrame(block(pts: Double(index) * 0.01 + shift,
-                                                             arrival: Double(index) * 0.01 + shift)))
+            XCTAssertNil(adapter.appendRenderFrame(self.block(pts: pts, value: 0.25)))
+            XCTAssertNil(adapter.appendMicrophoneFrame(self.block(
+                pts: Double(index) * 0.01 + shift,
+                arrival: Double(index) * 0.01 + shift
+            )))
         }
         let (drained, result) = adapter.synchronize()
 
@@ -284,7 +353,7 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertEqual(seam.frames, result.frames)
     }
 
-    // MARK: Overlaps and backward timestamps
+    // MARK: - Overlaps and backward timestamps
 
     private func overlapScenario(
         overlappedPTS: Double
@@ -294,13 +363,15 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         for index in 0..<10 {
             let value = Float(index + 1) / 20
             XCTAssertNil(baseline.appendRenderFrame(
-                block(pts: Double(index) * 0.01, value: value)))
+                self.block(pts: Double(index) * 0.01, value: value)))
             XCTAssertNil(baseline.appendMicrophoneFrame(
-                block(pts: Double(index) * 0.01, arrival: Double(index) * 0.01)))
+                self.block(pts: Double(index) * 0.01, arrival: Double(index) * 0.01)))
             let pts = index == 5 ? overlappedPTS : Double(index) * 0.01
-            XCTAssertNil(variant.appendRenderFrame(block(pts: pts, value: value)))
-            XCTAssertNil(variant.appendMicrophoneFrame(block(pts: Double(index) * 0.01,
-                                                             arrival: Double(index) * 0.01)))
+            XCTAssertNil(variant.appendRenderFrame(self.block(pts: pts, value: value)))
+            XCTAssertNil(variant.appendMicrophoneFrame(self.block(
+                pts: Double(index) * 0.01,
+                arrival: Double(index) * 0.01
+            )))
         }
         let baselineResult = baseline.synchronize().1
         let (drained, result) = variant.synchronize()
@@ -320,47 +391,79 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertFalse(result.failedOpen, file: file, line: line)
         XCTAssertEqual(result.frames.count, baseline.frames.count, file: file, line: line)
         for hop in 0..<5 {
-            XCTAssertEqual(result.frames[hop].renderSamples, baseline.frames[hop].renderSamples,
-                           file: file, line: line)
+            XCTAssertEqual(
+                result.frames[hop].renderSamples,
+                baseline.frames[hop].renderSamples,
+                file: file,
+                line: line
+            )
         }
-        XCTAssertEqual(result.frames[5].renderValidMask, [Bool](repeating: false, count: 160),
-                       file: file, line: line)
+        XCTAssertEqual(
+            result.frames[5].renderValidMask,
+            [Bool](repeating: false, count: 160),
+            file: file,
+            line: line
+        )
         for hop in 6..<10 {
-            XCTAssertEqual(result.frames[hop].renderSamples, baseline.frames[hop].renderSamples,
-                           file: file, line: line)
+            XCTAssertEqual(
+                result.frames[hop].renderSamples,
+                baseline.frames[hop].renderSamples,
+                file: file,
+                line: line
+            )
         }
     }
 
     func testOneSampleOverlapCannotOverwriteAcceptedSamples() {
-        let (drained, result, baseline) = overlapScenario(overlappedPTS: 0.05 - 1 / rate)
-        assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: false)
+        let (drained, result, baseline) = self.overlapScenario(overlappedPTS: 0.05 - 1 / self.rate)
+        self.assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: false)
     }
 
     func testHalfFrameOverlapCannotOverwriteAcceptedSamples() {
-        let (drained, result, baseline) = overlapScenario(overlappedPTS: 0.045)
-        assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: false)
+        let (drained, result, baseline) = self.overlapScenario(overlappedPTS: 0.045)
+        self.assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: false)
     }
 
     func testDuplicateTimestampIsBackwardAndOverlapping() {
-        let (drained, result, baseline) = overlapScenario(overlappedPTS: 0.04)
-        assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: true)
+        let (drained, result, baseline) = self.overlapScenario(overlappedPTS: 0.04)
+        self.assertOverlapDropsLateBlock(drained, result, baseline, expectBackward: true)
     }
 
     func testSequenceDisorderDropsLateSequenceWithoutOverwriting() {
         let refs = [
-            MeetingReferencePCMFrame(sequenceNumber: 0, presentationTime: 0, sampleRate: 16_000,
-                                     samples: [Float](repeating: 1, count: 160)),
-            MeetingReferencePCMFrame(sequenceNumber: 2, presentationTime: 0.02, sampleRate: 16_000,
-                                     samples: [Float](repeating: 3, count: 160)),
-            MeetingReferencePCMFrame(sequenceNumber: 1, presentationTime: 0.01, sampleRate: 16_000,
-                                     samples: [Float](repeating: 2, count: 160)),
-            MeetingReferencePCMFrame(sequenceNumber: 3, presentationTime: 0.03, sampleRate: 16_000,
-                                     samples: [Float](repeating: 4, count: 160)),
+            MeetingReferencePCMFrame(
+                sequenceNumber: 0,
+                presentationTime: 0,
+                sampleRate: 16_000,
+                samples: [Float](repeating: 1, count: 160)
+            ),
+            MeetingReferencePCMFrame(
+                sequenceNumber: 2,
+                presentationTime: 0.02,
+                sampleRate: 16_000,
+                samples: [Float](repeating: 3, count: 160)
+            ),
+            MeetingReferencePCMFrame(
+                sequenceNumber: 1,
+                presentationTime: 0.01,
+                sampleRate: 16_000,
+                samples: [Float](repeating: 2, count: 160)
+            ),
+            MeetingReferencePCMFrame(
+                sequenceNumber: 3,
+                presentationTime: 0.03,
+                sampleRate: 16_000,
+                samples: [Float](repeating: 4, count: 160)
+            ),
         ]
         let mics = (0..<4).map {
-            MeetingMicrophonePCMFrame(sequenceNumber: $0, sampleTime: Int64($0 * 160),
-                                      hostTime: Double($0) * 0.01, sampleRate: 16_000,
-                                      samples: [Float](repeating: 5, count: 160))
+            MeetingMicrophonePCMFrame(
+                sequenceNumber: $0,
+                sampleTime: Int64($0 * 160),
+                hostTime: Double($0) * 0.01,
+                sampleRate: 16_000,
+                samples: [Float](repeating: 5, count: 160)
+            )
         }
         let result = MeetingReferenceSynchronizer().synchronize(microphone: mics, reference: refs)
 
@@ -370,15 +473,19 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertTrue(result.frames[2].resynchronizationBoundary)
     }
 
-    // MARK: Discontinuity, format/rate, route
+    // MARK: - Discontinuity, format/rate, route
 
     func testExplicitDiscontinuityWithContiguousTimingResetsWithoutGap() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         for index in 0..<10 {
-            XCTAssertNil(adapter.appendRenderFrame(block(pts: Double(index) * 0.01,
-                                                         discontinuity: index == 5)))
-            XCTAssertNil(adapter.appendMicrophoneFrame(block(pts: Double(index) * 0.01,
-                                                             arrival: Double(index) * 0.01)))
+            XCTAssertNil(adapter.appendRenderFrame(self.block(
+                pts: Double(index) * 0.01,
+                discontinuity: index == 5
+            )))
+            XCTAssertNil(adapter.appendMicrophoneFrame(self.block(
+                pts: Double(index) * 0.01,
+                arrival: Double(index) * 0.01
+            )))
         }
         let (drained, result) = adapter.synchronize()
 
@@ -395,12 +502,16 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
 
     func testUnsupportedRateAndFormatTransitionsAreRejectedAndCounted() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        XCTAssertNil(adapter.appendRenderFrame(block(pts: 0)))
-        var shifted = block(pts: 0.01)
+        XCTAssertNil(adapter.appendRenderFrame(self.block(pts: 0)))
+        var shifted = self.block(pts: 0.01)
         shifted = MeetingStage05AdapterFrame(
-            presentationSeconds: 0.01, durationSeconds: Double(blockFrames) / 44_100,
-            frameCount: blockFrames, sampleRateHz: 44_100, arrivalSeconds: nil,
-            samples: [Float](repeating: 0.5, count: blockFrames))
+            presentationSeconds: 0.01,
+            durationSeconds: Double(self.blockFrames) / 44_100,
+            frameCount: self.blockFrames,
+            sampleRateHz: 44_100,
+            arrivalSeconds: nil,
+            samples: [Float](repeating: 0.5, count: self.blockFrames)
+        )
         XCTAssertEqual(adapter.appendRenderFrame(shifted), .unsupportedSampleRate)
         let drained = adapter.drain()
         XCTAssertEqual(drained.renderDiagnostics.rejectedCallbackCount, 1)
@@ -410,13 +521,17 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
 
     func testRejectedCallbackConsumesItsArrivalSequenceAndExposesTheHole() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        XCTAssertNil(adapter.appendRenderFrame(block(pts: 0)))
+        XCTAssertNil(adapter.appendRenderFrame(self.block(pts: 0)))
         let invalid = MeetingStage05AdapterFrame(
-            presentationSeconds: .nan, durationSeconds: 0.01, frameCount: blockFrames,
-            sampleRateHz: rate, arrivalSeconds: nil,
-            samples: [Float](repeating: 0.5, count: blockFrames))
+            presentationSeconds: .nan,
+            durationSeconds: 0.01,
+            frameCount: blockFrames,
+            sampleRateHz: rate,
+            arrivalSeconds: nil,
+            samples: [Float](repeating: 0.5, count: blockFrames)
+        )
         XCTAssertEqual(adapter.appendRenderFrame(invalid), .nonFiniteTiming)
-        XCTAssertNil(adapter.appendRenderFrame(block(pts: 0.02)))
+        XCTAssertNil(adapter.appendRenderFrame(self.block(pts: 0.02)))
 
         let drained = adapter.drain()
         XCTAssertEqual(drained.reference.map(\.sequenceNumber), [0, 2])
@@ -427,54 +542,83 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
 
     func testValidationRejectsBadTimingGeometryAndPayload() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        let valid = block(pts: 0)
+        let valid = self.block(pts: 0)
         func variant(_ mutate: (inout MeetingStage05AdapterFrame) -> Void) -> MeetingStage05AdapterFrame {
             var copy = valid; mutate(&copy); return copy
         }
         XCTAssertEqual(adapter.appendRenderFrame(variant { $0 = MeetingStage05AdapterFrame(
-            presentationSeconds: .nan, durationSeconds: $0.durationSeconds, frameCount: $0.frameCount,
-            sampleRateHz: $0.sampleRateHz, arrivalSeconds: nil, samples: $0.samples) }), .nonFiniteTiming)
+            presentationSeconds: .nan,
+            durationSeconds: $0.durationSeconds,
+            frameCount: $0.frameCount,
+            sampleRateHz: $0.sampleRateHz,
+            arrivalSeconds: nil,
+            samples: $0.samples
+        ) }), .nonFiniteTiming)
         XCTAssertEqual(adapter.appendRenderFrame(variant { $0 = MeetingStage05AdapterFrame(
-            presentationSeconds: -0.01, durationSeconds: $0.durationSeconds, frameCount: $0.frameCount,
-            sampleRateHz: $0.sampleRateHz, arrivalSeconds: nil, samples: $0.samples) }), .negativeTiming)
+            presentationSeconds: -0.01,
+            durationSeconds: $0.durationSeconds,
+            frameCount: $0.frameCount,
+            sampleRateHz: $0.sampleRateHz,
+            arrivalSeconds: nil,
+            samples: $0.samples
+        ) }), .negativeTiming)
         XCTAssertEqual(adapter.appendRenderFrame(variant { $0 = MeetingStage05AdapterFrame(
-            presentationSeconds: 0, durationSeconds: 0.02, frameCount: $0.frameCount,
-            sampleRateHz: $0.sampleRateHz, arrivalSeconds: nil, samples: $0.samples) }), .durationMismatch)
+            presentationSeconds: 0,
+            durationSeconds: 0.02,
+            frameCount: $0.frameCount,
+            sampleRateHz: $0.sampleRateHz,
+            arrivalSeconds: nil,
+            samples: $0.samples
+        ) }), .durationMismatch)
         XCTAssertEqual(adapter.appendRenderFrame(variant { $0 = MeetingStage05AdapterFrame(
-            presentationSeconds: 0, durationSeconds: $0.durationSeconds, frameCount: $0.frameCount,
-            sampleRateHz: $0.sampleRateHz, arrivalSeconds: nil,
-            samples: [Float](repeating: 0.5, count: $0.frameCount - 1)) }), .invalidGeometry)
+            presentationSeconds: 0,
+            durationSeconds: $0.durationSeconds,
+            frameCount: $0.frameCount,
+            sampleRateHz: $0.sampleRateHz,
+            arrivalSeconds: nil,
+            samples: [Float](repeating: 0.5, count: $0.frameCount - 1)
+        ) }), .invalidGeometry)
         XCTAssertEqual(adapter.appendRenderFrame(variant { $0 = MeetingStage05AdapterFrame(
-            presentationSeconds: 0, durationSeconds: $0.durationSeconds, frameCount: $0.frameCount,
-            sampleRateHz: $0.sampleRateHz, arrivalSeconds: nil,
-            samples: [.nan] + [Float](repeating: 0.5, count: $0.frameCount - 1)) }), .nonFiniteSamples)
+            presentationSeconds: 0,
+            durationSeconds: $0.durationSeconds,
+            frameCount: $0.frameCount,
+            sampleRateHz: $0.sampleRateHz,
+            arrivalSeconds: nil,
+            samples: [.nan] + [Float](repeating: 0.5, count: $0.frameCount - 1)
+        ) }), .nonFiniteSamples)
         XCTAssertEqual(adapter.drain().renderDiagnostics.rejectedCallbackCount, 5)
     }
 
     func testBlockAndFrameCeilingsBoundTheAdapter() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        for index in 0..<2_000 {
-            XCTAssertNil(adapter.appendMicrophoneFrame(block(pts: Double(index) * 0.01,
-                                                             arrival: Double(index) * 0.01)))
+        for index in 0..<2000 {
+            XCTAssertNil(adapter.appendMicrophoneFrame(self.block(
+                pts: Double(index) * 0.01,
+                arrival: Double(index) * 0.01
+            )))
         }
-        XCTAssertEqual(adapter.appendMicrophoneFrame(block(pts: 20, arrival: 20)), .blockLimit)
+        XCTAssertEqual(adapter.appendMicrophoneFrame(self.block(pts: 20, arrival: 20)), .blockLimit)
 
         let wide = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         for index in 0..<200 {
-            XCTAssertNil(wide.appendMicrophoneFrame(block(pts: Double(index) * 0.1, frames: 4_800,
-                                                          arrival: Double(index) * 0.1)))
+            XCTAssertNil(wide.appendMicrophoneFrame(self.block(
+                pts: Double(index) * 0.1,
+                frames: 4800,
+                arrival: Double(index) * 0.1
+            )))
         }
-        XCTAssertEqual(wide.appendMicrophoneFrame(block(pts: 20, frames: 4_800, arrival: 20)), .frameLimit)
+        XCTAssertEqual(wide.appendMicrophoneFrame(self.block(pts: 20, frames: 4800, arrival: 20)), .frameLimit)
         XCTAssertEqual(wide.drain().microphone.count, 200)
     }
 
-    // MARK: Drift ownership
+    // MARK: - Drift ownership
 
     func testFailedOpenDriftThresholdAuthorizesNothing() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: 5)
+        self.feedPaired(adapter, count: 5)
         let (_, result) = adapter.synchronize(configuration: .init(
-            referenceClockDriftPPM: 150, maximumClockDriftPPM: 100))
+            referenceClockDriftPPM: 150, maximumClockDriftPPM: 100
+        ))
         XCTAssertTrue(result.failedOpen)
         XCTAssertEqual(result.failureReason, .clockDriftUnstable)
         XCTAssertEqual(result.diagnostics.referenceClockDriftPPM, 150)
@@ -494,20 +638,30 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         XCTAssertTrue(emptySeam.events.isEmpty)
 
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: 1)
+        self.feedPaired(adapter, count: 1)
         let valid = adapter.synchronize().1
         let source = valid.frames[0]
         let malformedFrame = MeetingSynchronizedFrame(
-            index: 1, sessionStartTime: source.sessionStartTime,
-            sessionEndTime: source.sessionEndTime, epochID: source.epochID,
-            renderSamples: source.renderSamples, captureSamples: source.captureSamples,
-            renderValidMask: source.renderValidMask, captureValidMask: source.captureValidMask,
-            unknownReasons: source.unknownReasons, adaptationFrozen: source.adaptationFrozen,
+            index: 1,
+            sessionStartTime: source.sessionStartTime,
+            sessionEndTime: source.sessionEndTime,
+            epochID: source.epochID,
+            renderSamples: source.renderSamples,
+            captureSamples: source.captureSamples,
+            renderValidMask: source.renderValidMask,
+            captureValidMask: source.captureValidMask,
+            unknownReasons: source.unknownReasons,
+            adaptationFrozen: source.adaptationFrozen,
             resynchronizationBoundary: source.resynchronizationBoundary,
-            lagSeconds: source.lagSeconds, timelines: source.timelines)
+            lagSeconds: source.lagSeconds,
+            timelines: source.timelines
+        )
         let malformed = MeetingSynchronizationResult(
-            frames: [malformedFrame], failedOpen: false, failureReason: nil,
-            diagnostics: valid.diagnostics)
+            frames: [malformedFrame],
+            failedOpen: false,
+            failureReason: nil,
+            diagnostics: valid.diagnostics
+        )
         let malformedSeam = MeetingStage05MockAECSeam().process(malformed)
         XCTAssertFalse(malformedSeam.authorized)
         XCTAssertTrue(malformedSeam.events.isEmpty)
@@ -516,32 +670,35 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
 
     func testBoundedDriftIsReportedNotEstimatedFromCallbackPTS() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(adapter, count: 5)
+        self.feedPaired(adapter, count: 5)
         let (drained, result) = adapter.synchronize(configuration: .init(
-            referenceClockDriftPPM: 90, maximumClockDriftPPM: 100))
+            referenceClockDriftPPM: 90, maximumClockDriftPPM: 100
+        ))
         XCTAssertFalse(result.failedOpen)
         XCTAssertEqual(result.diagnostics.referenceClockDriftPPM, 90)
         XCTAssertTrue(result.frames.allSatisfy { $0.unknownReasons.contains(.clockDriftUnstable) })
         XCTAssertEqual(drained.renderDiagnostics.acceptedCallbackCount, 5)
     }
 
-    // MARK: Deterministic replay
+    // MARK: - Deterministic replay
 
     func testAdapterSynchronizationIsDeterministic() {
         let first = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let second = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
-        feedPaired(first, count: 40, renderGap: (20, 0.002))
-        feedPaired(second, count: 40, renderGap: (20, 0.002))
+        self.feedPaired(first, count: 40, renderGap: (20, 0.002))
+        self.feedPaired(second, count: 40, renderGap: (20, 0.002))
         XCTAssertEqual(first.drain(), second.drain())
         XCTAssertEqual(first.synchronize().1, second.synchronize().1)
     }
 
-    // MARK: Synthetic CMSampleBuffer path
+    // MARK: - Synthetic CMSampleBuffer path
 
     func testSyntheticRenderBufferMapsPTSToPresentationTime() {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let buffer = Stage05SyntheticBuffer.monoFloat32(pts: 1.25, frameCount: 480, value: 0.25)
         XCTAssertNotNil(buffer)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         XCTAssertNil(adapter.appendRender(buffer!, arrivalSeconds: 3.5))
         let drained = adapter.drain()
         XCTAssertEqual(drained.reference.count, 1)
@@ -553,6 +710,8 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-b")
         let buffer = Stage05SyntheticBuffer.monoFloat32(pts: 0.5, frameCount: 480, value: 0.5)
         XCTAssertNotNil(buffer)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         XCTAssertNil(adapter.appendMicrophone(buffer!, arrivalSeconds: 9.75))
         let drained = adapter.drain()
         XCTAssertEqual(drained.microphone.count, 1)
@@ -565,6 +724,8 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let buffer = Stage05SyntheticBuffer.monoFloat32(pts: 0, frameCount: 480, discontinuity: true)
         XCTAssertNotNil(buffer)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         XCTAssertNil(adapter.appendRender(buffer!, arrivalSeconds: 0))
         let drained = adapter.drain()
         XCTAssertEqual(drained.reference.first?.discontinuity, true)
@@ -575,6 +736,8 @@ final class MeetingStage05SCKFrameAdapterTests: XCTestCase {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let stereo = Stage05SyntheticBuffer.monoFloat32(pts: 0, frameCount: 480, channels: 2)
         XCTAssertNotNil(stereo)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         XCTAssertEqual(adapter.appendRender(stereo!, arrivalSeconds: 0), .unsupportedFormat)
         let drained = adapter.drain()
         XCTAssertEqual(drained.renderDiagnostics.rejectedCallbackCount, 1)
@@ -592,29 +755,36 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         init(_ values: [Double]) { self.values = values }
 
         func now() -> Double {
-            lock.lock(); defer { lock.unlock() }
-            readCount += 1
-            return values.isEmpty ? 0 : values.removeFirst()
+            self.lock.lock(); defer { lock.unlock() }
+            self.readCount += 1
+            return self.values.isEmpty ? 0 : self.values.removeFirst()
         }
     }
 
     private func makeRoot() throws -> URL {
         let root = URL(
             fileURLWithPath: "/private/tmp/fv-stage05-evidence.live-\(UUID().uuidString)",
-            isDirectory: true)
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(
-            at: root, withIntermediateDirectories: false,
-            attributes: [.posixPermissions: 0o700])
+            at: root,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
         XCTAssertEqual(Darwin.chmod(root.path, 0o700), 0)
         return root
     }
 
     private func collector(at root: URL) throws -> MeetingStage05PCMCollector {
         try MeetingStage05PCMCollector(
-            root: root, inputUID: "not-retained-input", outputUID: "not-retained-output",
+            root: root,
+            inputUID: "not-retained-input",
+            outputUID: "not-retained-output",
             fixtureSHA256: String(repeating: "a", count: 64),
             executableSHA256: String(repeating: "b", count: 64),
-            initialOutputVolume: 0.25, targetProcessID: 42)
+            initialOutputVolume: 0.25,
+            targetProcessID: 42
+        )
     }
 
     func testRealStreamOutputRoutesBuffersAndReadsClockExactlyOncePerAudioCallback() throws {
@@ -624,11 +794,14 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let clock = MonotonicClock([10, 11])
         let output = MeetingStage05StreamOutput(
-            collector: collector, adapter: adapter, monotonicNow: clock.now)
+            collector: collector, adapter: adapter, monotonicNow: clock.now
+        )
         let render = try XCTUnwrap(Stage05SyntheticBuffer.monoFloat32(
-            pts: 0, frameCount: 480, value: 0.02))
+            pts: 0, frameCount: 480, value: 0.02
+        ))
         let capture = try XCTUnwrap(Stage05SyntheticBuffer.monoFloat32(
-            pts: 0, frameCount: 480, value: 0.01))
+            pts: 0, frameCount: 480, value: 0.01
+        ))
 
         output.handle(render, outputType: .audio)
         output.handle(capture, outputType: .microphone)
@@ -643,7 +816,8 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         collector.retainTimingFailureRecord(.renderTiming)
         let record = try JSONDecoder().decode(
             MeetingStage05TimingFailureRecord.self,
-            from: Data(contentsOf: root.appendingPathComponent("timing.json")))
+            from: Data(contentsOf: root.appendingPathComponent("timing.json"))
+        )
         XCTAssertEqual(record.render.blocks.first?.arrivalSeconds, 10)
         XCTAssertEqual(record.capture.blocks.first?.arrivalSeconds, 11)
     }
@@ -654,9 +828,11 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         let collector = try collector(at: root)
         let adapter = MeetingStage05SCKFrameAdapter(routeIdentifier: "route-a")
         let output = MeetingStage05StreamOutput(
-            collector: collector, adapter: adapter, monotonicNow: { 10 })
+            collector: collector, adapter: adapter, monotonicNow: { 10 }
+        )
         let stereo = try XCTUnwrap(Stage05SyntheticBuffer.monoFloat32(
-            pts: 0, frameCount: 480, channels: 2))
+            pts: 0, frameCount: 480, channels: 2
+        ))
 
         output.handle(stereo, outputType: .audio)
 
@@ -664,7 +840,8 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         XCTAssertEqual(drained.renderDiagnostics.rejectedCallbackCount, 1)
         XCTAssertEqual(drained.renderDiagnostics.formatChangeCount, 1)
         XCTAssertThrowsError(
-            try collector.finish(consentConfirmed: true, finalOutputVolume: 0.25)) {
+            try collector.finish(consentConfirmed: true, finalOutputVolume: 0.25))
+        {
             XCTAssertEqual($0 as? MeetingStage05FinalizeFailure, .appendInvalidFrame)
         }
         collector.abort()
@@ -672,7 +849,7 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
     }
 
     func testContiguousSummaryIsValidEligibleAndSortedWithoutSensitiveFields() throws {
-        let summary = makeSummary(renderGapSeconds: 0)
+        let summary = self.makeSummary(renderGapSeconds: 0)
         XCTAssertTrue(summary.validationReasons().isEmpty)
         XCTAssertTrue(summary.structurallyValid)
         XCTAssertTrue(summary.eligibleForAECTrial)
@@ -680,7 +857,8 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         XCTAssertEqual(summary.mockFrozenFrameCount, 0)
 
         let encoded = MeetingStage05EvidenceAutorun.encodedOutcome(
-            exitStatus: 0, status: "success", adapter: summary)
+            exitStatus: 0, status: "success", adapter: summary
+        )
         XCTAssertTrue(encoded.hasPrefix("{\"adapter\":"), encoded)
         let data = Data(encoded.utf8)
         let decoded = try JSONDecoder().decode(MeetingStage05AutorunOutcome.self, from: data)
@@ -690,14 +868,25 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
                 as? [String: Any])
         XCTAssertTrue(object.values.allSatisfy { $0 is NSNumber })
         let lower = encoded.lowercased()
-        for forbidden in ["samples", "peak", "uid", "pid", "title", "path", "transcript",
-                          "sha256", "fixture", "executable", "timestamp"] {
+        for forbidden in [
+            "samples",
+            "peak",
+            "uid",
+            "pid",
+            "title",
+            "path",
+            "transcript",
+            "sha256",
+            "fixture",
+            "executable",
+            "timestamp",
+        ] {
             XCTAssertFalse(lower.contains(forbidden), "forbidden outcome field: \(forbidden)")
         }
     }
 
     func testGapSummaryRemainsStructurallyValidButCannotAuthorizeAECTrial() {
-        let summary = makeSummary(renderGapSeconds: 0.002)
+        let summary = self.makeSummary(renderGapSeconds: 0.002)
         XCTAssertTrue(summary.validationReasons().isEmpty)
         XCTAssertTrue(summary.structurallyValid)
         XCTAssertFalse(summary.eligibleForAECTrial)
@@ -708,7 +897,7 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
     }
 
     func testSummaryRejectsTamperedEligibilityAndNonfiniteDrift() throws {
-        let valid = makeSummary(renderGapSeconds: 0)
+        let valid = self.makeSummary(renderGapSeconds: 0)
         let data = try JSONEncoder().encode(valid)
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         object["eligibleForAECTrial"] = false
@@ -716,14 +905,17 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
         object["referenceClockDriftPresent"] = false
         let tampered = try JSONDecoder().decode(
             MeetingStage05LiveAdapterSummary.self,
-            from: JSONSerialization.data(withJSONObject: object))
+            from: JSONSerialization.data(withJSONObject: object)
+        )
         XCTAssertTrue(tampered.validationReasons().contains("eligibility"))
         XCTAssertTrue(tampered.validationReasons().contains("drift"))
 
         XCTAssertEqual(
             MeetingStage05EvidenceAutorun.encodedOutcome(
-                exitStatus: 0, status: "success", adapter: tampered),
-            "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"outcome\"}")
+                exitStatus: 0, status: "success", adapter: tampered
+            ),
+            "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"outcome\"}"
+        )
     }
 
     private func makeSummary(renderGapSeconds: Double) -> MeetingStage05LiveAdapterSummary {
@@ -732,20 +924,30 @@ final class MeetingStage05LiveAdapterRuntimeTests: XCTestCase {
             let base = Double(index) * 0.01
             let renderPTS = index >= 5 ? base + renderGapSeconds : base
             XCTAssertNil(adapter.appendRenderFrame(MeetingStage05AdapterFrame(
-                presentationSeconds: renderPTS, durationSeconds: 0.01,
-                frameCount: 480, sampleRateHz: 48_000,
-                arrivalSeconds: 1 + base, samples: [Float](repeating: 0.02, count: 480))))
+                presentationSeconds: renderPTS,
+                durationSeconds: 0.01,
+                frameCount: 480,
+                sampleRateHz: 48_000,
+                arrivalSeconds: 1 + base,
+                samples: [Float](repeating: 0.02, count: 480)
+            )))
             XCTAssertNil(adapter.appendMicrophoneFrame(MeetingStage05AdapterFrame(
-                presentationSeconds: base, durationSeconds: 0.01,
-                frameCount: 480, sampleRateHz: 48_000,
-                arrivalSeconds: 1 + base, samples: [Float](repeating: 0.01, count: 480))))
+                presentationSeconds: base,
+                durationSeconds: 0.01,
+                frameCount: 480,
+                sampleRateHz: 48_000,
+                arrivalSeconds: 1 + base,
+                samples: [Float](repeating: 0.01, count: 480)
+            )))
         }
         let (drain, synchronization) = adapter.synchronize(configuration: .init(
             referenceScope: .selectedWindow,
-            referenceCompleteness: .measuredComplete))
+            referenceCompleteness: .measuredComplete
+        ))
         let seam = MeetingStage05MockAECSeam().process(synchronization)
         return MeetingStage05LiveAdapterSummary.make(
-            drain: drain, synchronization: synchronization, seam: seam)
+            drain: drain, synchronization: synchronization, seam: seam
+        )
     }
 }
 
@@ -753,20 +955,27 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
     private func makeRoot() throws -> URL {
         let root = URL(
             fileURLWithPath: "/private/tmp/fv-stage05-evidence.unit-\(UUID().uuidString)",
-            isDirectory: true)
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(
-            at: root, withIntermediateDirectories: false,
-            attributes: [.posixPermissions: 0o700])
+            at: root,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
         XCTAssertEqual(Darwin.chmod(root.path, 0o700), 0)
         return root
     }
 
     private func collector(at root: URL) throws -> MeetingStage05PCMCollector {
         try MeetingStage05PCMCollector(
-            root: root, inputUID: "not-retained-input", outputUID: "not-retained-output",
+            root: root,
+            inputUID: "not-retained-input",
+            outputUID: "not-retained-output",
             fixtureSHA256: String(repeating: "a", count: 64),
             executableSHA256: String(repeating: "b", count: 64),
-            initialOutputVolume: 0.25, targetProcessID: 42)
+            initialOutputVolume: 0.25,
+            targetProcessID: 42
+        )
     }
 
     private func appendShortTimingFailureFixture(_ collector: MeetingStage05PCMCollector) {
@@ -774,9 +983,15 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
             let base = Double(index) * 0.01
             let renderPTS = index >= 2 ? base + 0.002 : base
             let render = Stage05SyntheticBuffer.monoFloat32(
-                pts: renderPTS, frameCount: 480, value: 0.02)!
+                pts: renderPTS, frameCount: 480, value: 0.02
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
+            )!
             let capture = Stage05SyntheticBuffer.monoFloat32(
-                pts: base, frameCount: 480, value: 0.01)!
+                pts: base, frameCount: 480, value: 0.01
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
+            )!
             collector.append(render, output: .render)
             collector.append(capture, output: .capture)
         }
@@ -786,7 +1001,7 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let collector = try collector(at: root)
-        appendShortTimingFailureFixture(collector)
+        self.appendShortTimingFailureFixture(collector)
 
         XCTAssertThrowsError(try collector.finish(consentConfirmed: true, finalOutputVolume: 0.25)) {
             XCTAssertEqual($0 as? MeetingStage05FinalizeFailure, .renderTiming)
@@ -795,7 +1010,7 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
 
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["timing.json"])
         let timingURL = root.appendingPathComponent("timing.json")
-        let mode = (try FileManager.default.attributesOfItem(atPath: timingURL.path)[.posixPermissions]
+        let mode = try (FileManager.default.attributesOfItem(atPath: timingURL.path)[.posixPermissions]
             as? NSNumber)?.intValue
         XCTAssertEqual(mode.map { $0 & 0o777 }, 0o600)
         let data = try Data(contentsOf: timingURL)
@@ -808,9 +1023,21 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
         XCTAssertEqual(record.capture.blocks.count, 4)
         XCTAssertGreaterThanOrEqual(record.render.gapCount, 1)
 
+        // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+        // swiftlint:disable:next optional_data_string_conversion
         let encoded = String(decoding: data, as: UTF8.self).lowercased()
-        for forbidden in ["\"samples\"", "\"peak\"", "uid", "pid", "title", "path",
-                          "transcript", "sha256", "fixture", "executable"] {
+        for forbidden in [
+            "\"samples\"",
+            "\"peak\"",
+            "uid",
+            "pid",
+            "title",
+            "path",
+            "transcript",
+            "sha256",
+            "fixture",
+            "executable",
+        ] {
             XCTAssertFalse(encoded.contains(forbidden), "forbidden timing-record key: \(forbidden)")
         }
         for absent in ["render.wav", "capture.wav", "manifest.json", "provenance.json"] {
@@ -822,23 +1049,40 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
     func testTimingRecordRejectsTamperedDerivedCounts() {
         let blocks = [
             MeetingSignalDomainGateManifest.TimingBlock(
-                presentationSeconds: 0, durationSeconds: 0.01,
-                frameCount: 480, arrivalSeconds: 1),
+                presentationSeconds: 0,
+                durationSeconds: 0.01,
+                frameCount: 480,
+                arrivalSeconds: 1
+            ),
             MeetingSignalDomainGateManifest.TimingBlock(
-                presentationSeconds: 0.012, durationSeconds: 0.01,
-                frameCount: 480, arrivalSeconds: 1.01),
+                presentationSeconds: 0.012,
+                durationSeconds: 0.01,
+                frameCount: 480,
+                arrivalSeconds: 1.01
+            ),
         ]
         let valid = MeetingStage05TimingFailureRecord.make(
-            failure: .renderTiming, renderTiming: blocks, captureTiming: blocks,
-            sampleRateHz: 48_000)
+            failure: .renderTiming,
+            renderTiming: blocks,
+            captureTiming: blocks,
+            sampleRateHz: 48_000
+        )
         XCTAssertTrue(valid.validationReasons().isEmpty)
         let tamperedRender = MeetingStage05TimingFailureRecord.Track(
-            blocks: valid.render.blocks, gapCount: valid.render.gapCount + 1,
-            overlapCount: valid.render.overlapCount, backwardCount: valid.render.backwardCount,
-            formatChangeCount: valid.render.formatChangeCount)
+            blocks: valid.render.blocks,
+            gapCount: valid.render.gapCount + 1,
+            overlapCount: valid.render.overlapCount,
+            backwardCount: valid.render.backwardCount,
+            formatChangeCount: valid.render.formatChangeCount
+        )
         let tampered = MeetingStage05TimingFailureRecord(
-            schema: valid.schema, failure: valid.failure, track: valid.track,
-            sampleRateHz: valid.sampleRateHz, render: tamperedRender, capture: valid.capture)
+            schema: valid.schema,
+            failure: valid.failure,
+            track: valid.track,
+            sampleRateHz: valid.sampleRateHz,
+            render: tamperedRender,
+            capture: valid.capture
+        )
         XCTAssertTrue(tampered.validationReasons().contains("derivedCounts"))
     }
 
@@ -846,7 +1090,7 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
         let collector = try collector(at: root)
-        appendShortTimingFailureFixture(collector)
+        self.appendShortTimingFailureFixture(collector)
         collector.retainTimingFailureRecord(.renderSilent)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), [])
     }
@@ -864,8 +1108,15 @@ final class MeetingStage05TimingFailureRecordTests: XCTestCase {
 
 private extension MeetingStage05AdapterTrackDiagnostics {
     init(accepted: Int) {
-        self.init(acceptedCallbackCount: accepted, rejectedCallbackCount: 0, gapCount: 0,
-                  overlapCount: 0, backwardCount: 0, discontinuityCount: 0, formatChangeCount: 0)
+        self.init(
+            acceptedCallbackCount: accepted,
+            rejectedCallbackCount: 0,
+            gapCount: 0,
+            overlapCount: 0,
+            backwardCount: 0,
+            discontinuityCount: 0,
+            formatChangeCount: 0
+        )
     }
 }
 

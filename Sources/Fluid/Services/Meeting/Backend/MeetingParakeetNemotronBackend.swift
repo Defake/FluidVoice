@@ -125,7 +125,7 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
     /// Per-attempt cache for the PCM-first path. The cache is intentionally scoped to this
     /// detached attempt and bounded by the materializer's conservative sample limit; a future
     /// production implementation should replace it with a hashed immutable disk working store.
-    private nonisolated final class MaterializationCache: @unchecked Sendable {
+    private final nonisolated class MaterializationCache: @unchecked Sendable {
         private let lock = NSLock()
         private var values: [MeetingAnalysisEpochID: MeetingMaterializedEpoch] = [:]
         private var totalSampleCount = 0
@@ -501,6 +501,8 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         start: TimeInterval,
         end: TimeInterval,
         spans: [MeetingAnalysisSpan]
+        // nil means unavailable; an empty result means available with no values.
+        // swiftlint:disable:next discouraged_optional_collection
     ) -> [String]? {
         let tolerance = MeetingAnalysisManifestSchema.mappingToleranceSeconds
         let ids = spans.filter {
@@ -711,7 +713,7 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         let otherOnsets = activity.compactMap { entry -> TimeInterval? in
             guard entry.token == other,
                   min(entry.end, end) - max(entry.start, start)
-                    > MeetingAnalysisManifestSchema.mappingToleranceSeconds
+                  > MeetingAnalysisManifestSchema.mappingToleranceSeconds
             else { return nil }
             return entry.start
         }
@@ -754,7 +756,10 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         DebugLogger.shared.info(
             String(
                 format: "[speakerCoverage] duration=%.3fs candidates=%d overlaps=[%@] decision=%@",
-                duration, candidateCoverageSeconds.count, overlaps, decisionLabel
+                duration,
+                candidateCoverageSeconds.count,
+                overlaps,
+                decisionLabel
             ),
             source: "MeetingParakeetNemotronBackend"
         )

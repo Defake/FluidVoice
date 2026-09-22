@@ -196,24 +196,6 @@ nonisolated struct MeetingGlobalSpeakerStitcher {
         let embedding: [Float]
         let quality: Float
         let effectiveSpeechDuration: TimeInterval
-
-        init(
-            key: String,
-            chunkKey: String,
-            trackKind: MeetingAudioTrackKind,
-            localLabel: String,
-            embedding: [Float],
-            quality: Float,
-            effectiveSpeechDuration: TimeInterval
-        ) {
-            self.key = key
-            self.chunkKey = chunkKey
-            self.trackKind = trackKind
-            self.localLabel = localLabel
-            self.embedding = embedding
-            self.quality = quality
-            self.effectiveSpeechDuration = effectiveSpeechDuration
-        }
     }
 
     nonisolated struct Prototype: Equatable {
@@ -430,8 +412,8 @@ nonisolated struct MeetingGlobalSpeakerStitcher {
                     distance <= self.configuration.coreMaximumDistance
                 else { continue }
                 let candidate = (left, right, distance)
-                if best == nil || distance < best!.distance
-                    || (distance == best!.distance && Self.pairPrecedes(candidate, best!, clusters: clusters))
+                if best.map({ distance < $0.distance
+                        || (distance == $0.distance && Self.pairPrecedes(candidate, $0, clusters: clusters)) }) ?? true
                 {
                     best = candidate
                 }
@@ -495,6 +477,8 @@ nonisolated struct MeetingGlobalSpeakerStitcher {
         return left < right
     }
 
+    // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+    // swiftlint:disable:next discouraged_optional_collection
     private static func normalized(_ embedding: [Float]) -> [Float]? {
         guard let distance = MeetingSpeakerEmbeddingIndex.cosineDistance(embedding, embedding), distance.isFinite else { return nil }
         let magnitude = sqrt(embedding.reduce(Float.zero) { $0 + $1 * $1 })
@@ -517,6 +501,8 @@ nonisolated enum MeetingTurnSelection {
     /// Drops empty-text turns; nil when all were empty (caller falls back to whole-chunk).
     static func keepingNonEmpty<T>(
         _ turns: [(index: Int, turn: T, text: String)]
+        // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+        // swiftlint:disable:next discouraged_optional_collection
     ) -> [(index: Int, turn: T, text: String)]? {
         let nonEmpty = turns.filter { !$0.text.isEmpty }
         return nonEmpty.isEmpty ? nil : nonEmpty
@@ -653,6 +639,8 @@ private final class MeetingProviderLanguagePin {
 }
 
 @MainActor
+// Keep this existing processing state machine intact during integration.
+// swiftlint:disable:next type_body_length
 final class MeetingProcessingPipeline: MeetingProcessingControlling {
     /// Bump whenever classification rules change so a resumed run can't mix rules mid-session.
     /// Era-awareness did NOT bump this: the mic pass re-runs every time, and multi-era tracks cannot predate this build.
@@ -678,6 +666,8 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
     /// On speakers nearly everything overlaps, so overlap cannot identify the mic's owner.
     /// What can: speech that is not the far end coming back.
     nonisolated static func localSpeakerEvidence(
+        // Keep this existing grouped state result intact during integration.
+        // swiftlint:disable:next large_tuple
         from turns: [(
             clusterID: SessionSpeakerID, start: TimeInterval, end: TimeInterval,
             overlapsRemote: Bool, echoScored: Bool, isEcho: Bool
@@ -736,6 +726,8 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         captureMethod: MeetingAudioTrackCaptureMethod?,
         // `unscoredOverlap` pins to 0.0s under VPIO; this carries the widening delta instead.
         widenedIndices: Set<Int> = [],
+        // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+        // swiftlint:disable:next discouraged_optional_collection
         captureEras: [MeetingCaptureEra]? = nil
     ) {
         let widenedSeconds = widenedIndices.reduce(0.0) { total, offset in
@@ -762,7 +754,12 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
                 let proto = prototypeSpeakerIDs.contains(id) ? "yes" : "NO"
                 return String(
                     format: "%@ supporting=%.1fs echoed=%.1fs unscoredOverlap=%.1fs prototype=%@ netEvidence=%@",
-                    id.uuidString.prefix(8).description, s, e, k, proto, s > e ? "counts" : "DROPPED"
+                    id.uuidString.prefix(8).description,
+                    s,
+                    e,
+                    k,
+                    proto,
+                    s > e ? "counts" : "DROPPED"
                 )
             }
             .sorted()
@@ -781,8 +778,10 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
                     else { continue }
                     distances.append(String(
                         format: "%@↔%@ cosineDistance=%.3f (mergeThreshold=%.2f) %@",
-                        left.uuidString.prefix(8).description, right.uuidString.prefix(8).description,
-                        distance, index.maximumCosineDistance,
+                        left.uuidString.prefix(8).description,
+                        right.uuidString.prefix(8).description,
+                        distance,
+                        index.maximumCosineDistance,
                         distance <= index.maximumCosineDistance ? "SAME VOICE" : "different"
                     ))
                 }
@@ -834,7 +833,11 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
             DebugLogger.shared.info(
                 String(
                     format: "Near-field gate: era %d dropped %.1fs of %d microphone turns below reference %.5f RMS − %.0f dB",
-                    eraIndex, eraRejectedSeconds, eraTurns.count, reference ?? 0, MeetingNearFieldGate.rejectionDepthDB
+                    eraIndex,
+                    eraRejectedSeconds,
+                    eraTurns.count,
+                    reference ?? 0,
+                    MeetingNearFieldGate.rejectionDepthDB
                 ),
                 source: "MeetingProcessingPipeline"
             )
@@ -1100,9 +1103,14 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         DebugLogger.shared.info(
             String(
                 format: "[echoframes] turn=[%.1f-%.1f] %.1fs median=%.2f scoreable=%.0f%% lowRun=%.2fs (%.1f%% of turn) verdict=%@",
-                turnStart, turnEnd, turnSeconds, median,
+                turnStart,
+                turnEnd,
+                turnSeconds,
+                median,
                 100 * Double(scoreable.count) / Double(scores.fractions.count),
-                lowRunSeconds, 100 * lowRunSeconds / turnSeconds, String(describing: verdict)
+                lowRunSeconds,
+                100 * lowRunSeconds / turnSeconds,
+                String(describing: verdict)
             ),
             source: "MeetingProcessingPipeline"
         )
@@ -1156,9 +1164,11 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         var delayConfidence: Double? = nil
     }
 
-    /// Every failure here (missing/corrupt reference audio, decode errors, bad timing math, ...)
-    /// degrades to `.unknown` rather than propagating: a sick application-audio track must never
-    /// take down an otherwise-healthy microphone chunk.
+    // Every failure here (missing/corrupt reference audio, decode errors, bad timing math, ...)
+    // degrades to `.unknown` rather than propagating: a sick application-audio track must never
+    // take down an otherwise-healthy microphone chunk.
+    // Keep the existing capture/processing contract explicit during integration.
+    // swiftlint:disable:next function_parameter_count
     nonisolated static func computeEchoVerdicts(
         micChunk: MeetingAudioChunk,
         micChunkURL: URL,
@@ -1699,7 +1709,7 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
 
     private nonisolated static func joinTranscriptText(_ left: String, _ right: String) -> String {
         guard let first = right.first else { return left }
-        if CharacterSet.punctuationCharacters.contains(first.unicodeScalars.first!) {
+        if let scalar = first.unicodeScalars.first, CharacterSet.punctuationCharacters.contains(scalar) {
             return left + right
         }
         return left + " " + right
@@ -2285,6 +2295,8 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         )
     }
 
+    // Keep the existing capture/processing contract explicit during integration.
+    // swiftlint:disable:next function_parameter_count
     private func processMicrophoneChunk(
         _ chunk: MeetingAudioChunk,
         track: MeetingAudioTrack,
@@ -2636,8 +2648,11 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         DebugLogger.shared.info(
             String(
                 format: "Echo scorer monitor: verdicts[%@] scoreableSeconds=%.1f delayLock=%d/%d bestConfidence=%.2f",
-                verdictDescription, monitor.scoreableSeconds, monitor.lockedChunkCount,
-                monitor.scoredChunkCount, monitor.bestDelayConfidence
+                verdictDescription,
+                monitor.scoreableSeconds,
+                monitor.lockedChunkCount,
+                monitor.scoredChunkCount,
+                monitor.bestDelayConfidence
             ),
             source: "MeetingProcessingPipeline"
         )
@@ -2830,6 +2845,8 @@ final class MeetingProcessingPipeline: MeetingProcessingControlling {
         trackKind: MeetingAudioTrackKind,
         fileURL: URL,
         context: ProcessingContext
+        // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+        // swiftlint:disable:next discouraged_optional_collection
     ) async throws -> [(index: Int, turn: SpeakerDiarizationService.SpeakerTurn, text: String)]? {
         let samples = try await Task.detached(priority: .userInitiated) {
             try Self.readSamples(fileURL: fileURL, startSeconds: 0, endSeconds: nil)

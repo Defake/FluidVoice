@@ -66,11 +66,17 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
             frameCount: Int64((duration * 16_000).rounded())
         )
         return MeetingAudioChunk(
-            id: UUID(), sequence: sequence, relativeFilePath: "tracks/microphone/archive-\(sequence).m4a",
+            id: UUID(),
+            sequence: sequence,
+            relativeFilePath: "tracks/microphone/archive-\(sequence).m4a",
             presentationStart: MeetingMediaTime(value: Int64((start * 1000).rounded()), timescale: 1000),
             presentationEnd: MeetingMediaTime(value: Int64((end * 1000).rounded()), timescale: 1000),
-            discontinuities: [], sha256: String(repeating: "a", count: 64), byteCount: 1,
-            finalizationState: .finalized, audioSchemaVersion: 2, captureAnalysisAsset: asset
+            discontinuities: [],
+            sha256: String(repeating: "a", count: 64),
+            byteCount: 1,
+            finalizationState: .finalized,
+            audioSchemaVersion: 2,
+            captureAnalysisAsset: asset
         )
     }
 
@@ -384,17 +390,22 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         let beyondBound = [
             self.canonicalSegment(trackID: trackID, start: 0, end: 1.0, speakerID: speakerA, text: "First"),
             self.canonicalSegment(
-                trackID: trackID, start: 1.0 + gap + 0.01, end: 1.0 + gap + 0.51, speakerID: speakerA,
+                trackID: trackID,
+                start: 1.0 + gap + 0.01,
+                end: 1.0 + gap + 0.51,
+                speakerID: speakerA,
                 text: "Second"
             ),
         ]
 
         XCTAssertEqual(
-            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count, 1,
+            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count,
+            1,
             "a gap exactly at the named maximum still merges"
         )
         XCTAssertEqual(
-            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count, 2,
+            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count,
+            2,
             "a gap past the named maximum starts a new turn"
         )
     }
@@ -417,11 +428,13 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count, 1,
+            MeetingProcessingPipeline.mergeCanonicalSegments(withinBound).count,
+            1,
             "a combined duration exactly at the named maximum still merges"
         )
         XCTAssertEqual(
-            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count, 2,
+            MeetingProcessingPipeline.mergeCanonicalSegments(beyondBound).count,
+            2,
             "a combined duration past the named maximum starts a new turn even with no gap"
         )
     }
@@ -526,7 +539,7 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         let backend = self.makeBackend(runtime: runtime, locator: locator)
         let plan = try backend.plan(self.makeRequest(
             session: fixture.session,
-            directory: try self.makeTempSessionDirectory()
+            directory: self.makeTempSessionDirectory()
         ))
         let manifest = try self.makeManifest(plan: plan, observations: fixture.observations)
         locator.error = MeetingNemotronModelReadinessError.artifactChanged(
@@ -778,7 +791,7 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         let backend = self.makeBackend(runtime: runtime, materializer: materializer)
         let plan = try backend.plan(self.makeRequest(
             session: session,
-            directory: try self.makeTempSessionDirectory()
+            directory: self.makeTempSessionDirectory()
         ))
         let manifest = try self.makeManifest(plan: plan, observations: [
             MeetingAnalysisChunkKey(trackID: track.id, chunkID: chunk.id): self.makeObserved(chunk, duration: 1),
@@ -1071,7 +1084,7 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
         let backend = self.makeBackend(runtime: runtime, materializer: materializer)
         let plan = try backend.plan(self.makeRequest(
             session: session,
-            directory: try self.makeTempSessionDirectory()
+            directory: self.makeTempSessionDirectory()
         ))
         let manifest = try self.makeManifest(plan: plan, observations: [
             MeetingAnalysisChunkKey(trackID: track.id, chunkID: chunk0.id): self.makeObserved(chunk0, duration: 1),
@@ -1083,7 +1096,7 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
 
         // Deliberately make the first one-second manifest span occupy only 0.5 seconds of the
         // materialized buffer. A local time of 0.6 seconds must therefore map into span 2.
-        materializer.customSpanSampleCounts[epoch.id] = [8_000, 16_000]
+        materializer.customSpanSampleCounts[epoch.id] = [8000, 16_000]
         runtime.diarizerFactory.segmentsByEpoch[epoch.id] = [
             MeetingNemotronSpeakerSegment(slotIndex: 3, start: 0.55, end: 0.75),
         ]
@@ -1221,8 +1234,10 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
 
         // Assembly accepts it as-is: no synthetic words exist.
         _ = try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest,
-            evidence: bundle.evidence, coverageReceipts: bundle.coverageReceipts
+            plan: plan,
+            manifest: manifest,
+            evidence: bundle.evidence,
+            coverageReceipts: bundle.coverageReceipts
         ))
     }
 
@@ -1294,7 +1309,7 @@ final class MeetingParakeetNemotronBackendTests: XCTestCase {
 
 // MARK: - Fakes
 
-fileprivate actor Latch {
+private actor Latch {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
 
@@ -1307,11 +1322,13 @@ fileprivate actor Latch {
         self.isOpen = true
         let parked = self.waiters
         self.waiters.removeAll()
-        for continuation in parked { continuation.resume() }
+        for continuation in parked {
+            continuation.resume()
+        }
     }
 }
 
-fileprivate final nonisolated class FakeDiarizerFactory: MeetingNemotronDiarizerFactory, @unchecked Sendable {
+private final nonisolated class FakeDiarizerFactory: MeetingNemotronDiarizerFactory, @unchecked Sendable {
     struct Session: MeetingNemotronDiarizerSession {
         let segments: [MeetingNemotronSpeakerSegment]
         func diarize(samples _: [Float]) async throws -> [MeetingNemotronSpeakerSegment] {
@@ -1332,7 +1349,7 @@ fileprivate final nonisolated class FakeDiarizerFactory: MeetingNemotronDiarizer
     }
 }
 
-fileprivate final nonisolated class FakeASRSession: MeetingParakeetASRSession, @unchecked Sendable {
+private final nonisolated class FakeASRSession: MeetingParakeetASRSession, @unchecked Sendable {
     struct Response {
         let text: String
         let words: [ASRWordTiming]
@@ -1361,7 +1378,7 @@ fileprivate final nonisolated class FakeASRSession: MeetingParakeetASRSession, @
     }
 }
 
-fileprivate final nonisolated class FakeRuntime: MeetingParakeetNemotronRunning, @unchecked Sendable {
+private final nonisolated class FakeRuntime: MeetingParakeetNemotronRunning, @unchecked Sendable {
     let diarizerFactory = FakeDiarizerFactory()
     let asrSession = FakeASRSession()
     private(set) var diarizationScopeCount = 0
@@ -1387,7 +1404,7 @@ fileprivate final nonisolated class FakeRuntime: MeetingParakeetNemotronRunning,
     }
 }
 
-fileprivate final nonisolated class FakeMaterializer: MeetingEpochAudioMaterializing, @unchecked Sendable {
+private final nonisolated class FakeMaterializer: MeetingEpochAudioMaterializing, @unchecked Sendable {
     var failingEpochs: Set<MeetingAnalysisEpochID> = []
     var customSpanSampleCounts: [MeetingAnalysisEpochID: [Int]] = [:]
     private(set) var materializedEpochs: [MeetingAnalysisEpochID] = []
@@ -1424,7 +1441,7 @@ fileprivate final nonisolated class FakeMaterializer: MeetingEpochAudioMateriali
     }
 }
 
-fileprivate final nonisolated class StubModelLocator: MeetingNemotronModelLocating, @unchecked Sendable {
+private final nonisolated class StubModelLocator: MeetingNemotronModelLocating, @unchecked Sendable {
     var error: (any Error)?
     static let artifact = MeetingNemotronModelArtifact(
         packageURL: URL(fileURLWithPath: "/tmp/stub-nemotron.mlpackage"),
@@ -1448,7 +1465,6 @@ fileprivate final nonisolated class StubModelLocator: MeetingNemotronModelLocati
         return artifact
     }
 }
-
 
 private final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()

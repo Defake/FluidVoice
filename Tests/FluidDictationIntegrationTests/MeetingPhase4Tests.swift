@@ -1,6 +1,6 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -17,16 +17,26 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
         text: String
     ) -> MeetingTranscriptSegment {
         MeetingTranscriptSegment(
-            id: UUID(), start: self.mediaTime(start), end: self.mediaTime(end),
-            sourceTrackID: trackID, speakerID: UUID(), text: text, revision: 0,
-            status: .final, overlap: .none, completeness: .complete
+            id: UUID(),
+            start: self.mediaTime(start),
+            end: self.mediaTime(end),
+            sourceTrackID: trackID,
+            speakerID: UUID(),
+            text: text,
+            revision: 0,
+            status: .final,
+            overlap: .none,
+            completeness: .complete
         )
     }
 
     private func singleEra(_ method: MeetingAudioTrackCaptureMethod?) -> [MeetingCaptureEra] {
         [MeetingCaptureEra(
-            method: method ?? .avCaptureSession, deviceUID: nil, deviceName: nil,
-            roleAtElection: .unknown, startSeconds: 0
+            method: method ?? .avCaptureSession,
+            deviceUID: nil,
+            deviceName: nil,
+            roleAtElection: .unknown,
+            startSeconds: 0
         )]
     }
 
@@ -38,8 +48,14 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
         overlapsRemote: Bool
     ) -> MeetingProcessingPipeline.StagedMicrophoneTurn {
         MeetingProcessingPipeline.StagedMicrophoneTurn(
-            chunkID: UUID(), index: 0, clusterID: clusterID, clusterLabel: "spk",
-            start: start, end: end, text: text, overlapsRemote: overlapsRemote
+            chunkID: UUID(),
+            index: 0,
+            clusterID: clusterID,
+            clusterLabel: "spk",
+            start: start,
+            end: end,
+            text: text,
+            overlapsRemote: overlapsRemote
         )
     }
 
@@ -57,8 +73,11 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
         let segments = [self.segment(trackID: appTrackID, start: 0, end: 3, text: echoedText)]
 
         let (classified, widened) = MeetingProcessingPipeline.classifyMicrophoneTurns(
-            turns, eras: self.singleEra(.voiceProcessing), applicationTrackID: appTrackID,
-            segments: segments, fallbackSpeakerID: nil
+            turns,
+            eras: self.singleEra(.voiceProcessing),
+            applicationTrackID: appTrackID,
+            segments: segments,
+            fallbackSpeakerID: nil
         )
 
         XCTAssertTrue(classified.allSatisfy(\.echoScored), "every VPIO turn must end up scored")
@@ -99,7 +118,9 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
             self.turn(clusterID: userCluster, start: 0, end: 20, text: "user speech", overlapsRemote: false),
             self.turn(clusterID: secondVoice, start: 20, end: 25, text: "second voice", overlapsRemote: false),
         ]
-        for index in turns.indices { turns[index].echoScored = true }
+        for index in turns.indices {
+            turns[index].echoScored = true
+        }
         let elected = MeetingProcessingPipeline.selectLocalCluster(
             from: turns, prototypeSpeakerIDs: [userCluster, secondVoice]
         )
@@ -113,7 +134,9 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
             self.turn(clusterID: userCluster, start: 0, end: 12, text: "user speech", overlapsRemote: false),
             self.turn(clusterID: secondVoice, start: 12, end: 22, text: "second voice", overlapsRemote: false),
         ]
-        for index in turns.indices { turns[index].echoScored = true }
+        for index in turns.indices {
+            turns[index].echoScored = true
+        }
         let elected = MeetingProcessingPipeline.selectLocalCluster(
             from: turns, prototypeSpeakerIDs: [userCluster, secondVoice]
         )
@@ -133,15 +156,18 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
         ]
         let segments = [
             self.segment(trackID: appTrackID, start: 0, end: 3, text: echoedText),
-                self.segment(trackID: appTrackID, start: 10, end: 12, text: "fallback whole-chunk noise"),
+            self.segment(trackID: appTrackID, start: 10, end: 12, text: "fallback whole-chunk noise"),
         ]
         var fallbackSegments = segments
         fallbackSegments[1].speakerID = fallbackSpeaker
 
         for captureMethod in [MeetingAudioTrackCaptureMethod?.none, .screenCaptureKit, .avCaptureSession] {
             let (classified, widened) = MeetingProcessingPipeline.classifyMicrophoneTurns(
-                turns, eras: self.singleEra(captureMethod), applicationTrackID: appTrackID,
-                segments: fallbackSegments, fallbackSpeakerID: fallbackSpeaker
+                turns,
+                eras: self.singleEra(captureMethod),
+                applicationTrackID: appTrackID,
+                segments: fallbackSegments,
+                fallbackSpeakerID: fallbackSpeaker
             )
             XCTAssertTrue(widened.isEmpty, "non-VPIO never widens")
             XCTAssertTrue(classified[0].echoScored)
@@ -158,8 +184,13 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
         var turn = self.turn(clusterID: userCluster, start: 0, end: 5, text: "hi", overlapsRemote: false)
         turn.echoScored = true
         MeetingProcessingPipeline.logLocalSpeakerElection(
-            turns: [turn], prototypeSpeakerIDs: [userCluster], index: nil,
-            role: .personal, elected: userCluster, captureMethod: .voiceProcessing, widenedIndices: [0]
+            turns: [turn],
+            prototypeSpeakerIDs: [userCluster],
+            index: nil,
+            role: .personal,
+            elected: userCluster,
+            captureMethod: .voiceProcessing,
+            widenedIndices: [0]
         )
     }
 
@@ -173,16 +204,21 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
 
     func testDecodedVoiceProcessingTrackDrivesWidening() throws {
         var track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: [], captureMethod: .voiceProcessing
+            health: .waiting,
+            chunks: [],
+            captureMethod: .voiceProcessing
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        track = try decoder.decode(MeetingAudioTrack.self, from: try encoder.encode(track))
+        track = try decoder.decode(MeetingAudioTrack.self, from: encoder.encode(track))
         XCTAssertEqual(track.captureMethod, .voiceProcessing, "sanity: the round-trip preserved captureMethod")
 
         let turns = [self.turn(start: 0, end: 5, text: "local speech", overlapsRemote: false)]
@@ -198,10 +234,16 @@ final class MeetingPhase4ClassificationTests: XCTestCase {
 
 final class MeetingPhase4LiveGatingTests: XCTestCase {
     private func sampleBuffer(ptsSeconds: Double) -> CMSampleBuffer {
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480)!
         buffer.frameLength = 480
         let pts = CMTime(seconds: ptsSeconds, preferredTimescale: 48_000)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         return meetingMicrophoneSynthesizeSampleBuffer(from: buffer, presentationTime: pts)!
     }
 
@@ -220,12 +262,16 @@ final class MeetingPhase4LiveGatingTests: XCTestCase {
 
         let echoText = "let's push the release to next Tuesday afternoon"
         coordinator.handleUtterance(
-            kind: .applicationAudio, text: echoText,
-            start: CMTime(seconds: 10, preferredTimescale: 1), end: CMTime(seconds: 14, preferredTimescale: 1)
+            kind: .applicationAudio,
+            text: echoText,
+            start: CMTime(seconds: 10, preferredTimescale: 1),
+            end: CMTime(seconds: 14, preferredTimescale: 1)
         )
         coordinator.handleUtterance(
-            kind: .microphone, text: echoText,
-            start: CMTime(seconds: 15, preferredTimescale: 1), end: CMTime(seconds: 16, preferredTimescale: 1)
+            kind: .microphone,
+            text: echoText,
+            start: CMTime(seconds: 15, preferredTimescale: 1),
+            end: CMTime(seconds: 16, preferredTimescale: 1)
         )
 
         let last = lock.withLock { snapshots.last }
@@ -239,12 +285,16 @@ final class MeetingPhase4LiveGatingTests: XCTestCase {
 
         let echoText = "let's push the release to next Tuesday afternoon"
         coordinator.handleUtterance(
-            kind: .applicationAudio, text: echoText,
-            start: CMTime(seconds: 10, preferredTimescale: 1), end: CMTime(seconds: 14, preferredTimescale: 1)
+            kind: .applicationAudio,
+            text: echoText,
+            start: CMTime(seconds: 10, preferredTimescale: 1),
+            end: CMTime(seconds: 14, preferredTimescale: 1)
         )
         coordinator.handleUtterance(
-            kind: .microphone, text: echoText,
-            start: CMTime(seconds: 15, preferredTimescale: 1), end: CMTime(seconds: 16, preferredTimescale: 1)
+            kind: .microphone,
+            text: echoText,
+            start: CMTime(seconds: 15, preferredTimescale: 1),
+            end: CMTime(seconds: 16, preferredTimescale: 1)
         )
 
         let all = lock.withLock { snapshots }
@@ -258,17 +308,23 @@ final class MeetingPhase4LiveGatingTests: XCTestCase {
 
         let echoText = "let's push the release to next Tuesday afternoon"
         coordinator.handleUtterance(
-            kind: .applicationAudio, text: echoText,
-            start: CMTime(seconds: 10, preferredTimescale: 1), end: CMTime(seconds: 14, preferredTimescale: 1)
+            kind: .applicationAudio,
+            text: echoText,
+            start: CMTime(seconds: 10, preferredTimescale: 1),
+            end: CMTime(seconds: 14, preferredTimescale: 1)
         )
         coordinator.handleUtterance(
-            kind: .microphone, text: echoText,
-            start: CMTime(seconds: 15, preferredTimescale: 1), end: CMTime(seconds: 16, preferredTimescale: 1)
+            kind: .microphone,
+            text: echoText,
+            start: CMTime(seconds: 15, preferredTimescale: 1),
+            end: CMTime(seconds: 16, preferredTimescale: 1)
         )
         coordinator.setMicrophoneCaptureMethod(.voiceProcessing)
         coordinator.handleUtterance(
-            kind: .microphone, text: "a fresh genuine utterance",
-            start: CMTime(seconds: 17, preferredTimescale: 1), end: CMTime(seconds: 18, preferredTimescale: 1)
+            kind: .microphone,
+            text: "a fresh genuine utterance",
+            start: CMTime(seconds: 17, preferredTimescale: 1),
+            end: CMTime(seconds: 18, preferredTimescale: 1)
         )
 
         let last = lock.withLock { snapshots.last }

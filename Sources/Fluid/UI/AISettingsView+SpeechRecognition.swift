@@ -42,7 +42,12 @@ extension VoiceEngineSettingsView {
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(self.theme.palette.cardBorder.opacity(0.3), lineWidth: 1)
                             )
-                            .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
+                            .shadow(
+                                color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity),
+                                radius: self.theme.metrics.cardShadow.radius,
+                                x: self.theme.metrics.cardShadow.x,
+                                y: self.theme.metrics.cardShadow.y
+                            )
                     )
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -118,7 +123,12 @@ extension VoiceEngineSettingsView {
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(self.theme.palette.cardBorder.opacity(0.3), lineWidth: 1)
                                 )
-                                .shadow(color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity), radius: self.theme.metrics.cardShadow.radius, x: self.theme.metrics.cardShadow.x, y: self.theme.metrics.cardShadow.y)
+                                .shadow(
+                                    color: self.theme.metrics.cardShadow.color.opacity(self.theme.metrics.cardShadow.opacity),
+                                    radius: self.theme.metrics.cardShadow.radius,
+                                    x: self.theme.metrics.cardShadow.x,
+                                    y: self.theme.metrics.cardShadow.y
+                                )
                         )
                     }
                 }

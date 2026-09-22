@@ -1,11 +1,11 @@
 #if arch(arm64)
 import FluidAudio
 #endif
-@testable import FluidASRBaselineHost
 import AppKit
 import AVFoundation
 import CryptoKit
 import Darwin
+@testable import FluidASRBaselineHost
 import XCTest
 
 /// Opt-in paired ASR provider baseline: legacy dictation config vs meeting config, both pinned
@@ -445,7 +445,8 @@ final class PairedASRBaselineTests: XCTestCase {
     private static func containsContiguous(_ components: [String], marker: [String]) -> Bool {
         guard !marker.isEmpty, marker.count <= components.count else { return false }
         for start in 0...(components.count - marker.count)
-        where components[start..<(start + marker.count)].elementsEqual(marker) {
+            where components[start..<(start + marker.count)].elementsEqual(marker)
+        {
             return true
         }
         return false
@@ -509,29 +510,29 @@ extension BaselineInputError: LocalizedError {
         switch self {
         case .missingInputsRoot:
             return "ASRBaselineInputs not found in host bundle resources"
-        case .invalidManifest(let detail):
+        case let .invalidManifest(detail):
             return "invalid manifest.json: \(detail)"
-        case .unsafeRelativePath(let path):
+        case let .unsafeRelativePath(path):
             return "unsafe relative path: \(path)"
-        case .hashMismatch(let label):
+        case let .hashMismatch(label):
             return "sha256 mismatch: \(label)"
-        case .fixtureMetadataMismatch(let detail):
+        case let .fixtureMetadataMismatch(detail):
             return "fixture metadata mismatch: \(detail)"
-        case .sandboxEnvironment(let detail):
+        case let .sandboxEnvironment(detail):
             return "sandbox environment check failed: \(detail)"
-        case .unsupportedFixtureFormat(let detail):
+        case let .unsupportedFixtureFormat(detail):
             return "unsupported fixture format: \(detail)"
         case .modelsMissingOnDisk:
             return "model cache incomplete before prepare"
         case .providerDidNotDeallocate:
             return "provider still alive after the 2s dealloc budget"
-        case .memoryQueryFailed(let detail):
+        case let .memoryQueryFailed(detail):
             return "memory query failed: \(detail)"
         case .memorySamplerDidNotStop:
             return "memory peak sampler failed to join within the 2s deadline"
-        case .emptyTranscription(let arm):
+        case let .emptyTranscription(arm):
             return "empty transcript or word timings: \(arm)"
-        case .invalidWordTimings(let arm):
+        case let .invalidWordTimings(arm):
             return "non-finite or unordered word timings: \(arm)"
         }
     }
@@ -823,7 +824,7 @@ nonisolated enum BaselineAudioLoader {
         }
         var samples: [Float] = []
         samples.reserveCapacity(Int(declaredFrames))
-        let scale = Float(1.0 / 32768.0)
+        let scale = Float(1.0 / 32_768.0)
         var consumed: AVAudioFramePosition = 0
         while consumed < declaredFrames {
             let remaining = declaredFrames - consumed

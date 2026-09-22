@@ -10,6 +10,9 @@ final class MeetingRecordingPillController: ObservableObject {
 
     @Published private(set) var presentation: MeetingOverlayPresentation = .pill
 
+    // Shared only by cooperating types in this file.
+
+    // swiftlint:disable:next strict_fileprivate
     fileprivate static let overlayPadding = MeetingOverlayPadding.uniform(24)
     private static let legacyAutosaveName = "MeetingRecordingPill"
     private static let anchorCenterXKey = "MeetingRecordingOverlay.visibleAnchor.centerX"
@@ -61,7 +64,7 @@ final class MeetingRecordingPillController: ObservableObject {
 
     private func handleCoordinatorState(_ state: MeetingCoordinatorState, coordinator: MeetingSessionCoordinator) {
         switch state {
-        case .recording(let sessionID), .recordingDegraded(let sessionID):
+        case let .recording(sessionID), let .recordingDegraded(sessionID):
             if self.reducer.sessionID != sessionID {
                 self.invalidateTransition()
                 self.reducer.apply(.preferenceChanged(SettingsStore.shared.meetingOverlayPreference))
@@ -334,25 +337,24 @@ struct MeetingRecordingPillContent: View {
         MeetingOverlayVisibility.isVisible(for: self.coordinator.state)
     }
 
-
     @ObservedObject private var pill = MeetingRecordingPillController.shared
 
     var body: some View {
         self.compactPill
-        // The panel and its view persist across meetings; re-arm the stop button per recording.
-        .onChange(of: self.isRecordingActive) { _, active in
-            if active { self.isStopping = false }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(.top, MeetingRecordingPillController.overlayPadding.top)
-        .padding(.leading, MeetingRecordingPillController.overlayPadding.left)
-        .padding(.bottom, MeetingRecordingPillController.overlayPadding.bottom)
-        .padding(.trailing, MeetingRecordingPillController.overlayPadding.right)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Meeting recording in progress")
-        .accessibilityAction(named: "Stop Meeting Recording") {
-            self.stopRecording()
-        }
+            // The panel and its view persist across meetings; re-arm the stop button per recording.
+            .onChange(of: self.isRecordingActive) { _, active in
+                if active { self.isStopping = false }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.top, MeetingRecordingPillController.overlayPadding.top)
+            .padding(.leading, MeetingRecordingPillController.overlayPadding.left)
+            .padding(.bottom, MeetingRecordingPillController.overlayPadding.bottom)
+            .padding(.trailing, MeetingRecordingPillController.overlayPadding.right)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Meeting recording in progress")
+            .accessibilityAction(named: "Stop Meeting Recording") {
+                self.stopRecording()
+            }
     }
 
     private var compactSurface: some View {

@@ -231,6 +231,9 @@ nonisolated struct MeetingAnalysisManifestBuilder {
         }
     }
 
+    // Keep the explicit existing capture inputs together.
+
+    // swiftlint:disable:next function_parameter_count
     private func appendPiece(
         _ piece: MeetingAnalysisInterval,
         pieceIndex: Int,

@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import Darwin.Mach
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -95,7 +95,8 @@ final class MeetingExistingAudioReplayTests: XCTestCase {
             for segment in result.segments {
                 XCTAssertFalse(segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 guard let speakerID = segment.speakerID,
-                      let speaker = speakerByID[speakerID] else {
+                      let speaker = speakerByID[speakerID]
+                else {
                     XCTFail("\(sourceSession.id) emitted a segment with an unknown speaker")
                     continue
                 }
@@ -111,9 +112,9 @@ final class MeetingExistingAudioReplayTests: XCTestCase {
                 .map { "\($0.displayName)[\($0.trackKind.rawValue)]" }
                 .joined(separator: ", ")
             let summary = "id=\(sourceSession.id) chunks=\(sourceSession.audioTracks.flatMap(\.chunks).count) "
-                    + "segments=\(result.segments.count) speakers=\(result.speakers.count) "
-                    + "skipped=\(result.skippedChunkIDs.count) wall=\(String(format: "%.3f", wallTimeSeconds))s "
-                    + "{\(speakerSummary)}"
+                + "segments=\(result.segments.count) speakers=\(result.speakers.count) "
+                + "skipped=\(result.skippedChunkIDs.count) wall=\(String(format: "%.3f", wallTimeSeconds))s "
+                + "{\(speakerSummary)}"
             reportLines.append(summary)
             print("[meeting-replay] \(summary)")
 
@@ -181,7 +182,7 @@ final class MeetingExistingAudioReplayTests: XCTestCase {
                 "residentBytesAfter": residentBytesAfter,
             ]
             try Self.writeProtected(
-                try JSONSerialization.data(withJSONObject: fixtureReport, options: [.prettyPrinted, .sortedKeys]),
+                JSONSerialization.data(withJSONObject: fixtureReport, options: [.prettyPrinted, .sortedKeys]),
                 to: fixtureDirectory.appendingPathComponent("run.json")
             )
         }

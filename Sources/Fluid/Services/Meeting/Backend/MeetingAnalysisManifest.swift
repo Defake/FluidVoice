@@ -105,22 +105,22 @@ nonisolated extension MeetingCodecPriming {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if container.contains(.measuredFrames) {
             if let value = try? container.nestedContainer(keyedBy: AssociatedValueKeys.self, forKey: .measuredFrames) {
-                self = .measuredFrames(try value.decode(Int.self, forKey: ._0))
+                self = try .measuredFrames(value.decode(Int.self, forKey: ._0))
             } else {
                 // Be liberal for any interim build that emitted a direct scalar.
-                self = .measuredFrames(try container.decode(Int.self, forKey: .measuredFrames))
+                self = try .measuredFrames(container.decode(Int.self, forKey: .measuredFrames))
             }
         } else if container.contains(.unknown) {
             if let value = try? container.nestedContainer(keyedBy: AssociatedValueKeys.self, forKey: .unknown) {
-                self = .unknown(try value.decode(MeetingCodecPrimingUnknownReason.self, forKey: ._0))
+                self = try .unknown(value.decode(MeetingCodecPrimingUnknownReason.self, forKey: ._0))
             } else {
-                self = .unknown(try container.decode(MeetingCodecPrimingUnknownReason.self, forKey: .unknown))
+                self = try .unknown(container.decode(MeetingCodecPrimingUnknownReason.self, forKey: .unknown))
             }
         } else if container.contains(.notApplicable) {
             if let value = try? container.nestedContainer(keyedBy: AssociatedValueKeys.self, forKey: .notApplicable) {
-                self = .notApplicable(try value.decode(MeetingAudioEncoding.self, forKey: ._0))
+                self = try .notApplicable(value.decode(MeetingAudioEncoding.self, forKey: ._0))
             } else {
-                self = .notApplicable(try container.decode(MeetingAudioEncoding.self, forKey: .notApplicable))
+                self = try .notApplicable(container.decode(MeetingAudioEncoding.self, forKey: .notApplicable))
             }
         } else {
             throw DecodingError.dataCorruptedError(
@@ -568,7 +568,8 @@ nonisolated struct MeetingAnalysisChunkIdentity: Codable, Equatable, Hashable {
         if let asset = chunk.captureAnalysisAsset,
            asset.presence == .ready,
            asset.role == .captureAnalysis,
-           asset.encoding == .linearPCMFloat32CAFV1 {
+           asset.encoding == .linearPCMFloat32CAFV1
+        {
             self.relativeFilePath = asset.relativeFilePath
             self.storedByteCount = asset.byteCount
             self.storedSHA256 = asset.sha256 ?? ""
@@ -968,6 +969,8 @@ nonisolated enum MeetingAnalysisManifestError: LocalizedError, Equatable {
     case invalidDecodedFacts(spanID: String)
     case decodedDurationInconsistent(spanID: String)
     case primingFramesExceedDecodedFrames(spanID: String)
+    // Keep the existing descriptive state or persisted evidence field name.
+    // swiftlint:disable:next identifier_name
     case sourceLocalIntervalDisagreesWithRecordedPiece(spanID: String)
     case analysisDurationDisagreesWithSource(spanID: String)
     case analysisTimeNotGapRemoved(trackID: MeetingAudioTrackID)
@@ -1337,7 +1340,7 @@ nonisolated extension MeetingAnalysisManifest {
         }
     }
 
-    // MARK: Spans
+    // MARK: - Spans
 
     private func validateSpan(
         _ span: MeetingAnalysisSpan,
@@ -1593,7 +1596,7 @@ nonisolated extension MeetingAnalysisManifest {
         }
     }
 
-    // MARK: Gaps
+    // MARK: - Gaps
 
     private func validateGap(
         _ gap: MeetingAnalysisGap,
@@ -1658,7 +1661,7 @@ nonisolated extension MeetingAnalysisManifest {
         }
     }
 
-    // MARK: Shared piece checks
+    // MARK: - Shared piece checks
 
     private func plannedChunk(
         for identity: MeetingAnalysisChunkIdentity,
@@ -1707,7 +1710,7 @@ nonisolated extension MeetingAnalysisManifest {
         return planned[index - 1]
     }
 
-    // MARK: Coverage
+    // MARK: - Coverage
 
     /// Exactly-once coverage, in both directions: every planned chunk is covered by pieces that
     /// tile its recorded interval with no hole and no overlap, and nothing outside the plan is
@@ -1772,7 +1775,7 @@ nonisolated extension MeetingAnalysisManifest {
         }
     }
 
-    // MARK: Epochs
+    // MARK: - Epochs
 
     private func validateEpochRecords(of track: MeetingAnalysisTrackManifest) throws {
         let tolerance = MeetingAnalysisManifestSchema.mappingToleranceSeconds
@@ -1931,7 +1934,7 @@ nonisolated extension MeetingAnalysisManifest {
         ].first(where: causes.contains)
     }
 
-    // MARK: Timeline
+    // MARK: - Timeline
 
     /// Analysis time is per track: it starts at zero, concatenates its spans with no gaps at all,
     /// and never runs backwards.

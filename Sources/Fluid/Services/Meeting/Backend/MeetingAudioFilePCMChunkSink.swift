@@ -22,6 +22,7 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
         let layout: Data?
         let contract: MeetingPCMFormatContract
     }
+
     private struct Paths { let final: URL; let partial: URL }
     private struct Identity { let dev: dev_t; let ino: ino_t; let size: off_t }
     private let sessionDirectory: URL
@@ -35,7 +36,7 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
 
     var partialRelativeFilePath: String? {
         guard let partial = paths?.partial else { return nil }
-        let root = sessionDirectory.path.hasSuffix("/") ? sessionDirectory.path : sessionDirectory.path + "/"
+        let root = self.sessionDirectory.path.hasSuffix("/") ? self.sessionDirectory.path : self.sessionDirectory.path + "/"
         guard partial.path.hasPrefix(root) else { return nil }
         return String(partial.path.dropFirst(root.count))
     }
@@ -46,17 +47,15 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
 
     func begin(relativeFilePath: String, format: AVAudioFormat) throws {
         let contract: MeetingPCMFormatContract
-        do { contract = try MeetingPCMFormatContract(audioFormat: format) }
-        catch { throw MeetingPCMSinkError.unsupportedClientFormat(error.localizedDescription) }
-        try begin(relativeFilePath: relativeFilePath, format: format, contract: contract)
+        do { contract = try MeetingPCMFormatContract(audioFormat: format) } catch { throw MeetingPCMSinkError.unsupportedClientFormat(error.localizedDescription) }
+        try self.begin(relativeFilePath: relativeFilePath, format: format, contract: contract)
     }
 
     func begin(relativeFilePath: String, format: AVAudioFormat, contract: MeetingPCMFormatContract) throws {
-        guard state == .idle else { throw MeetingPCMSinkError.alreadyBegun }
+        guard self.state == .idle else { throw MeetingPCMSinkError.alreadyBegun }
         let inputASBD = format.streamDescription.pointee
         let derivedContract: MeetingPCMFormatContract
-        do { derivedContract = try MeetingPCMFormatContract(audioFormat: format) }
-        catch { throw MeetingPCMSinkError.unsupportedClientFormat(error.localizedDescription) }
+        do { derivedContract = try MeetingPCMFormatContract(audioFormat: format) } catch { throw MeetingPCMSinkError.unsupportedClientFormat(error.localizedDescription) }
         guard derivedContract == contract else {
             throw MeetingPCMSinkError.formatMismatch(expected: contract.description, actual: derivedContract.description)
         }
@@ -72,6 +71,8 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
         }
         if let layout {
             let setStatus = layout.withUnsafeBytes {
+                // Buffer size and channel topology are validated before this synchronous C call.
+                // swiftlint:disable:next force_unwrapping
                 AudioFileSetProperty(file, kAudioFilePropertyChannelLayout, UInt32($0.count), $0.baseAddress!)
             }
             guard setStatus == noErr else {
@@ -89,11 +90,11 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
     }
 
     func append(_ sampleBuffer: CMSampleBuffer) throws -> MeetingPCMAppendReceipt {
-        guard state == .open, let file = audioFile, let format, let expectedASBD = fileASBD else {
-            if state == .idle { throw MeetingPCMSinkError.notBegun }
+        guard self.state == .open, let file = audioFile, let format, let expectedASBD = fileASBD else {
+            if self.state == .idle { throw MeetingPCMSinkError.notBegun }
             throw MeetingPCMSinkError.alreadyFinalizedOrCancelled
         }
-        guard !poisoned else { throw MeetingPCMSinkError.finalizationVerificationFailed("sink is poisoned") }
+        guard !self.poisoned else { throw MeetingPCMSinkError.finalizationVerificationFailed("sink is poisoned") }
         guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else {
             throw MeetingPCMSinkError.invalidSampleBuffer("invalid or unready sample buffer")
         }
@@ -105,15 +106,14 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
               let incoming = CMAudioFormatDescriptionGetStreamBasicDescription(desc)?.pointee
         else { throw MeetingPCMSinkError.invalidSampleBuffer("missing audio format description") }
         let incomingContract: MeetingPCMFormatContract
-        do { incomingContract = try MeetingPCMFormatContract(formatDescription: desc) }
-        catch {
-            poisoned = true
-            closeOpenFile()
+        do { incomingContract = try MeetingPCMFormatContract(formatDescription: desc) } catch {
+            self.poisoned = true
+            self.closeOpenFile()
             throw MeetingPCMSinkError.unsupportedClientFormat(error.localizedDescription)
         }
         guard incomingContract == format.contract else {
-            poisoned = true
-            closeOpenFile()
+            self.poisoned = true
+            self.closeOpenFile()
             throw MeetingPCMSinkError.formatMismatch(expected: format.contract.description, actual: incomingContract.description)
         }
         guard incoming.mSampleRate == format.rate,
@@ -122,8 +122,8 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
               (incoming.mFormatFlags & kAudioFormatFlagIsFloat) != 0,
               (incoming.mFormatFlags & kAudioFormatFlagIsSignedInteger) == 0
         else {
-            poisoned = true
-            closeOpenFile()
+            self.poisoned = true
+            self.closeOpenFile()
             throw MeetingPCMSinkError.formatMismatch(expected: format.contract.description, actual: Self.describe(incoming, layout: Self.layoutData(desc)))
         }
         let frames = CMSampleBufferGetNumSamples(sampleBuffer)
@@ -133,29 +133,31 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
         let expectedBytes = try Self.checkedMultiply(Int64(frames), Int64(expectedASBD.mBytesPerFrame))
         guard Int64(packed.count) == expectedBytes else { throw MeetingPCMSinkError.invalidSampleBuffer("packed size mismatch") }
         var packetCount = try Self.checkedUInt32(Int64(frames))
-        let packetOffset = try Self.checkedInt64(writtenPackets)
+        let packetOffset = try Self.checkedInt64(self.writtenPackets)
         let byteCount = try Self.checkedUInt32(Int64(packed.count))
         let status = packed.withUnsafeBytes { bytes in
+            // Buffer size and channel topology are validated before this synchronous C call.
+            // swiftlint:disable:next force_unwrapping
             AudioFileWritePackets(file, false, byteCount, nil, packetOffset, &packetCount, bytes.baseAddress!)
         }
         let actual = Int64(packetCount)
-        guard status == noErr else { poisoned = true; closeOpenFile(); throw MeetingPCMSinkError.writeFailed(status) }
-        guard actual == Int64(frames) else { poisoned = true; closeOpenFile(); throw MeetingPCMSinkError.shortWrite(expectedFrames: Int64(frames), writtenFrames: actual) }
-        writtenPackets = try Self.checkedAdd(writtenPackets, actual)
+        guard status == noErr else { self.poisoned = true; self.closeOpenFile(); throw MeetingPCMSinkError.writeFailed(status) }
+        guard actual == Int64(frames) else { self.poisoned = true; self.closeOpenFile(); throw MeetingPCMSinkError.shortWrite(expectedFrames: Int64(frames), writtenFrames: actual) }
+        self.writtenPackets = try Self.checkedAdd(self.writtenPackets, actual)
         let duration = CMTime(seconds: Double(frames) / format.rate, preferredTimescale: 1_000_000_000)
         return MeetingPCMAppendReceipt(framesAccepted: Int64(frames), framesWritten: actual, presentationStart: pts, presentationDuration: duration)
     }
 
     func finalize() -> Result<MeetingPCMFinalization, MeetingPCMSinkError> {
-        guard state == .open, let paths, let format else { return .failure(state == .idle ? .notBegun : .alreadyFinalizedOrCancelled) }
-        guard !poisoned else { removePartialAndClose(); return .failure(.finalizationVerificationFailed("sink is poisoned")) }
-        guard writtenPackets > 0 else { removePartialAndClose(); state = .cancelled; return .failure(.finalizationVerificationFailed("CAF contains no written frames")) }
+        guard self.state == .open, let paths, let format else { return .failure(self.state == .idle ? .notBegun : .alreadyFinalizedOrCancelled) }
+        guard !self.poisoned else { self.removePartialAndClose(); return .failure(.finalizationVerificationFailed("sink is poisoned")) }
+        guard self.writtenPackets > 0 else { self.removePartialAndClose(); self.state = .cancelled; return .failure(.finalizationVerificationFailed("CAF contains no written frames")) }
         if let file = audioFile {
             let status = AudioFileClose(file); audioFile = nil
-            guard status == noErr else { try? FileManager.default.removeItem(at: paths.partial); state = .cancelled; return .failure(.writeFailed(status)) }
+            guard status == noErr else { try? FileManager.default.removeItem(at: paths.partial); self.state = .cancelled; return .failure(.writeFailed(status)) }
         }
         do {
-            let check = try Self.verify(paths.partial, format: format, expectedPackets: writtenPackets)
+            let check = try Self.verify(paths.partial, format: format, expectedPackets: self.writtenPackets)
             let identity = try Self.identity(paths.partial)
             guard !FileManager.default.fileExists(atPath: paths.final.path) else { throw MeetingPCMSinkError.finalPathAlreadyExists(paths.final.path) }
             try Self.fullSync(paths.partial)
@@ -168,35 +170,46 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
                 throw MeetingPCMSinkError.underlyingFileError("atomic rename failed: errno \(errno)")
             }
             try Self.syncDirectory(paths.final.deletingLastPathComponent())
-            state = .finalized
-            return .success(MeetingPCMFinalization(relativeFilePath: try relativePath(paths.final), byteCount: check.bytes, sha256: check.hash,
-                                                   sampleRate: check.rate, channelCount: check.channels, frameCount: check.frames))
+            self.state = .finalized
+            return try .success(MeetingPCMFinalization(
+                relativeFilePath: self.relativePath(paths.final),
+                byteCount: check.bytes,
+                sha256: check.hash,
+                sampleRate: check.rate,
+                channelCount: check.channels,
+                frameCount: check.frames
+            ))
         } catch let error as MeetingPCMSinkError {
             state = .cancelled; try? FileManager.default.removeItem(at: paths.partial); return .failure(error)
-        } catch { state = .cancelled; try? FileManager.default.removeItem(at: paths.partial); return .failure(.underlyingFileError(error.localizedDescription)) }
+        } catch { self.state = .cancelled; try? FileManager.default.removeItem(at: paths.partial); return .failure(.underlyingFileError(error.localizedDescription)) }
     }
 
-    func cancel() { guard state == .open || state == .idle else { return }; removePartialAndClose(); state = .cancelled }
+    func cancel() { guard self.state == .open || self.state == .idle else { return }; self.removePartialAndClose(); self.state = .cancelled }
 
-    // MARK: Path / format helpers
+    // MARK: - Path / format helpers
+
     private func resolvePaths(_ relative: String) throws -> Paths {
         guard !relative.isEmpty, !relative.hasPrefix("/"), !relative.contains("\\"), relative.hasSuffix(".caf") else { throw MeetingPCMSinkError.invalidRelativePath(relative) }
         let components = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        guard !components.isEmpty, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }), !components.last!.contains(".partial.") else { throw MeetingPCMSinkError.invalidRelativePath(relative) }
-        try Self.rejectSymlink(sessionDirectory)
-        var parent = sessionDirectory
+        guard let filename = components.last, components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+              !filename.contains(".partial.") else { throw MeetingPCMSinkError.invalidRelativePath(relative) }
+        try Self.rejectSymlink(self.sessionDirectory)
+        var parent = self.sessionDirectory
         for component in components.dropLast() {
             parent.appendPathComponent(component, isDirectory: true)
-            if FileManager.default.fileExists(atPath: parent.path) { try Self.rejectSymlink(parent) }
-            else { try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false, attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]) }
+            if FileManager.default.fileExists(atPath: parent.path) { try Self.rejectSymlink(parent) } else { try FileManager.default.createDirectory(
+                at: parent,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
+            ) }
             guard FileManager.default.fileExists(atPath: parent.path, isDirectory: nil) else { throw MeetingPCMSinkError.underlyingFileError("parent does not exist") }
             guard chmod(parent.path, mode_t(0o700)) == 0 else {
                 throw MeetingPCMSinkError.underlyingFileError("could not set directory permissions: \(parent.path)")
             }
         }
-        let final = parent.appendingPathComponent(components.last!)
+        let final = parent.appendingPathComponent(filename)
         if FileManager.default.fileExists(atPath: final.path) { try Self.rejectSymlink(final); throw MeetingPCMSinkError.finalPathAlreadyExists(relative) }
-        let partial = parent.appendingPathComponent(String(components.last!.dropLast(4)) + ".\(UUID().uuidString).partial.caf")
+        let partial = parent.appendingPathComponent(String(filename.dropLast(4)) + ".\(UUID().uuidString).partial.caf")
         if FileManager.default.fileExists(atPath: partial.path) { throw MeetingPCMSinkError.partialPathAlreadyExists(partial.path) }
         return Paths(final: final, partial: partial)
     }
@@ -209,58 +222,116 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
     private static func canonicalASBD(rate: Double, channels: UInt32) throws -> AudioStreamBasicDescription {
         let (bytes, overflow) = channels.multipliedReportingOverflow(by: 4)
         guard !overflow else { throw MeetingPCMSinkError.unsupportedClientFormat("channel byte size overflow") }
-        return AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagsNativeFloatPacked,
-                                    mBytesPerPacket: bytes, mFramesPerPacket: 1, mBytesPerFrame: bytes,
-                                    mChannelsPerFrame: channels, mBitsPerChannel: 32, mReserved: 0)
+        return AudioStreamBasicDescription(
+            mSampleRate: rate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagsNativeFloatPacked,
+            mBytesPerPacket: bytes,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: bytes,
+            mChannelsPerFrame: channels,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
     }
 
-    // MARK: ABL and checked arithmetic
+    // MARK: - ABL and checked arithmetic
+
     private final class AudioList {
         let pointer: UnsafeMutablePointer<AudioBufferList>; let retained: CMBlockBuffer?
         init(sampleBuffer: CMSampleBuffer) throws {
             var size = 0
-            let first = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sampleBuffer, bufferListSizeNeededOut: &size, bufferListOut: nil, bufferListSize: 0, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil, flags: 0, blockBufferOut: nil)
+            let first = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: &size,
+                bufferListOut: nil,
+                bufferListSize: 0,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: 0,
+                blockBufferOut: nil
+            )
             guard first == noErr, size > 0 else { throw MeetingPCMSinkError.invalidSampleBuffer("ABL size unavailable") }
-            pointer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: MemoryLayout<AudioBufferList>.alignment).assumingMemoryBound(to: AudioBufferList.self)
+            self.pointer = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: MemoryLayout<AudioBufferList>.alignment).assumingMemoryBound(to: AudioBufferList.self)
             var block: CMBlockBuffer?
-            let second = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(sampleBuffer, bufferListSizeNeededOut: &size, bufferListOut: pointer, bufferListSize: size, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil, flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, blockBufferOut: &block)
-            guard second == noErr else { pointer.deallocate(); throw MeetingPCMSinkError.invalidSampleBuffer("ABL unavailable") }
-            retained = block
+            let second = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+                sampleBuffer,
+                bufferListSizeNeededOut: &size,
+                bufferListOut: self.pointer,
+                bufferListSize: size,
+                blockBufferAllocator: nil,
+                blockBufferMemoryAllocator: nil,
+                flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
+                blockBufferOut: &block
+            )
+            guard second == noErr else { self.pointer.deallocate(); throw MeetingPCMSinkError.invalidSampleBuffer("ABL unavailable") }
+            self.retained = block
         }
+
         deinit { pointer.deallocate() }
         func interleavedFloat32(frames: Int, channels: Int, inputASBD: AudioStreamBasicDescription) throws -> Data {
             let buffers = UnsafeMutableAudioBufferListPointer(pointer)
             let nonInterleaved = (inputASBD.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
-            guard (nonInterleaved ? buffers.count == channels : buffers.count == 1), buffers.allSatisfy({ $0.mData != nil && $0.mNumberChannels == (nonInterleaved ? 1 : UInt32(channels)) }) else { throw MeetingPCMSinkError.invalidSampleBuffer("ABL topology mismatch") }
+            guard nonInterleaved ? buffers.count == channels : buffers.count == 1,
+                  buffers.allSatisfy({ $0.mData != nil && $0.mNumberChannels == (nonInterleaved ? 1 : UInt32(channels)) })
+            else { throw MeetingPCMSinkError.invalidSampleBuffer("ABL topology mismatch") }
             let bytesPerChannel = try MeetingAudioFilePCMChunkSink.checkedMultiply(Int64(frames), 4)
             let expectedBytes = try MeetingAudioFilePCMChunkSink.checkedMultiply(bytesPerChannel, nonInterleaved ? 1 : Int64(channels))
             guard buffers.allSatisfy({ Int64($0.mDataByteSize) == expectedBytes }) else { throw MeetingPCMSinkError.invalidSampleBuffer("ABL byte count mismatch") }
             let count = try MeetingAudioFilePCMChunkSink.checkedMultiply(Int64(frames), Int64(channels))
-            var output = Data(count: try Int(MeetingAudioFilePCMChunkSink.checkedMultiply(count, 4)))
+            var output = try Data(count: Int(MeetingAudioFilePCMChunkSink.checkedMultiply(count, 4)))
             output.withUnsafeMutableBytes { out in
+                // Buffer size and channel topology are validated before this synchronous C call.
+                // swiftlint:disable:next force_unwrapping
                 let dst = out.baseAddress!.assumingMemoryBound(to: Float.self)
                 if nonInterleaved {
+                    // Buffer size and channel topology are validated before this synchronous C call.
+                    // swiftlint:disable:next force_unwrapping
                     let src = buffers.map { $0.mData!.assumingMemoryBound(to: Float.self) }
-                    for frame in 0..<frames { for channel in 0..<channels { dst[frame * channels + channel] = src[channel][frame] } }
+                    for frame in 0..<frames {
+                        for channel in 0..<channels {
+                            dst[frame * channels + channel] = src[channel][frame]
+                        }
+                    }
                 } else {
+                    // Buffer size and channel topology are validated before this synchronous C call.
+                    // swiftlint:disable:next force_unwrapping
                     let src = buffers[0].mData!.assumingMemoryBound(to: Float.self)
-                    for i in 0..<Int(count) { dst[i] = src[i] }
+                    for i in 0..<Int(count) {
+                        dst[i] = src[i]
+                    }
                 }
             }
-            for value in output.withUnsafeBytes({ $0.bindMemory(to: Float.self) }) where !value.isFinite { throw MeetingPCMSinkError.nonFiniteSample }
+            for value in output.withUnsafeBytes({ $0.bindMemory(to: Float.self) }) where !value.isFinite {
+                throw MeetingPCMSinkError.nonFiniteSample
+            }
             return output
         }
     }
 
-    private static func checkedMultiply(_ a: Int64, _ b: Int64) throws -> Int64 { let (v, o) = a.multipliedReportingOverflow(by: b); if o || v < 0 { throw MeetingPCMSinkError.invalidSampleBuffer("integer overflow") }; return v }
-    private static func checkedAdd(_ a: Int64, _ b: Int64) throws -> Int64 { let (v, o) = a.addingReportingOverflow(b); if o || v < 0 { throw MeetingPCMSinkError.invalidSampleBuffer("integer overflow") }; return v }
-    private static func checkedUInt32(_ value: Int64) throws -> UInt32 { guard value >= 0, value <= Int64(UInt32.max) else { throw MeetingPCMSinkError.invalidSampleBuffer("packet count overflow") }; return UInt32(value) }
+    private static func checkedMultiply(
+        _ a: Int64,
+        _ b: Int64
+    ) throws -> Int64 { let (v, o) = a.multipliedReportingOverflow(by: b); if o || v < 0 { throw MeetingPCMSinkError.invalidSampleBuffer("integer overflow") }; return v }
+    private static func checkedAdd(
+        _ a: Int64,
+        _ b: Int64
+    ) throws -> Int64 { let (v, o) = a.addingReportingOverflow(b); if o || v < 0 { throw MeetingPCMSinkError.invalidSampleBuffer("integer overflow") }; return v }
+    private static func checkedUInt32(_ value: Int64) throws -> UInt32 { guard value >= 0,
+                                                                               value <= Int64(UInt32.max)
+        else { throw MeetingPCMSinkError.invalidSampleBuffer("packet count overflow") }; return UInt32(value)
+    }
+
     private static func checkedInt64(_ value: Int64) throws -> Int64 { guard value >= 0 else { throw MeetingPCMSinkError.invalidSampleBuffer("negative packet offset") }; return value }
 
-    // MARK: Verification / durability
+    // MARK: - Verification / durability
+
     private struct Check { let bytes: Int64; let hash: String; let rate: Double; let channels: Int; let frames: Int64 }
     private static func verify(_ url: URL, format: Format, expectedPackets: Int64) throws -> Check {
-        var file: AudioFileID?; let open = AudioFileOpenURL(url as CFURL, .readPermission, 0, &file); guard open == noErr, let file else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF reopen failed") }; defer { AudioFileClose(file) }
+        var file: AudioFileID?; let open = AudioFileOpenURL(url as CFURL, .readPermission, 0, &file); guard open == noErr,
+                                                                                                            let file
+        else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF reopen failed")
+        }; defer { AudioFileClose(file) }
         var asbd = AudioStreamBasicDescription(); var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
         let canonical = try Self.canonicalASBD(rate: format.rate, channels: format.channels)
         guard AudioFileGetProperty(file, kAudioFilePropertyDataFormat, &size, &asbd) == noErr,
@@ -274,22 +345,62 @@ final nonisolated class MeetingAudioFilePCMChunkSink: MeetingAudioChunkSink, @un
               asbd.mBitsPerChannel == canonical.mBitsPerChannel
         else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF ASBD mismatch") }
         let layout = try Self.fileLayout(file); guard layout == format.layout else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF channel layout mismatch") }
-        var packets: Int64 = 0; size = UInt32(MemoryLayout<Int64>.size); guard AudioFileGetProperty(file, kAudioFilePropertyAudioDataPacketCount, &size, &packets) == noErr, packets == expectedPackets else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF packet count mismatch") }
-        var bytesCount: Int64 = 0; size = UInt32(MemoryLayout<Int64>.size); guard AudioFileGetProperty(file, kAudioFilePropertyAudioDataByteCount, &size, &bytesCount) == noErr else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF byte count unavailable") }
-        let expectedBytes = try checkedMultiply(packets, Int64(asbd.mBytesPerFrame)); guard bytesCount == expectedBytes else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF data bytes mismatch") }
-        let attrs = try FileManager.default.attributesOfItem(atPath: url.path); let actualSize = (attrs[.size] as? NSNumber)?.int64Value ?? -1; guard actualSize > 0 else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF is empty") }
-        var hasher = SHA256(); let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }; while true { let data = try handle.read(upToCount: 1 << 20) ?? Data(); if data.isEmpty { break }; hasher.update(data: data) }
+        var packets: Int64 = 0; size = UInt32(MemoryLayout<Int64>.size); guard AudioFileGetProperty(file, kAudioFilePropertyAudioDataPacketCount, &size, &packets) == noErr,
+                                                                               packets == expectedPackets else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF packet count mismatch") }
+        var bytesCount: Int64 = 0; size = UInt32(MemoryLayout<Int64>.size); guard AudioFileGetProperty(file, kAudioFilePropertyAudioDataByteCount, &size, &bytesCount) == noErr
+        else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF byte count unavailable") }
+        let expectedBytes = try checkedMultiply(packets, Int64(asbd.mBytesPerFrame)); guard bytesCount == expectedBytes
+        else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF data bytes mismatch") }
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path); let actualSize = (attrs[.size] as? NSNumber)?.int64Value ?? -1; guard actualSize > 0
+        else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF is empty") }
+        var hasher = SHA256(); let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }; while true {
+            let data = try handle.read(upToCount: 1 << 20) ?? Data(); if data.isEmpty { break }; hasher.update(data: data)
+        }
         return Check(bytes: actualSize, hash: hasher.finalize().map { String(format: "%02x", $0) }.joined(), rate: asbd.mSampleRate, channels: Int(asbd.mChannelsPerFrame), frames: packets)
     }
-    private static func fileLayout(_ file: AudioFileID) throws -> Data? { var size: UInt32 = 0; let query = AudioFileGetPropertyInfo(file, kAudioFilePropertyChannelLayout, &size, nil); guard query == noErr else { return nil }; guard size > 0 else { return nil }; var data = Data(count: Int(size)); let status = data.withUnsafeMutableBytes { AudioFileGetProperty(file, kAudioFilePropertyChannelLayout, &size, $0.baseAddress!) }; guard status == noErr else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF layout read failed") }; return data }
-    private static func identity(_ url: URL) throws -> Identity { var st = stat(); guard lstat(url.path, &st) == 0 else { throw MeetingPCMSinkError.finalizationVerificationFailed("staged file disappeared") }; return Identity(dev: st.st_dev, ino: st.st_ino, size: st.st_size) }
-    private static func fullSync(_ url: URL) throws { let fd = open(url.path, O_RDONLY); guard fd >= 0 else { throw MeetingPCMSinkError.underlyingFileError("open for sync failed") }; defer { close(fd) }; guard fcntl(fd, F_FULLFSYNC) == 0 else { throw MeetingPCMSinkError.underlyingFileError("F_FULLFSYNC failed") } }
-    private static func syncDirectory(_ url: URL) throws { let fd = open(url.path, O_RDONLY | O_DIRECTORY); guard fd >= 0 else { throw MeetingPCMSinkError.underlyingFileError("open parent for sync failed") }; defer { close(fd) }; guard fsync(fd) == 0 else { throw MeetingPCMSinkError.underlyingFileError("parent fsync failed") } }
+
+    private static func fileLayout(_ file: AudioFileID) throws -> Data? { var size: UInt32 = 0; let query = AudioFileGetPropertyInfo(file, kAudioFilePropertyChannelLayout, &size, nil); guard query ==
+        noErr else { return nil }; guard size > 0 else { return nil }; var data = Data(count: Int(size)); let status = data.withUnsafeMutableBytes { AudioFileGetProperty(
+            file,
+            kAudioFilePropertyChannelLayout,
+            &size,
+            // Buffer size and channel topology are validated before this synchronous C call.
+            // swiftlint:disable:next force_unwrapping
+            $0.baseAddress!
+        ) }; guard status == noErr else { throw MeetingPCMSinkError.finalizationVerificationFailed("CAF layout read failed") }; return data
+    }
+
+    private static func identity(_ url: URL) throws -> Identity { var st = stat(); guard lstat(url.path, &st) == 0
+        else { throw MeetingPCMSinkError.finalizationVerificationFailed("staged file disappeared") }; return Identity(
+            dev: st.st_dev,
+            ino: st.st_ino,
+            size: st.st_size
+        )
+    }
+
+    private static func fullSync(_ url: URL) throws {
+        let fd = open(url.path, O_RDONLY); guard fd >= 0 else { throw MeetingPCMSinkError.underlyingFileError("open for sync failed") }; defer { close(fd) }; guard fcntl(
+            fd,
+            F_FULLFSYNC
+        ) == 0 else { throw MeetingPCMSinkError.underlyingFileError("F_FULLFSYNC failed") }
+    }
+
+    private static func syncDirectory(_ url: URL) throws {
+        let fd = open(url.path, O_RDONLY | O_DIRECTORY); guard fd >= 0 else { throw MeetingPCMSinkError.underlyingFileError("open parent for sync failed") }; defer { close(fd) }; guard fsync(fd) == 0
+        else { throw MeetingPCMSinkError.underlyingFileError("parent fsync failed") }
+    }
+
     private static func layoutData(_ layout: AVAudioChannelLayout?) -> Data? { MeetingPCMFormatContract.layoutData(layout) }
     private static func layoutData(_ desc: CMFormatDescription) -> Data? { MeetingPCMFormatContract.layoutData(desc) }
     private static func describe(_ format: Format) -> String { "rate=\(format.rate), channels=\(format.channels), layoutBytes=\(format.layout?.count ?? 0)" }
-    private static func describe(_ asbd: AudioStreamBasicDescription, layout: Data?) -> String { "rate=\(asbd.mSampleRate), channels=\(asbd.mChannelsPerFrame), flags=\(asbd.mFormatFlags), layoutBytes=\(layout?.count ?? 0)" }
-    private func relativePath(_ url: URL) throws -> String { let root = sessionDirectory.path.hasSuffix("/") ? sessionDirectory.path : sessionDirectory.path + "/"; guard url.path.hasPrefix(root) else { throw MeetingPCMSinkError.finalizationVerificationFailed("published path escaped session") }; return String(url.path.dropFirst(root.count)) }
-    private func closeOpenFile() { if let file = audioFile { AudioFileClose(file); audioFile = nil } }
-    private func removePartialAndClose() { closeOpenFile(); if let partial = paths?.partial { try? FileManager.default.removeItem(at: partial) } }
+    private static func describe(
+        _ asbd: AudioStreamBasicDescription,
+        layout: Data?
+    ) -> String { "rate=\(asbd.mSampleRate), channels=\(asbd.mChannelsPerFrame), flags=\(asbd.mFormatFlags), layoutBytes=\(layout?.count ?? 0)" }
+    private func relativePath(_ url: URL) throws -> String { let root = self.sessionDirectory.path.hasSuffix("/") ? self.sessionDirectory.path : self.sessionDirectory.path + "/"; guard url.path
+        .hasPrefix(root) else { throw MeetingPCMSinkError.finalizationVerificationFailed("published path escaped session") }; return String(url.path.dropFirst(root.count))
+    }
+
+    private func closeOpenFile() { if let file = audioFile { AudioFileClose(file); self.audioFile = nil } }
+    private func removePartialAndClose() { self.closeOpenFile(); if let partial = paths?.partial { try? FileManager.default.removeItem(at: partial) } }
 }

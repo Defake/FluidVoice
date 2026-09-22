@@ -20,7 +20,7 @@ final class MeetingProviderOptionsTests: XCTestCase {
 
     func testResolveRejectsUnsupportedModelsWithoutRelabeling() {
         let unsupportedModels = [
-            "parakeet-tdt",     // raw value of the v3 multilingual model
+            "parakeet-tdt", // raw value of the v3 multilingual model
             "parakeet-tdt-v3",
             "parakeet-tdt-v99",
             "whisper-tiny",

@@ -68,6 +68,8 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         kind: MeetingAudioTrackKind,
         chunks: [MeetingAudioChunk],
         captureMethod: MeetingAudioTrackCaptureMethod? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         eras: [MeetingCaptureEra]? = nil
     ) -> MeetingAudioTrack {
         MeetingAudioTrack(
@@ -213,6 +215,8 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         analysisEnd: TimeInterval? = nil,
         epoch: MeetingAnalysisEpochID? = nil,
         speaker: MeetingBackendSpeakerAssignment? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         spanIDs: [String]? = nil,
         confidence: Double? = nil
     ) -> MeetingFinalTextUnit {
@@ -735,7 +739,10 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
                 id: "r-0", spanID: span.id, analysisStart: 0, analysisEnd: 4, status: .processed
             ),
             MeetingSpanCoverageReceipt(
-                id: "r-1", spanID: span.id, analysisStart: 4, analysisEnd: 10,
+                id: "r-1",
+                spanID: span.id,
+                analysisStart: 4,
+                analysisEnd: 10,
                 status: .providerTruncated
             ),
         ]
@@ -779,7 +786,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         let baseEvidence = self.evidence(plan: plan, units: [])
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: validReceipts + [MeetingSpanCoverageReceipt(
                 id: "receipt-0", spanID: span.id, analysisStart: 9, analysisEnd: 10, status: .processed
             )]
@@ -788,7 +797,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: [MeetingSpanCoverageReceipt(
                 id: "r-x", spanID: "no-such-span", analysisStart: 0, analysisEnd: 1, status: .processed
             )]
@@ -799,7 +810,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: [MeetingSpanCoverageReceipt(
                 id: "r-oob", spanID: span.id, analysisStart: 0, analysisEnd: 99, status: .processed
             )]
@@ -810,7 +823,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: [
                 MeetingSpanCoverageReceipt(
                     id: "r-0", spanID: span.id, analysisStart: 0, analysisEnd: 6, status: .processed
@@ -826,7 +841,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: [MeetingSpanCoverageReceipt(
                 id: "r-partial", spanID: span.id, analysisStart: 0, analysisEnd: 5, status: .processed
             )]
@@ -837,7 +854,9 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(
-            plan: plan, manifest: manifest, evidence: baseEvidence,
+            plan: plan,
+            manifest: manifest,
+            evidence: baseEvidence,
             coverageReceipts: [MeetingSpanCoverageReceipt(
                 id: "r-flat", spanID: span.id, analysisStart: 5, analysisEnd: 5, status: .processed
             )]
@@ -1013,7 +1032,11 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         let units = [
             self.unit(id: "emitted", span: micSpan, text: "kept", analysisStart: 1, analysisEnd: 2),
             self.unit(
-                id: "ambiguous", span: micSpan, text: "fuzzy", analysisStart: 1.5, analysisEnd: 2.5,
+                id: "ambiguous",
+                span: micSpan,
+                text: "fuzzy",
+                analysisStart: 1.5,
+                analysisEnd: 2.5,
                 speaker: .ambiguous([
                     MeetingBackendSpeakerToken(analysisEpochID: micSpan.analysisEpochID, label: "slot-0"),
                     MeetingBackendSpeakerToken(analysisEpochID: micSpan.analysisEpochID, label: "slot-1"),
@@ -1273,7 +1296,11 @@ final class MeetingTranscriptAssemblerTests: XCTestCase {
         let (plan, manifest, span) = try self.onlineMicFixture()
         let assignedUnit = self.unit(id: "u-assigned", span: span, text: "clear", analysisStart: 1, analysisEnd: 2)
         let unassignedUnit = self.unit(
-            id: "u-unassigned", span: span, text: "noEvidence", analysisStart: 3, analysisEnd: 4,
+            id: "u-unassigned",
+            span: span,
+            text: "noEvidence",
+            analysisStart: 3,
+            analysisEnd: 4,
             speaker: .unassigned
         )
         let result = try MeetingTranscriptAssembler().assemble(MeetingAssemblyInput(

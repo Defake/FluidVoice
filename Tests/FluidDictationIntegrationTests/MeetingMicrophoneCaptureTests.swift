@@ -1,6 +1,6 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -21,7 +21,7 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
     func testValidStampsMapHostTimeToCMTimeExactly() {
         var clock = self.makeClock()
-        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 2.5), frameCount: 4_800)
+        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 2.5), frameCount: 4800)
         guard case let .emitted(pts, synthesized, corrected, resynced) = outcome else {
             return XCTFail("expected an emitted stamp")
         }
@@ -33,8 +33,8 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
     func testValidStampsAreContinuousAcrossBuffers() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
-        let second = clock.stamp(hostTime: self.hostTime(seconds: 0.1), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
+        let second = clock.stamp(hostTime: self.hostTime(seconds: 0.1), frameCount: 4800)
         guard case let .emitted(pts, _, corrected, _) = second else {
             return XCTFail("expected an emitted stamp")
         }
@@ -63,22 +63,26 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         if let readback = result.voiceProcessingReadback {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let json = String(decoding: try encoder.encode(readback), as: UTF8.self)
+            // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+            // swiftlint:disable:next optional_data_string_conversion
+            let json = try String(decoding: encoder.encode(readback), as: UTF8.self)
             print("[phase1] voice-processing-readback=\n\(json)")
         } else {
             XCTFail("running VPIO capture did not produce a read-back snapshot")
         }
-#if DEBUG
+        #if DEBUG
         if let acoustic = result.acousticTrialB {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let json = String(decoding: try encoder.encode(acoustic), as: UTF8.self)
+            // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+            // swiftlint:disable:next optional_data_string_conversion
+            let json = try String(decoding: encoder.encode(acoustic), as: UTF8.self)
             print("[phase0-trial-b] numeric-sidecar=\n\(json)")
             XCTAssertEqual(acoustic.schemaVersion, MeetingVPIOAcousticTrialBReport.currentSchemaVersion)
             XCTAssertFalse(acoustic.runs.isEmpty)
             XCTAssertTrue(acoustic.stimulus.withinSafetyBounds)
         }
-#endif
+        #endif
         XCTAssertGreaterThanOrEqual(validRate, 0.99)
         XCTAssertEqual(result.writerDiscontinuities, 0)
         XCTAssertEqual(result.writerBackpressureEvents, 0)
@@ -105,8 +109,8 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
     func testInvalidStampsExtrapolateFromLastValid() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800) // anchor at t=0, 100ms
-        let outcome = clock.stamp(hostTime: nil, frameCount: 4_800) // extrapolated 100ms window
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800) // anchor at t=0, 100ms
+        let outcome = clock.stamp(hostTime: nil, frameCount: 4800) // extrapolated 100ms window
         guard case let .emitted(pts, synthesized, _, _) = outcome else {
             return XCTFail("expected an emitted (synthesized) stamp")
         }
@@ -123,7 +127,7 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         for _ in 0..<60 { // 60 * 10ms = 600ms of invalid stamps
             let outcome = clock.stamp(hostTime: nil, frameCount: 480)
             switch outcome {
-            case .emitted(_, let synthesized, _, _):
+            case let .emitted(_, synthesized, _, _):
                 XCTAssertTrue(synthesized)
                 XCTAssertFalse(sawDrop, "no emission should follow a drop without a valid resync")
                 emittedSynthesizedCount += 1
@@ -139,7 +143,9 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
     func testValidStampAfterADropResyncsAndCorrectsTheAnchor() {
         var clock = self.makeClock()
         _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 480)
-        for _ in 0..<60 { _ = clock.stamp(hostTime: nil, frameCount: 480) }
+        for _ in 0..<60 {
+            _ = clock.stamp(hostTime: nil, frameCount: 480)
+        }
 
         let resync = clock.stamp(hostTime: self.hostTime(seconds: 1.2), frameCount: 480)
         guard case let .emitted(pts, synthesized, corrected, resynced) = resync else {
@@ -160,9 +166,9 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
     func testSmallDivergenceDoesNotCorrectTheAnchor() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
         // 1/96000s divergence is half a frame at 48kHz — below the one-frame correction threshold.
-        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.1 + 1.0 / 96_000), frameCount: 4_800)
+        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.1 + 1.0 / 96_000), frameCount: 4800)
         guard case let .emitted(_, _, corrected, _) = outcome else {
             return XCTFail("expected an emitted stamp")
         }
@@ -171,8 +177,8 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
 
     func testLargeDivergenceCorrectsTheAnchorWithoutASynthesizedFlag() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
-        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.15), frameCount: 4_800) // 50ms off
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
+        let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.15), frameCount: 4800) // 50ms off
         guard case let .emitted(pts, synthesized, corrected, resynced) = outcome else {
             return XCTFail("expected an emitted stamp")
         }
@@ -185,17 +191,25 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
     // MARK: - CMSampleBuffer synthesis round-trip
 
     private func makeMonoBuffer(frameCount: Int, fill: (Int) -> Float) -> AVAudioPCMBuffer {
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount))!
         buffer.frameLength = AVAudioFrameCount(frameCount)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let channel = buffer.floatChannelData![0]
-        for index in 0..<frameCount { channel[index] = fill(index) }
+        for index in 0..<frameCount {
+            channel[index] = fill(index)
+        }
         return buffer
     }
 
     func testSynthesizedSampleBufferRoundTripsThroughLiveSampleCopy() throws {
         let frameCount = 480
-        let source = self.makeMonoBuffer(frameCount: frameCount) { Float($0) / 1_000 }
+        let source = self.makeMonoBuffer(frameCount: frameCount) { Float($0) / 1000 }
         let pts = CMTime(value: 123, timescale: 48_000)
 
         let sampleBuffer = try XCTUnwrap(meetingMicrophoneSynthesizeSampleBuffer(from: source, presentationTime: pts))
@@ -210,7 +224,9 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         XCTAssertEqual(copy.buffer.format.channelCount, 1)
         XCTAssertEqual(copy.pts, pts)
         for index in 0..<frameCount {
-            XCTAssertEqual(copy.buffer.floatChannelData![0][index], Float(index) / 1_000)
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
+            XCTAssertEqual(copy.buffer.floatChannelData![0][index], Float(index) / 1000)
         }
     }
 
@@ -222,13 +238,21 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         )
 
         let before = try XCTUnwrap(MeetingLiveSampleCopy.copy(sampleBuffer))
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let beforeValues = (0..<frameCount).map { before.buffer.floatChannelData![0][$0] }
 
         // Mutate the source AFTER synthesis — the synthesized buffer must not see this.
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let channel = source.floatChannelData![0]
-        for index in 0..<frameCount { channel[index] = -99 }
+        for index in 0..<frameCount {
+            channel[index] = -99
+        }
 
         let after = try XCTUnwrap(MeetingLiveSampleCopy.copy(sampleBuffer))
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let afterValues = (0..<frameCount).map { after.buffer.floatChannelData![0][$0] }
 
         XCTAssertEqual(beforeValues, afterValues)
@@ -357,8 +381,11 @@ final class MeetingMicrophoneCaptureTests: XCTestCase {
         let (writer, sessionDirectory) = try self.makeWriter()
         defer { try? FileManager.default.removeItem(at: sessionDirectory) }
         for tick in 0..<100 {
-            self.pushBuffer(writer, ptsSeconds: 188_092.2630985 + Double(tick) * 0.01 - Double(tick) * 0.000000042,
-                            timescale: 1_000_000_000)
+            self.pushBuffer(
+                writer,
+                ptsSeconds: 188_092.2_630_985 + Double(tick) * 0.01 - Double(tick) * 0.000_000_042,
+                timescale: 1_000_000_000
+            )
             if tick.isMultiple(of: 10) { _ = await writer.snapshot() }
         }
         let track = await writer.stop()
@@ -523,12 +550,12 @@ extension MeetingMicrophoneCaptureTests {
     /// re-baselined one full window off, so every subsequent stamp re-corrected forever.
     func testCorrectionDoesNotLatchAcrossSubsequentStamps() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
         // Force one genuine correction with a 5ms excursion…
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0.105), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0.105), frameCount: 4800)
         // …then five contiguous jitter-free stamps on the shifted timeline: zero further corrections.
         for i in 2...6 {
-            let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.005 + Double(i) * 0.1), frameCount: 4_800)
+            let outcome = clock.stamp(hostTime: self.hostTime(seconds: 0.005 + Double(i) * 0.1), frameCount: 4800)
             guard case let .emitted(_, _, corrected, _) = outcome else { return XCTFail("expected emission") }
             XCTAssertFalse(corrected, "stamp \(i) re-corrected: the latch is back")
         }
@@ -538,12 +565,12 @@ extension MeetingMicrophoneCaptureTests {
     /// previous end.
     func testCorrectionLeavesEmittedPTSContinuous() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
-        guard case let .emitted(before, _, corrected1, _) = clock.stamp(hostTime: self.hostTime(seconds: 0.108), frameCount: 4_800) else {
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
+        guard case let .emitted(before, _, corrected1, _) = clock.stamp(hostTime: self.hostTime(seconds: 0.108), frameCount: 4800) else {
             return XCTFail("expected emission")
         }
         XCTAssertTrue(corrected1)
-        guard case let .emitted(after, _, _, _) = clock.stamp(hostTime: self.hostTime(seconds: 0.208), frameCount: 4_800) else {
+        guard case let .emitted(after, _, _, _) = clock.stamp(hostTime: self.hostTime(seconds: 0.208), frameCount: 4800) else {
             return XCTFail("expected emission")
         }
         XCTAssertEqual(after.seconds - before.seconds, 0.1, accuracy: 1.0 / 48_000)
@@ -555,7 +582,7 @@ extension MeetingMicrophoneCaptureTests {
         let windows = 72_000 // 2h of 100ms windows
         for i in 0..<windows {
             let actual = Double(i) * 0.1 * (1 + 6.4e-6)
-            _ = clock.stamp(hostTime: self.hostTime(seconds: actual), frameCount: 4_800)
+            _ = clock.stamp(hostTime: self.hostTime(seconds: actual), frameCount: 4800)
         }
         XCTAssertEqual(clock.divergenceStepEventCount, 0)
         XCTAssertGreaterThan(clock.cumulativeAbsorbedCorrectionSeconds, 0, "drift shows up as absorbed corrections")
@@ -564,11 +591,11 @@ extension MeetingMicrophoneCaptureTests {
     func testSingleJumpFiresExactlyOneStepEvent() {
         var clock = self.makeClock()
         for i in 0..<10 {
-            _ = clock.stamp(hostTime: self.hostTime(seconds: Double(i) * 0.1), frameCount: 4_800)
+            _ = clock.stamp(hostTime: self.hostTime(seconds: Double(i) * 0.1), frameCount: 4800)
         }
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 1.0 + 0.050), frameCount: 4_800) // 50ms step
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 1.0 + 0.050), frameCount: 4800) // 50ms step
         for i in 11..<20 {
-            _ = clock.stamp(hostTime: self.hostTime(seconds: 0.050 + Double(i) * 0.1), frameCount: 4_800)
+            _ = clock.stamp(hostTime: self.hostTime(seconds: 0.050 + Double(i) * 0.1), frameCount: 4800)
         }
         XCTAssertEqual(clock.divergenceStepEventCount, 1)
         XCTAssertEqual(clock.maxDivergenceStepSeconds, 0.050, accuracy: 0.001)
@@ -578,12 +605,14 @@ extension MeetingMicrophoneCaptureTests {
     /// anchor clamps forward so PTS never steps behind emitted audio.
     func testResyncNeverStepsBehindEmittedAudio() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 0), frameCount: 4800)
         // 500ms of synthesized emission (cap-inclusive), delivered as a burst…
-        for _ in 0..<5 { _ = clock.stamp(hostTime: nil, frameCount: 4_800) }
-        _ = clock.stamp(hostTime: nil, frameCount: 4_800) // over cap → dropping
+        for _ in 0..<5 {
+            _ = clock.stamp(hostTime: nil, frameCount: 4800)
+        }
+        _ = clock.stamp(hostTime: nil, frameCount: 4800) // over cap → dropping
         // …then a valid stamp whose host time is EARLIER than the emitted end (0.6s emitted, 0.3s wall).
-        guard case let .emitted(pts, _, _, resynced) = clock.stamp(hostTime: self.hostTime(seconds: 0.3), frameCount: 4_800) else {
+        guard case let .emitted(pts, _, _, resynced) = clock.stamp(hostTime: self.hostTime(seconds: 0.3), frameCount: 4800) else {
             return XCTFail("expected resync emission")
         }
         XCTAssertTrue(resynced)
@@ -595,9 +624,9 @@ extension MeetingMicrophoneCaptureTests {
 
     func testValidHostSecondsBoundsTrackFirstAndLastValidStamp() throws {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 5), frameCount: 4_800)
-        _ = clock.stamp(hostTime: nil, frameCount: 4_800) // synthesized: must not move the bounds
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 5.3), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 5), frameCount: 4800)
+        _ = clock.stamp(hostTime: nil, frameCount: 4800) // synthesized: must not move the bounds
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 5.3), frameCount: 4800)
         XCTAssertEqual(try XCTUnwrap(clock.firstValidHostSeconds), 5.0, accuracy: 1e-9)
         XCTAssertEqual(try XCTUnwrap(clock.lastValidHostSeconds), 5.3, accuracy: 1e-9)
     }
@@ -610,9 +639,9 @@ extension MeetingMicrophoneCaptureTests {
 
     func testTimelineResetReanchorsOnNextValidStamp() {
         var clock = self.makeClock()
-        _ = clock.stamp(hostTime: self.hostTime(seconds: 5), frameCount: 4_800)
+        _ = clock.stamp(hostTime: self.hostTime(seconds: 5), frameCount: 4800)
         clock.requestTimelineReset()
-        guard case let .emitted(pts, _, _, _) = clock.stamp(hostTime: self.hostTime(seconds: 9), frameCount: 4_800) else {
+        guard case let .emitted(pts, _, _, _) = clock.stamp(hostTime: self.hostTime(seconds: 9), frameCount: 4800) else {
             return XCTFail("expected emission after reset")
         }
         XCTAssertEqual(pts.seconds, 9.0, accuracy: 1.0 / 48_000)
@@ -620,8 +649,9 @@ extension MeetingMicrophoneCaptureTests {
 }
 
 // MARK: - Bidirectional route-following mic: capture-side unit tests (no real engines/sessions)
+
 extension MeetingMicrophoneCaptureTests {
-    // MARK: MeetingEraAcceptanceFence
+    // MARK: - MeetingEraAcceptanceFence
 
     func testFenceBeginSampleAfterQuiesceReturnsFalse() async {
         let fence = MeetingEraAcceptanceFence()
@@ -653,7 +683,6 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertFalse(fence.beginSample())
         XCTAssertFalse(fence.beginSample())
     }
-
 
     func testAckResumeBeforeWaitReturnsImmediately() async {
         let ack = MeetingCaptureMethodChangeAck()
@@ -689,13 +718,15 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertLessThan(Date().timeIntervalSince(start), 0.5)
     }
 
-    // MARK: Writer beginSplice
+    // MARK: - Writer beginSplice
 
     func testBeginSpliceReturnsFinalizedChunkPresentationEnd() async throws {
         let (writer, sessionDirectory) = try self.makeWriter()
         defer { try? FileManager.default.removeItem(at: sessionDirectory) }
 
-        for tick in 0..<5 { self.pushBuffer(writer, ptsSeconds: Double(tick) * 0.01) }
+        for tick in 0..<5 {
+            self.pushBuffer(writer, ptsSeconds: Double(tick) * 0.01)
+        }
         try? await Task.sleep(nanoseconds: 50_000_000) // let enqueue's async consume land
 
         let boundary = await writer.beginSplice()
@@ -767,15 +798,23 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertEqual(track.chunks[1].presentationStart.seconds, 0.21, accuracy: 1e-6)
     }
 
-    // MARK: Writer format-mismatch guard
+    // MARK: - Writer format-mismatch guard
 
     private func makeStereoBuffer(frameCount: Int, fill: (Int) -> Float) -> AVAudioPCMBuffer {
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 2, interleaved: false)!
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount))!
         buffer.frameLength = AVAudioFrameCount(frameCount)
         for channel in 0..<2 {
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             let data = buffer.floatChannelData![channel]
-            for index in 0..<frameCount { data[index] = fill(index) }
+            for index in 0..<frameCount {
+                data[index] = fill(index)
+            }
         }
         return buffer
     }
@@ -793,10 +832,14 @@ extension MeetingMicrophoneCaptureTests {
         let sessionDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sessionDirectory) }
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "test-mic", sourceDisplayName: "Test Microphone",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "test-mic",
+            sourceDisplayName: "Test Microphone",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         var events: [MeetingCaptureEvent] = []
         let lock = NSLock()
@@ -827,7 +870,7 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertEqual(finalizedFormats[1].channelCount, 2)
     }
 
-    // MARK: Transactional updateTrackMetadata
+    // MARK: - Transactional updateTrackMetadata
 
     func testUpdateTrackMetadataPersistsSuccessfully() async throws {
         let (writer, sessionDirectory) = try self.makeWriter()
@@ -860,7 +903,7 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertNil(track.captureMethod, "a failed persist must leave the in-memory track untouched")
     }
 
-    // MARK: MeetingCaptureDeviceElection
+    // MARK: - MeetingCaptureDeviceElection
 
     private func micIdentity(id: String, uid: String?, name: String, role: MeetingMicrophoneRole = .unknown) -> MeetingMicrophoneIdentity {
         MeetingMicrophoneIdentity(captureDeviceID: id, coreAudioUID: uid, displayName: name, role: role)
@@ -972,21 +1015,28 @@ extension MeetingMicrophoneCaptureTests {
         }
     }
 
-    // MARK: Codable: captureEras
+    // MARK: - Codable: captureEras
 
     private func sampleEra(method: MeetingAudioTrackCaptureMethod, start: Double) -> MeetingCaptureEra {
         MeetingCaptureEra(
-            method: method, deviceUID: "uid-1", deviceName: "MacBook Mic",
-            roleAtElection: .personal, startSeconds: start
+            method: method,
+            deviceUID: "uid-1",
+            deviceName: "MacBook Mic",
+            roleAtElection: .personal,
+            startSeconds: start
         )
     }
 
     func testMultiEraCaptureErasRoundTrip() throws {
         var track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         track.captureMethod = .avCaptureSession
         track.captureEras = [
@@ -1046,10 +1096,14 @@ extension MeetingMicrophoneCaptureTests {
     func testMultiEraTrackCaptureMethodIsAvCaptureSession() {
         // Multi-era tracks write the conservative track-level captureMethod for legacy readers.
         var track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         track.captureEras = [
             self.sampleEra(method: .voiceProcessing, start: 0),
@@ -1060,7 +1114,7 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertEqual(track.captureEras?.first?.method, .voiceProcessing)
     }
 
-    // MARK: Gate re-use per era
+    // MARK: - Gate re-use per era
 
     func testFreshGatePerEraPassesBufferingFlushPassthroughWhilePreviousEraGateStaysTerminal() throws {
         let firstEraGate = MeetingVoiceProcessingCommitGate()
@@ -1120,12 +1174,17 @@ extension MeetingMicrophoneCaptureTests {
     }
 
     // MARK: - Not covered here: phase-machine transitions (file-private, hardware-driven —
+
     // needs the Phase1 probe) and writer finalizationSlots saturation (no test seam exposed).
     func testPreselectionBuiltInMicDefaultsToUnknownRole() {
         let builtIn = MeetingMicrophoneIdentity(captureDeviceID: "built-in", coreAudioUID: "BuiltInMicrophoneDevice", displayName: "MacBook Pro Microphone")
         let selection = MeetingMicrophonePreselection.select(
-            identities: [builtIn], savedDeviceID: "other-device", savedRole: .personal,
-            systemDefaultUID: "BuiltInMicrophoneDevice", preferredInputUID: nil, systemDefaultCaptureID: nil
+            identities: [builtIn],
+            savedDeviceID: "other-device",
+            savedRole: .personal,
+            systemDefaultUID: "BuiltInMicrophoneDevice",
+            preferredInputUID: nil,
+            systemDefaultCaptureID: nil
         )
         XCTAssertEqual(selection.deviceID, "built-in")
         XCTAssertEqual(selection.role, .unknown)
@@ -1145,7 +1204,6 @@ extension MeetingMicrophoneCaptureTests {
         XCTAssertNotEqual(elected.role, .personal)
         XCTAssertNotEqual(elected.role, .shared)
     }
-
 }
 
 private final class MeetingMicrophoneCallbackOrderingState: @unchecked Sendable {

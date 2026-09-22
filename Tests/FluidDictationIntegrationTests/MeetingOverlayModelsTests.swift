@@ -1,6 +1,6 @@
-@testable import FluidVoice_Debug
 import AppKit
 import CoreGraphics
+@testable import FluidVoice_Debug
 import Foundation
 import SwiftUI
 import XCTest
@@ -48,7 +48,10 @@ final class MeetingOverlayGeometryTests: XCTestCase {
         XCTAssertLessThanOrEqual(layout.attributedText.string.count, MeetingRollingCaptionLayout.maximumInputCharacters)
         XCTAssertNotNil(layout.layoutManager.textStorage)
         XCTAssertEqual(layout.selectedGlyphRange.upperBound, layout.layoutManager.numberOfGlyphs)
-        XCTAssertEqual(MeetingRollingCaptionLayout.contentSize, CGSize(width: MeetingOverlayPresentation.captionsContentWidth, height: MeetingOverlayPresentation.captionsContentHeight))
+        XCTAssertEqual(
+            MeetingRollingCaptionLayout.contentSize,
+            CGSize(width: MeetingOverlayPresentation.captionsContentWidth, height: MeetingOverlayPresentation.captionsContentHeight)
+        )
         XCTAssertTrue(CGRect(origin: .zero, size: MeetingRollingCaptionLayout.contentSize).contains(layout.inkBounds))
     }
 
@@ -67,8 +70,10 @@ final class MeetingOverlayGeometryTests: XCTestCase {
                 Color.clear.frame(height: MeetingOverlayPresentation.captionsControlsHeight)
                 Color.clear.frame(height: MeetingOverlayPresentation.captionsTopInset)
                 MeetingRollingCaptionView(text: text)
-                    .frame(width: MeetingOverlayPresentation.captionsContentWidth,
-                           height: MeetingOverlayPresentation.captionsContentHeight)
+                    .frame(
+                        width: MeetingOverlayPresentation.captionsContentWidth,
+                        height: MeetingOverlayPresentation.captionsContentHeight
+                    )
                 Color.clear.frame(height: MeetingOverlayPresentation.captionsBottomInset)
                 Color.gray.frame(height: MeetingOverlayPresentation.captionsFooterHeight)
             }
@@ -155,11 +160,31 @@ final class MeetingOverlayGeometryTests: XCTestCase {
         let padding = MeetingOverlayPadding(top: 10, left: 12, bottom: 14, right: 16)
         let cases: [(MeetingOverlayVisibleAnchor, CGSize, CGRect)] = [
             (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: 200), self.pill, CGRect(origin: CGPoint(x: self.screen.minX, y: 200), size: self.pill)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: 200), self.pill, CGRect(origin: CGPoint(x: self.screen.maxX - self.pill.width, y: 200), size: self.pill)),
-            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.minY - 40), self.pill, CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.minY), size: self.pill)),
-            (MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.maxY), self.pill, CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.maxY - self.pill.height), size: self.pill)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: self.screen.minY - 8), self.captions, CGRect(origin: CGPoint(x: self.screen.minX, y: self.screen.minY), size: self.captions)),
-            (MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: self.screen.maxY), self.captions, CGRect(origin: CGPoint(x: self.screen.maxX - self.captions.width, y: self.screen.maxY - self.captions.height), size: self.captions)),
+            (
+                MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: 200),
+                self.pill,
+                CGRect(origin: CGPoint(x: self.screen.maxX - self.pill.width, y: 200), size: self.pill)
+            ),
+            (
+                MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.minY - 40),
+                self.pill,
+                CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.minY), size: self.pill)
+            ),
+            (
+                MeetingOverlayVisibleAnchor(centerX: 820, bottomY: self.screen.maxY),
+                self.pill,
+                CGRect(origin: CGPoint(x: 820 - self.pill.width / 2, y: self.screen.maxY - self.pill.height), size: self.pill)
+            ),
+            (
+                MeetingOverlayVisibleAnchor(centerX: self.screen.minX, bottomY: self.screen.minY - 8),
+                self.captions,
+                CGRect(origin: CGPoint(x: self.screen.minX, y: self.screen.minY), size: self.captions)
+            ),
+            (
+                MeetingOverlayVisibleAnchor(centerX: self.screen.maxX, bottomY: self.screen.maxY),
+                self.captions,
+                CGRect(origin: CGPoint(x: self.screen.maxX - self.captions.width, y: self.screen.maxY - self.captions.height), size: self.captions)
+            ),
         ]
 
         for (anchor, size, expectedVisible) in cases {
@@ -309,11 +334,11 @@ final class MeetingOverlayPresentationReducerTests: XCTestCase {
         XCTAssertEqual(reducer.presentation, .pill)
     }
 
-    func testPreferenceRoundTripAndCaseIterable() {
+    func testPreferenceRoundTripAndCaseIterable() throws {
         XCTAssertEqual(MeetingOverlayPreference.allCases, [.pill, .captions])
         for preference in MeetingOverlayPreference.allCases {
-            let data = try! JSONEncoder().encode(preference)
-            let decoded = try! JSONDecoder().decode(MeetingOverlayPreference.self, from: data)
+            let data = try JSONEncoder().encode(preference)
+            let decoded = try JSONDecoder().decode(MeetingOverlayPreference.self, from: data)
             XCTAssertEqual(decoded, preference)
         }
     }

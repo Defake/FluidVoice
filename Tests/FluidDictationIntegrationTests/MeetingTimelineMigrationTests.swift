@@ -127,6 +127,6 @@ final class MeetingTimelineMigrationTests: XCTestCase {
     }
 
     private func mediaTime(_ seconds: TimeInterval) -> MeetingMediaTime {
-        MeetingMediaTime(value: Int64((seconds * 1_000).rounded()), timescale: 1_000)
+        MeetingMediaTime(value: Int64((seconds * 1000).rounded()), timescale: 1000)
     }
 }

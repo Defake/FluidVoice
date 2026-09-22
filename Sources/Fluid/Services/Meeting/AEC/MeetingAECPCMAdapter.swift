@@ -113,7 +113,9 @@ nonisolated enum MeetingAECPCMAdapter {
         }
         if channels > 1 {
             let divisor = Float(channels)
-            for index in mono.indices { mono[index] /= divisor }
+            for index in mono.indices {
+                mono[index] /= divisor
+            }
         }
         guard mono.allSatisfy(\.isFinite) else { return .failure(.nonFiniteSamples) }
 

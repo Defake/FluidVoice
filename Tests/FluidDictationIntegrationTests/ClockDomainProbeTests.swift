@@ -1,6 +1,6 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import ScreenCaptureKit
 import XCTest
@@ -57,7 +57,11 @@ final class ClockDomainProbeTests: XCTestCase {
             if let fit = await recorder.regression() {
                 print(String(
                     format: "[clock] t=%4.0fs n=%6d slope=%+.3f ppm  residualStd=%.3f ms  ptsSpan=%.1fs",
-                    elapsed, fit.count, fit.slopePPM, fit.residualStdMs, fit.ptsSpanSeconds
+                    elapsed,
+                    fit.count,
+                    fit.slopePPM,
+                    fit.residualStdMs,
+                    fit.ptsSpanSeconds
                 ))
             }
         }
@@ -68,12 +72,14 @@ final class ClockDomainProbeTests: XCTestCase {
         }
         print(String(
             format: "\n[clock] FINAL n=%d slope=%+.3f ppm (95%% CI ±%.3f)  residualStd=%.3f ms  gate=%@",
-            fit.count, fit.slopePPM, fit.slopeCI95PPM, fit.residualStdMs,
+            fit.count,
+            fit.slopePPM,
+            fit.slopeCI95PPM,
+            fit.residualStdMs,
             abs(fit.slopePPM) < 20 ? "CONSTANT OFFSET OK" : "LINEAR MODEL REQUIRED"
         ))
     }
 }
-
 
 private final class ClockProbeOutput: NSObject, SCStreamOutput {
     private let recorder: ClockPairRecorder

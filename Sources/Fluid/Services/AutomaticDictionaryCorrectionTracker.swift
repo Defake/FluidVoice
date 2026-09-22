@@ -527,7 +527,8 @@ final class AutomaticDictionaryCorrectionTracker {
         self.evidencePreparationTask = Task { @MainActor [weak self, context] in
             let observedText = candidate.heardText
             let evidence = await Task.detached(priority: .utility) {
-                guard DictionaryMatcherExperiment.sharedFeaturesEnabled, pronunciationGeneration == DictionaryMatcherExperiment.generation, let context else { return DictionaryLearningAudioEvidence?.none }
+                guard DictionaryMatcherExperiment.sharedFeaturesEnabled, pronunciationGeneration == DictionaryMatcherExperiment.generation,
+                      let context else { return DictionaryLearningAudioEvidence?.none }
                 return try? DictionaryLearningAlignmentResolver.resolve(
                     recording: context.recording,
                     deliveredTextBeforeEdit: context.deliveredTextBeforeEdit,

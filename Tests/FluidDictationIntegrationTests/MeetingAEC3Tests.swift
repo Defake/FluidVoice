@@ -1,9 +1,9 @@
 #if DEBUG
 
-@testable import FluidVoice_Debug
 import AudioToolbox
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -219,7 +219,9 @@ final class MeetingAEC3Tests: XCTestCase {
                 let inputs = micFirst
                     ? [self.block(.capture, start: start, count: 480), self.block(.render, start: start, count: 480)]
                     : [self.block(.render, start: start, count: 480), self.block(.capture, start: start, count: 480)]
-                for input in inputs { result += self.paired(joiner.append(input)) }
+                for input in inputs {
+                    result += self.paired(joiner.append(input))
+                }
             }
             return result.map(\.capture.presentationTime)
         }
@@ -243,7 +245,7 @@ final class MeetingAEC3Tests: XCTestCase {
         var joiner = MeetingAECStreamJoiner()
         _ = joiner.append(self.block(.render, start: 0, count: 480))
         _ = joiner.append(self.block(.capture, start: 0, count: 480))
-        let emissions = joiner.append(self.block(.capture, start: 480, count: 5_280))
+        let emissions = joiner.append(self.block(.capture, start: 480, count: 5280))
         XCTAssertTrue(emissions.contains { if case .reset(.renderLate) = $0 { return true }; return false })
         XCTAssertGreaterThan(joiner.diagnostics.bypassFrames, 0)
         XCTAssertEqual(joiner.diagnostics.retainedCaptureSamples, 0)
@@ -310,7 +312,7 @@ final class MeetingAEC3Tests: XCTestCase {
         let drifted = MeetingAECPCMBlock(
             kind: .render,
             stream: self.token,
-            presentationTime: CMTime(value: 1_925, timescale: 192_000),
+            presentationTime: CMTime(value: 1925, timescale: 192_000),
             duration: CMTime(value: 480, timescale: 48_000),
             samples: [Float](repeating: 0.1, count: 480)
         )
@@ -402,7 +404,7 @@ final class MeetingAEC3Tests: XCTestCase {
         var synthesizedSource = [Float](repeating: 0.4, count: 480)
         let synthesized = try XCTUnwrap(MeetingAECPCMAdapter.synthesize(
             samples: synthesizedSource,
-            presentationTime: CMTime(value: 9_600, timescale: 48_000)
+            presentationTime: CMTime(value: 9600, timescale: 48_000)
         ))
         synthesizedSource = [Float](repeating: -0.4, count: 480)
         let extracted = try MeetingAECPCMAdapter.extract(
@@ -411,7 +413,7 @@ final class MeetingAEC3Tests: XCTestCase {
             stream: self.token
         ).get()
         XCTAssertEqual(extracted.samples.first, 0.4)
-        XCTAssertEqual(extracted.presentationTime, CMTime(value: 9_600, timescale: 48_000))
+        XCTAssertEqual(extracted.presentationTime, CMTime(value: 9600, timescale: 48_000))
         XCTAssertEqual(extracted.duration, CMTime(value: 480, timescale: 48_000))
         _ = synthesizedSource
     }
@@ -511,9 +513,9 @@ final class MeetingAEC3Tests: XCTestCase {
 
     func testAECProvenanceIsBackwardCompatibleAndSoftwareProtectionAdmits() throws {
         XCTAssertTrue(MeetingMicrophoneEchoProtection.softwareEchoCancelled.admitsTranscript)
-        let legacy = """
+        let legacy = Data("""
         {"method":"screenCaptureKit","roleAtElection":"unknown","echoProtection":"unprotected","startSeconds":0}
-        """.data(using: .utf8)!
+        """.utf8)
         let decoded = try JSONDecoder().decode(MeetingCaptureEra.self, from: legacy)
         XCTAssertNil(decoded.aecProvenance)
 
@@ -530,18 +532,28 @@ final class MeetingAEC3Tests: XCTestCase {
 
         let eras = [
             MeetingCaptureEra(
-                method: .screenCaptureKit, deviceUID: nil, deviceName: nil,
-                roleAtElection: .personal, echoProtection: .unprotected,
+                method: .screenCaptureKit,
+                deviceUID: nil,
+                deviceName: nil,
+                roleAtElection: .personal,
+                echoProtection: .unprotected,
                 startSeconds: -.infinity
             ),
             MeetingCaptureEra(
-                method: .screenCaptureKit, deviceUID: nil, deviceName: nil,
-                roleAtElection: .personal, echoProtection: .softwareEchoCancelled,
-                startSeconds: 2, aecProvenance: MeetingAECConstants.provenance
+                method: .screenCaptureKit,
+                deviceUID: nil,
+                deviceName: nil,
+                roleAtElection: .personal,
+                echoProtection: .softwareEchoCancelled,
+                startSeconds: 2,
+                aecProvenance: MeetingAECConstants.provenance
             ),
             MeetingCaptureEra(
-                method: .screenCaptureKit, deviceUID: nil, deviceName: nil,
-                roleAtElection: .personal, echoProtection: .unprotected,
+                method: .screenCaptureKit,
+                deviceUID: nil,
+                deviceName: nil,
+                roleAtElection: .personal,
+                echoProtection: .unprotected,
                 startSeconds: 4
             ),
         ]
@@ -595,10 +607,10 @@ final class MeetingAEC3Tests: XCTestCase {
         XCTAssertEqual(live.count, 0)
 
         let promotionPTS = CMTime(value: 200 * 480, timescale: 48_000)
-        pipeline.consumeRender(try XCTUnwrap(MeetingAECPCMAdapter.synthesize(
+        try pipeline.consumeRender(XCTUnwrap(MeetingAECPCMAdapter.synthesize(
             samples: [Float](repeating: 0.2, count: 480), presentationTime: promotionPTS
         )), stream: self.token)
-        pipeline.consumeCapture(try XCTUnwrap(MeetingAECPCMAdapter.synthesize(
+        try pipeline.consumeCapture(XCTUnwrap(MeetingAECPCMAdapter.synthesize(
             samples: [Float](repeating: 0.1, count: 480), presentationTime: promotionPTS
         )), stream: self.token)
         await committer.waitForPendingCommits()
@@ -606,14 +618,14 @@ final class MeetingAEC3Tests: XCTestCase {
         XCTAssertEqual(track.captureEras?.last?.echoProtection, .softwareEchoCancelled)
         XCTAssertEqual(track.captureEras?.last?.aecProvenance, MeetingAECConstants.provenance)
         XCTAssertEqual(live.count, 1)
-        XCTAssertEqual(try live.firstMean(token: self.token), 0.35, accuracy: 0.000_01)
+        XCTAssertEqual(try live.firstMean(token: self.token), 0.35, accuracy: 0.00_001)
 
         processor.failNext = true
         let failurePTS = CMTime(value: 201 * 480, timescale: 48_000)
-        pipeline.consumeRender(try XCTUnwrap(MeetingAECPCMAdapter.synthesize(
+        try pipeline.consumeRender(XCTUnwrap(MeetingAECPCMAdapter.synthesize(
             samples: [Float](repeating: 0.2, count: 480), presentationTime: failurePTS
         )), stream: self.token)
-        pipeline.consumeCapture(try XCTUnwrap(MeetingAECPCMAdapter.synthesize(
+        try pipeline.consumeCapture(XCTUnwrap(MeetingAECPCMAdapter.synthesize(
             samples: [Float](repeating: 0.1, count: 480), presentationTime: failurePTS
         )), stream: self.token)
         await committer.waitForPendingCommits()
@@ -621,7 +633,8 @@ final class MeetingAEC3Tests: XCTestCase {
         XCTAssertEqual(track.captureEras?.last?.echoProtection, .unprotected)
         XCTAssertNil(track.captureEras?.last?.aecProvenance)
         XCTAssertEqual(
-            track.captureEras?.map(\.startSeconds), [0, 2, 2.01],
+            track.captureEras?.map(\.startSeconds),
+            [0, 2, 2.01],
             "the demotion era must be ordered after the protected era on the sample timeline"
         )
         XCTAssertEqual(live.count, 1, "the bridge-failure raw frame must not reach live ASR")
@@ -736,6 +749,8 @@ final class MeetingAEC3Tests: XCTestCase {
             for step in 0...completedSteps {
                 switch step {
                 case 0:
+                    // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+                    // swiftlint:disable:next force_unwrapping
                     token = controller.reserveConstruction()!
                 case 1:
                     XCTAssertTrue(controller.commitCandidate(token))
@@ -807,7 +822,7 @@ final class MeetingAEC3Tests: XCTestCase {
         }
         XCTAssertEqual(bypasses.count, 1)
         XCTAssertEqual(bypasses.first?.samples.count, 240, "the incomplete tail is emitted raw without padding")
-        XCTAssertEqual(bypasses.first?.presentationTime, CMTime(value: 1_440, timescale: 48_000))
+        XCTAssertEqual(bypasses.first?.presentationTime, CMTime(value: 1440, timescale: 48_000))
         XCTAssertTrue(flushed.contains { if case .reset(.stopped) = $0 { return true }; return false })
         XCTAssertEqual(joiner.diagnostics.retainedCaptureSamples, 0)
         XCTAssertEqual(joiner.diagnostics.retainedRenderSamples, 0)
@@ -890,7 +905,8 @@ final class MeetingAEC3Tests: XCTestCase {
         XCTAssertEqual(track.captureEras?.last?.echoProtection, .unprotected)
         XCTAssertEqual(track.captureEras?.last?.startSeconds, 2)
         XCTAssertEqual(
-            track.captureEras?.count, 3,
+            track.captureEras?.count,
+            3,
             "the second overlapping fail-closed command must not run its own emergency write"
         )
         _ = await writer.stop()
@@ -1043,18 +1059,18 @@ final class MeetingAEC3Tests: XCTestCase {
             ))
         }
 
-        committer.commitProcessed(try sample(480), mayPromote: true)
+        try committer.commitProcessed(sample(480), mayPromote: true)
         XCTAssertTrue(recorder.waitUntilFirstHandlerStarts())
         // This callback runs while the promotion handler is deliberately blocked. It must still
         // observe promotionPending and therefore cannot overtake the first live frame.
-        committer.commitProcessed(try sample(960), mayPromote: false)
+        try committer.commitProcessed(sample(960), mayPromote: false)
         recorder.releaseFirstHandler()
         await committer.waitForPendingCommits()
         _ = await writer.snapshot()
 
-        committer.commitProcessed(try sample(1_440), mayPromote: false)
+        try committer.commitProcessed(sample(1440), mayPromote: false)
         _ = await writer.snapshot()
-        XCTAssertEqual(recorder.presentationValues, [480, 1_440])
+        XCTAssertEqual(recorder.presentationValues, [480, 1440])
         _ = await writer.stop()
     }
 
@@ -1131,6 +1147,8 @@ final class MeetingAEC3Tests: XCTestCase {
         ) == noErr, let blockBuffer else { return nil }
         guard interleaved.withUnsafeBytes({ bytes in
             CMBlockBufferReplaceDataBytes(
+                // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+                // swiftlint:disable:next force_unwrapping
                 with: bytes.baseAddress!,
                 blockBuffer: blockBuffer,
                 offsetIntoDestination: 0,

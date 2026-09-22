@@ -1,3 +1,5 @@
+// Keep the existing capture lifecycle together during integration.
+// swiftlint:disable file_length
 import AppKit
 @preconcurrency import AVFoundation
 import CoreAudio
@@ -79,11 +81,11 @@ actor MeetingCaptureEngine: MeetingCaptureControlling {
             else { throw MeetingCaptureError.applicationNotSelected }
 
             let outputRoute = Self.currentOutputRouteSnapshot()
-#if DEBUG
+            #if DEBUG
             let forcePairedScreenCaptureKit = MeetingSCKPairedDiagnosticGate.enabled()
-#else
+            #else
             let forcePairedScreenCaptureKit = false
-#endif
+            #endif
             let preferDirectAEC3 = MeetingDirectAEC3Gate.enabled()
             let decision = MeetingCapturePathDecider.decide(
                 mode: configuration.mode,
@@ -95,12 +97,12 @@ actor MeetingCaptureEngine: MeetingCaptureControlling {
             switch decision {
             case let .screenCaptureKit(reason):
                 if reason == MeetingCapturePathDecider.directAEC3DefaultReason {
-#if DEBUG
+                    #if DEBUG
                     DebugLogger.shared.log(
                         "Direct AEC3 selected for the built-in-speaker pre-production path.",
                         source: "MeetingCaptureEngine"
                     )
-#endif
+                    #endif
                 } else {
                     let captureDecisionMessage = reason == MeetingCapturePathDecider.diagnosticForceScreenCaptureKitReason
                         ? "C2 diagnostic forced paired ScreenCaptureKit; this is not a production fallback."
@@ -179,7 +181,9 @@ actor MeetingCaptureEngine: MeetingCaptureControlling {
                 group.addTask { await writer.snapshot() }
             }
             var result: [MeetingAudioTrack] = []
-            for await track in group { result.append(track) }
+            for await track in group {
+                result.append(track)
+            }
             return result.sorted { $0.kind.rawValue < $1.kind.rawValue }
         }
         return MeetingCaptureStartResult(
@@ -381,6 +385,8 @@ actor MeetingCaptureEngine: MeetingCaptureControlling {
             count: Int(byteCount) / MemoryLayout<AudioStreamID>.size
         )
         let streamStatus = streams.withUnsafeMutableBytes { bytes in
+            // Buffer size and channel topology are validated before this synchronous C call.
+            // swiftlint:disable:next force_unwrapping
             AudioObjectGetPropertyData(deviceID, &streamsAddress, 0, nil, &byteCount, bytes.baseAddress!)
         }
         guard streamStatus == noErr else { return [] }
@@ -499,7 +505,7 @@ nonisolated enum MeetingCaptureOwnershipGate {
         currentRevision: UInt64,
         stopping: Bool
     ) -> Bool {
-        !stopping && !Self.isSuperseded(observedRevision: taskRevision, currentRevision: currentRevision)
+        !stopping && !self.isSuperseded(observedRevision: taskRevision, currentRevision: currentRevision)
     }
 
     /// The replacement may only be published when the runtime still owns exactly the producers the
@@ -513,7 +519,7 @@ nonisolated enum MeetingCaptureOwnershipGate {
         ownsPendingCandidate: Bool
     ) -> MeetingCaptureStreamPublication {
         guard !stopping else { return .superseded }
-        guard !Self.isSuperseded(observedRevision: authorizedRevision, currentRevision: currentRevision) else {
+        guard !self.isSuperseded(observedRevision: authorizedRevision, currentRevision: currentRevision) else {
             return .superseded
         }
         guard !candidateFailed else { return .failed }
@@ -521,8 +527,10 @@ nonisolated enum MeetingCaptureOwnershipGate {
         return .commit
     }
 
-    /// Direct AEC3 may only be committed onto the exact producer generation it was reserved for,
-    /// while that producer is running and no rebuild owns it.
+    // Direct AEC3 may only be committed onto the exact producer generation it was reserved for,
+    // while that producer is running and no rebuild owns it.
+    // Keep the existing capture/processing contract explicit during integration.
+    // swiftlint:disable:next function_parameter_count
     static func mayCommitAEC(
         reserved: MeetingCaptureStreamOwnership,
         current: MeetingCaptureStreamOwnership,
@@ -550,7 +558,7 @@ nonisolated enum MeetingDirectAEC3Availability {
     }
 
     static func isAvailable(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        Self.isAvailable(
+        self.isAvailable(
             killSwitchEngaged: !MeetingDirectAEC3Gate.enabled(environment: environment)
         )
     }
@@ -586,11 +594,13 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
         qos: .userInteractive
     )
     private let callbackQueueKey = DispatchSpecificKey<UInt8>()
-#if DEBUG
+    #if DEBUG
     private let pairedDiagnosticCollector: MeetingSCKPairedDiagnosticCollector
+    // Keep the descriptive diagnostic contract name consistent with its persisted field.
+    // swiftlint:disable:next identifier_name
     private var pairedDiagnosticProvenanceFailureReported = false
     private var pairedDiagnosticReportEmitted = false
-#endif
+    #endif
     private let stateLock = NSLock()
     private var stream: SCStream
     /// The device actually bound into the current SCK producer epoch. The requested microphone is
@@ -656,9 +666,9 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
         self.microphoneWriter = microphoneWriter
         self.eventHandler = eventHandler
         self.liveAudioHandler = liveAudioHandler
-#if DEBUG
+        #if DEBUG
         self.pairedDiagnosticCollector = MeetingSCKPairedDiagnosticCollector()
-#endif
+        #endif
         super.init()
         self.callbackQueue.setSpecific(key: self.callbackQueueKey, value: 1)
     }
@@ -891,9 +901,9 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
     }
 
     func stop() async throws {
-#if DEBUG
+        #if DEBUG
         defer { self.emitPairedDiagnosticReportIfNeeded() }
-#endif
+        #endif
         #if DEBUG
         AudioTopologyDiagnostics.record(.phaseBegin, owner: .screenCapture, queueRole: .actorControl, phase: .screenCaptureStop)
         defer { AudioTopologyDiagnostics.record(.phaseEnd, owner: .screenCapture, queueRole: .actorControl, phase: .screenCaptureStop) }
@@ -945,7 +955,9 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
             defer { self.retiredAECCommitters.removeAll() }
             return self.retiredAECCommitters + (stoppedPipeline.map { [$0.committer] } ?? [])
         }
-        for committer in committers { await committer.waitForPendingCommits() }
+        for committer in committers {
+            await committer.waitForPendingCommits()
+        }
         if let stopFailure {
             throw MeetingCaptureRuntimeError.stopFailed(stopFailure)
         }
@@ -981,9 +993,9 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
         guard let (aecState, pipeline, streamToken) = callbackState else { return }
         switch outputType {
         case .audio:
-#if DEBUG
+            #if DEBUG
             self.recordPairedDiagnostic(sampleBuffer, output: .applicationAudio)
-#endif
+            #endif
             switch aecState {
             case .active:
                 pipeline?.consumeRender(sampleBuffer, stream: streamToken)
@@ -1000,9 +1012,9 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
             self.applicationWriter.enqueue(sampleBuffer, producerEpoch: streamToken.generation)
             self.liveAudioHandler?(.applicationAudio, sampleBuffer)
         case .microphone:
-#if DEBUG
+            #if DEBUG
             self.recordPairedDiagnostic(sampleBuffer, output: .microphone)
-#endif
+            #endif
             switch aecState {
             case .active:
                 pipeline?.consumeCapture(sampleBuffer, stream: streamToken)
@@ -1280,7 +1292,7 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
         ))
     }
 
-#if DEBUG
+    #if DEBUG
     /// Captures only callback-boundary numeric metadata. The selected-app scope assertion is
     /// reconstructed from the active SCK filter; no application identity enters the diagnostic.
     private func recordPairedDiagnostic(_ sampleBuffer: CMSampleBuffer, output: MeetingSCKPairedOutput) {
@@ -1324,6 +1336,8 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
         guard shouldEmit else { return }
         do {
             let data = try self.pairedDiagnosticCollector.report().jsonData()
+            // Diagnostic JSON is emitted as UTF-8; decoding keeps the report output nonoptional.
+            // swiftlint:disable:next optional_data_string_conversion
             let json = String(decoding: data, as: UTF8.self)
             let message = "SCK paired diagnostic report " + json
             Task { @MainActor in
@@ -1336,7 +1350,7 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
             }
         }
     }
-#endif
+    #endif
 
     /// Route observation closes the live gate and publishes `.raw` synchronously. The shared SCK
     /// queue then resets/detaches the old engine and orders the conservative era before later raw
@@ -1427,8 +1441,8 @@ private final nonisolated class ScreenCaptureMeetingRuntime: NSObject, MeetingCa
                 detail: inputDetail ?? (disposition == .physicallyClosed
                     ? "Microphone transcript admission resumed on a positively identified closed output route."
                     : disposition == .supportedSpeaker
-                        ? "Speaker-route AEC restarted unprotected and is awaiting clock attestation and warm-up."
-                        : "Microphone transcript admission remains disabled because the output route is ambiguous.")
+                    ? "Speaker-route AEC restarted unprotected and is awaiting clock attestation and warm-up."
+                    : "Microphone transcript admission remains disabled because the output route is ambiguous.")
             ))
         }
     }
@@ -2148,8 +2162,12 @@ final nonisolated class MeetingAVCaptureMicrophoneComponent: NSObject,
                 // enabled while those AVFoundation objects retain the device.
                 output.setSampleBufferDelegate(nil, queue: nil)
                 session.beginConfiguration()
-                for sessionOutput in session.outputs { session.removeOutput(sessionOutput) }
-                for sessionInput in session.inputs { session.removeInput(sessionInput) }
+                for sessionOutput in session.outputs {
+                    session.removeOutput(sessionOutput)
+                }
+                for sessionInput in session.inputs {
+                    session.removeInput(sessionInput)
+                }
                 session.commitConfiguration()
             }
         )
@@ -2183,7 +2201,9 @@ final nonisolated class MeetingAVCaptureMicrophoneComponent: NSObject,
         #if DEBUG
         AudioTopologyDiagnostics.record(.ownerWillDeinit, owner: .avCapture, queueRole: .callbackCurrent, phase: .avCaptureStop)
         #endif
-        for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
+        for observer in self.observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private var observers: [NSObjectProtocol] = []
@@ -2223,7 +2243,9 @@ final nonisolated class MeetingAVCaptureMicrophoneComponent: NSObject,
             defer { self.observers.removeAll() }
             return self.observers
         }
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         await self.lifecycle.perform { [self] in
             let proven = !self.session.isRunning
                 && self.session.inputs.isEmpty
@@ -2275,7 +2297,7 @@ final nonisolated class MeetingAVCaptureMicrophoneComponent: NSObject,
         Task { [weak self] in
             guard let self else { return }
             await self.waitForInterruptionEnd(timeoutSeconds: Self.interruptionEndedWaitSeconds)
-            guard !(self.stateLock.withLock({ self.stopping })) else { return }
+            guard !(self.stateLock.withLock { self.stopping }) else { return }
             if !self.session.isRunning {
                 await self.attemptSupervisedRestart(
                     reason: "Route settled after an interruption but the microphone did not resume."
@@ -2335,9 +2357,9 @@ final nonisolated class MeetingAVCaptureMicrophoneComponent: NSObject,
     }
 
     private func attemptSupervisedRestart(reason: String) async {
-        guard !(self.stateLock.withLock({ self.stopping })) else { return }
+        guard !(self.stateLock.withLock { self.stopping }) else { return }
         let restarted = await self.startRunningOnControlQueue()
-        guard !restarted, !(self.stateLock.withLock({ self.stopping })) else { return }
+        guard !restarted, !(self.stateLock.withLock { self.stopping }) else { return }
         self.emitTerminalStopIfNeeded(detail: reason)
     }
 
@@ -2702,11 +2724,13 @@ nonisolated enum MeetingDirectAEC3Gate {
     static let disableEnvironmentKey = "FLUIDVOICE_DISABLE_AEC3"
 
     static func enabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment[Self.disableEnvironmentKey] != "1"
+        environment[self.disableEnvironmentKey] != "1"
     }
 }
 
 nonisolated enum MeetingCaptureTransitionPolicy {
+    // Keep the descriptive diagnostic contract name consistent with its persisted field.
+    // swiftlint:disable:next identifier_name
     static let allowsWithinSessionVoiceProcessingUpgrade = true
     static let maximumRouteRecoveryAttempts = 3
     static let recoveryDwellSeconds: Double = 2
@@ -2733,6 +2757,8 @@ nonisolated enum MeetingCaptureTransitionPolicy {
 nonisolated enum MeetingVoiceProcessingUpgradeDwell {
     static var seconds: Double { MeetingCaptureTransitionPolicy.recoveryDwellSeconds }
 
+    // Keep the existing capture/processing contract explicit during integration.
+    // swiftlint:disable:next function_parameter_count
     static func shouldArm(
         phaseIsAVCapture: Bool,
         dwellAlreadyArmed: Bool,
@@ -3075,11 +3101,11 @@ nonisolated enum MeetingCapturePathDecider {
         if let reason = Self.outputRouteDeclineReason(outputRoute) {
             return .screenCaptureKit(reason: reason)
         }
-#if DEBUG
+        #if DEBUG
         if forcePairedScreenCaptureKit {
             return .screenCaptureKit(reason: Self.diagnosticForceScreenCaptureKitReason)
         }
-#endif
+        #endif
         if preferDirectAEC3 {
             return .screenCaptureKit(reason: Self.directAEC3DefaultReason)
         }
@@ -3170,7 +3196,9 @@ final nonisolated class MeetingVoiceProcessingCommitGate: @unchecked Sendable {
         return true
     }
 
-    /// Point of no return: after this, terminal events and abort() are no-ops.
+    // Point of no return: after this, terminal events and abort() are no-ops.
+    // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+    // swiftlint:disable:next discouraged_optional_collection
     func beginCommitFlush() -> [CMSampleBuffer]? {
         self.lock.lock()
         defer { self.lock.unlock() }
@@ -3179,8 +3207,10 @@ final nonisolated class MeetingVoiceProcessingCommitGate: @unchecked Sendable {
         return self.takeRing()
     }
 
-    /// nil means the ring drained and passthrough is live; else the next batch to flush in order.
-    /// Serialized handoff: passthrough never starts while older buffers wait, so PTS order holds.
+    // nil means the ring drained and passthrough is live; else the next batch to flush in order.
+    // Serialized handoff: passthrough never starts while older buffers wait, so PTS order holds.
+    // nil represents unavailable or invalid evidence, distinct from a valid empty collection.
+    // swiftlint:disable:next discouraged_optional_collection
     func continueCommitFlush() -> [CMSampleBuffer]? {
         self.lock.lock()
         defer { self.lock.unlock() }
@@ -3216,7 +3246,7 @@ nonisolated enum MeetingVoiceProcessingWatchdog {
     static let stalledThresholdSeconds: Double = 10
 
     static func isStalled(secondsSinceLastEmittedBuffer: Double) -> Bool {
-        secondsSinceLastEmittedBuffer >= Self.stalledThresholdSeconds
+        secondsSinceLastEmittedBuffer >= self.stalledThresholdSeconds
     }
 }
 
@@ -3295,8 +3325,24 @@ private actor MeetingOutputRouteListener {
         )
         let defaultInToken: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             #if DEBUG
-            AudioTopologyDiagnostics.record(.callbackBegin, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyDefaultInputDevice, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery)
-            defer { AudioTopologyDiagnostics.record(.callbackEnd, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyDefaultInputDevice, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery) }
+            AudioTopologyDiagnostics.record(
+                .callbackBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyDefaultInputDevice,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            )
+            defer { AudioTopologyDiagnostics.record(
+                .callbackEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyDefaultInputDevice,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            ) }
             #endif
             MeetingMicrophoneEventExecution.afterHALCallback {
                 Task { await self?.handleDefaultInputChanged(generation: generation) }
@@ -3304,8 +3350,24 @@ private actor MeetingOutputRouteListener {
         }
         let defaultOutToken: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             #if DEBUG
-            AudioTopologyDiagnostics.record(.callbackBegin, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyDefaultOutputDevice, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery)
-            defer { AudioTopologyDiagnostics.record(.callbackEnd, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyDefaultOutputDevice, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery) }
+            AudioTopologyDiagnostics.record(
+                .callbackBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyDefaultOutputDevice,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            )
+            defer { AudioTopologyDiagnostics.record(
+                .callbackEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyDefaultOutputDevice,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            ) }
             #endif
             MeetingMicrophoneEventExecution.afterHALCallback {
                 Task { await self?.handleDefaultOutputChanged(generation: generation) }
@@ -3313,19 +3375,54 @@ private actor MeetingOutputRouteListener {
         }
         let restartedToken: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             #if DEBUG
-            AudioTopologyDiagnostics.record(.callbackBegin, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyServiceRestarted, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery)
-            defer { AudioTopologyDiagnostics.record(.callbackEnd, owner: .meetingOutputRoute, objectID: sys, selector: kAudioHardwarePropertyServiceRestarted, scope: kAudioObjectPropertyScopeGlobal, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery) }
+            AudioTopologyDiagnostics.record(
+                .callbackBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyServiceRestarted,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            )
+            defer { AudioTopologyDiagnostics.record(
+                .callbackEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: kAudioHardwarePropertyServiceRestarted,
+                scope: kAudioObjectPropertyScopeGlobal,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            ) }
             #endif
             MeetingMicrophoneEventExecution.afterHALCallback {
                 Task { await self?.handleServiceRestart(generation: generation) }
             }
         }
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddBegin, owner: .meetingOutputRoute, objectID: sys, selector: defaultInAddr.mSelector, scope: defaultInAddr.mScope, element: defaultInAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+        AudioTopologyDiagnostics.record(
+            .listenerAddBegin,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: defaultInAddr.mSelector,
+            scope: defaultInAddr.mScope,
+            element: defaultInAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener
+        )
         #endif
         let defaultInputStatus = await AudioTopologyListenerExecution.add(objectID: sys, address: defaultInAddr, token: defaultInToken)
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddEnd, owner: .meetingOutputRoute, objectID: sys, selector: defaultInAddr.mSelector, scope: defaultInAddr.mScope, element: defaultInAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: defaultInputStatus)
+        AudioTopologyDiagnostics.record(
+            .listenerAddEnd,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: defaultInAddr.mSelector,
+            scope: defaultInAddr.mScope,
+            element: defaultInAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener,
+            status: defaultInputStatus
+        )
         #endif
         guard defaultInputStatus == noErr, self.isCurrent(generation) else {
             if defaultInputStatus == noErr {
@@ -3335,11 +3432,30 @@ private actor MeetingOutputRouteListener {
         }
         self.defaultInputToken = defaultInToken
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddBegin, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+        AudioTopologyDiagnostics.record(
+            .listenerAddBegin,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: defaultOutAddr.mSelector,
+            scope: defaultOutAddr.mScope,
+            element: defaultOutAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener
+        )
         #endif
         let defaultStatus = await AudioTopologyListenerExecution.add(objectID: sys, address: defaultOutAddr, token: defaultOutToken)
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddEnd, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: defaultStatus)
+        AudioTopologyDiagnostics.record(
+            .listenerAddEnd,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: defaultOutAddr.mSelector,
+            scope: defaultOutAddr.mScope,
+            element: defaultOutAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener,
+            status: defaultStatus
+        )
         #endif
         guard defaultStatus == noErr else {
             _ = await AudioTopologyListenerExecution.remove(objectID: sys, address: defaultInAddr, token: defaultInToken)
@@ -3353,20 +3469,58 @@ private actor MeetingOutputRouteListener {
         }
         self.defaultOutputToken = defaultOutToken
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddBegin, owner: .meetingOutputRoute, objectID: sys, selector: restartedAddr.mSelector, scope: restartedAddr.mScope, element: restartedAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+        AudioTopologyDiagnostics.record(
+            .listenerAddBegin,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: restartedAddr.mSelector,
+            scope: restartedAddr.mScope,
+            element: restartedAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener
+        )
         #endif
         let restartedStatus = await AudioTopologyListenerExecution.add(objectID: sys, address: restartedAddr, token: restartedToken)
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddEnd, owner: .meetingOutputRoute, objectID: sys, selector: restartedAddr.mSelector, scope: restartedAddr.mScope, element: restartedAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: restartedStatus)
+        AudioTopologyDiagnostics.record(
+            .listenerAddEnd,
+            owner: .meetingOutputRoute,
+            objectID: sys,
+            selector: restartedAddr.mSelector,
+            scope: restartedAddr.mScope,
+            element: restartedAddr.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener,
+            status: restartedStatus
+        )
         #endif
         guard restartedStatus == noErr, self.isCurrent(generation) else {
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveBegin, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: defaultOutAddr.mSelector,
+                scope: defaultOutAddr.mScope,
+                element: defaultOutAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener
+            )
             #endif
             let cleanupStatus = await AudioTopologyListenerExecution.remove(objectID: sys, address: defaultOutAddr, token: defaultOutToken)
             _ = await AudioTopologyListenerExecution.remove(objectID: sys, address: defaultInAddr, token: defaultInToken)
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveEnd, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: cleanupStatus)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: defaultOutAddr.mSelector,
+                scope: defaultOutAddr.mScope,
+                element: defaultOutAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener,
+                status: cleanupStatus
+            )
             #endif
             if self.generation == generation {
                 self.defaultInputToken = nil
@@ -3404,19 +3558,54 @@ private actor MeetingOutputRouteListener {
         )
         let token: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             #if DEBUG
-            AudioTopologyDiagnostics.record(.callbackBegin, owner: .meetingOutputRoute, objectID: device.id, selector: kAudioDevicePropertyDataSource, scope: kAudioObjectPropertyScopeOutput, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery)
-            defer { AudioTopologyDiagnostics.record(.callbackEnd, owner: .meetingOutputRoute, objectID: device.id, selector: kAudioDevicePropertyDataSource, scope: kAudioObjectPropertyScopeOutput, element: kAudioObjectPropertyElementMain, queueRole: .mainDelivery) }
+            AudioTopologyDiagnostics.record(
+                .callbackBegin,
+                owner: .meetingOutputRoute,
+                objectID: device.id,
+                selector: kAudioDevicePropertyDataSource,
+                scope: kAudioObjectPropertyScopeOutput,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            )
+            defer { AudioTopologyDiagnostics.record(
+                .callbackEnd,
+                owner: .meetingOutputRoute,
+                objectID: device.id,
+                selector: kAudioDevicePropertyDataSource,
+                scope: kAudioObjectPropertyScopeOutput,
+                element: kAudioObjectPropertyElementMain,
+                queueRole: .mainDelivery
+            ) }
             #endif
             MeetingMicrophoneEventExecution.afterHALCallback {
                 Task { await self?.handleDataSourceChanged(generation: generation, epoch: epoch) }
             }
         }
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddBegin, owner: .meetingOutputRoute, objectID: device.id, selector: address.mSelector, scope: address.mScope, element: address.mElement, queueRole: .dedicatedControl, phase: .listener)
+        AudioTopologyDiagnostics.record(
+            .listenerAddBegin,
+            owner: .meetingOutputRoute,
+            objectID: device.id,
+            selector: address.mSelector,
+            scope: address.mScope,
+            element: address.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener
+        )
         #endif
         let status = await AudioTopologyListenerExecution.add(objectID: device.id, address: address, token: token)
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerAddEnd, owner: .meetingOutputRoute, objectID: device.id, selector: address.mSelector, scope: address.mScope, element: address.mElement, queueRole: .dedicatedControl, phase: .listener, status: status)
+        AudioTopologyDiagnostics.record(
+            .listenerAddEnd,
+            owner: .meetingOutputRoute,
+            objectID: device.id,
+            selector: address.mSelector,
+            scope: address.mScope,
+            element: address.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener,
+            status: status
+        )
         #endif
         guard status == noErr else { return false }
         guard self.isCurrent(generation), self.dataSourceEpoch == epoch else {
@@ -3439,11 +3628,30 @@ private actor MeetingOutputRouteListener {
             mElement: kAudioObjectPropertyElementMain
         )
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerRemoveBegin, owner: .meetingOutputRoute, objectID: deviceID, selector: address.mSelector, scope: address.mScope, element: address.mElement, queueRole: .dedicatedControl, phase: .listener)
+        AudioTopologyDiagnostics.record(
+            .listenerRemoveBegin,
+            owner: .meetingOutputRoute,
+            objectID: deviceID,
+            selector: address.mSelector,
+            scope: address.mScope,
+            element: address.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener
+        )
         #endif
         let status = await AudioTopologyListenerExecution.remove(objectID: deviceID, address: address, token: token)
         #if DEBUG
-        AudioTopologyDiagnostics.record(.listenerRemoveEnd, owner: .meetingOutputRoute, objectID: deviceID, selector: address.mSelector, scope: address.mScope, element: address.mElement, queueRole: .dedicatedControl, phase: .listener, status: status)
+        AudioTopologyDiagnostics.record(
+            .listenerRemoveEnd,
+            owner: .meetingOutputRoute,
+            objectID: deviceID,
+            selector: address.mSelector,
+            scope: address.mScope,
+            element: address.mElement,
+            queueRole: .dedicatedControl,
+            phase: .listener,
+            status: status
+        )
         #endif
     }
 
@@ -3580,25 +3788,73 @@ private actor MeetingOutputRouteListener {
         if let token = tokens.defaultInput {
             let status = await AudioTopologyListenerExecution.remove(objectID: sys, address: defaultInAddr, token: token)
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveEnd, owner: .meetingOutputRoute, objectID: sys, selector: defaultInAddr.mSelector, scope: defaultInAddr.mScope, element: defaultInAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: status)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: defaultInAddr.mSelector,
+                scope: defaultInAddr.mScope,
+                element: defaultInAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener,
+                status: status
+            )
             #endif
         }
         if let token = tokens.defaultOutput {
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveBegin, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: defaultOutAddr.mSelector,
+                scope: defaultOutAddr.mScope,
+                element: defaultOutAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener
+            )
             #endif
             let status = await AudioTopologyListenerExecution.remove(objectID: sys, address: defaultOutAddr, token: token)
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveEnd, owner: .meetingOutputRoute, objectID: sys, selector: defaultOutAddr.mSelector, scope: defaultOutAddr.mScope, element: defaultOutAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: status)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: defaultOutAddr.mSelector,
+                scope: defaultOutAddr.mScope,
+                element: defaultOutAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener,
+                status: status
+            )
             #endif
         }
         if let token = tokens.serviceRestarted {
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveBegin, owner: .meetingOutputRoute, objectID: sys, selector: restartedAddr.mSelector, scope: restartedAddr.mScope, element: restartedAddr.mElement, queueRole: .dedicatedControl, phase: .listener)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveBegin,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: restartedAddr.mSelector,
+                scope: restartedAddr.mScope,
+                element: restartedAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener
+            )
             #endif
             let status = await AudioTopologyListenerExecution.remove(objectID: sys, address: restartedAddr, token: token)
             #if DEBUG
-            AudioTopologyDiagnostics.record(.listenerRemoveEnd, owner: .meetingOutputRoute, objectID: sys, selector: restartedAddr.mSelector, scope: restartedAddr.mScope, element: restartedAddr.mElement, queueRole: .dedicatedControl, phase: .listener, status: status)
+            AudioTopologyDiagnostics.record(
+                .listenerRemoveEnd,
+                owner: .meetingOutputRoute,
+                objectID: sys,
+                selector: restartedAddr.mSelector,
+                scope: restartedAddr.mScope,
+                element: restartedAddr.mElement,
+                queueRole: .dedicatedControl,
+                phase: .listener,
+                status: status
+            )
             #endif
         }
         if let token = tokens.dataSource, let deviceID = tokens.dataSourceDeviceID {
@@ -3631,7 +3887,6 @@ nonisolated enum MeetingVoiceProcessingDriftSnapshot {
             && stats.droppedPostCapCount == 0
     }
 }
-
 
 /// Device election for a capture-side swap. Role is retained in the schema for old manifests but
 /// never inferred or used by new capture decisions.
@@ -3736,7 +3991,9 @@ nonisolated enum MeetingCaptureDeviceTransition: Sendable, Equatable {
     case unavailable
 }
 
-/// Owns a swappable mic component (VPIO or AVCaptureSession) plus an app-audio-only SCStream that never stops across a swap.
+// Owns a swappable mic component (VPIO or AVCaptureSession) plus an app-audio-only SCStream that never stops across a swap.
+// Keep this existing processing state machine intact during integration.
+// swiftlint:disable:next type_body_length
 private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRuntime, @unchecked Sendable {
     private static let totalStartDeadlineSeconds: Double = 10
     private static let firstBufferDeadlineSeconds: Double = 2
@@ -4276,7 +4533,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
         switch event {
         case .configurationChanged:
             self.eventHandler(.interrupted(
-                kind: .voiceProcessingConfigurationChanged, trackID: nil,
+                kind: .voiceProcessingConfigurationChanged,
+                trackID: nil,
                 detail: "Voice-processing engine configuration changed."
             ))
             Task { [weak self] in
@@ -4382,6 +4640,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
         let oldFence = self.stateLock.withLock { self.currentFence }
         var oldMicCapture: MeetingMicrophoneCapture? = self.stateLock.withLock { self.micCapture }
         await oldFence.quiesce()
+        // Owned capture is present here; keep its optional lifetime so rollback releases hardware before replacement.
+        // swiftlint:disable:next force_unwrapping
         let statsSnapshot = await oldMicCapture!.statistics()
         let drift = MeetingClockDriftRecord(
             cumulativeAbsorbedSeconds: statsSnapshot.cumulativeAbsorbedCorrectionSeconds,
@@ -4390,6 +4650,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
         )
         // Hard lifetime barrier: VPIO, its tap, and its Core Audio listeners must be
         // completely gone before any AVFoundation discovery/session construction.
+        // Owned capture is present here; keep its optional lifetime so rollback releases hardware before replacement.
+        // swiftlint:disable:next force_unwrapping
         await oldMicCapture!.stop()
         self.stateLock.withLock {
             if self.micCapture === oldMicCapture {
@@ -5034,7 +5296,7 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
             try? await Task.sleep(nanoseconds: UInt64(Self.upgradeDwellSeconds * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             self.stateLock.withLock { self.dwellTask = nil }
-            guard !(self.stateLock.withLock({ self.stopRequested })), self.stateLock.withLock({ self.phase == .avCapture }) else { return }
+            guard !(self.stateLock.withLock { self.stopRequested }), self.stateLock.withLock({ self.phase == .avCapture }) else { return }
             let stillViable = MeetingCapturePathDecider.decide(
                 mode: .onlineCall,
                 microphone: self.originalMicrophone,
@@ -5064,12 +5326,13 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
 
     private func runUpgrade() async {
         try? await Task.sleep(nanoseconds: UInt64(Self.upgradeSettleSeconds * 1_000_000_000))
-        guard !(self.stateLock.withLock({ self.stopRequested })) else {
+        guard !(self.stateLock.withLock { self.stopRequested }) else {
             self.finishTransition()
             return
         }
         guard case .voiceProcessing = MeetingCapturePathDecider.decide(
-            mode: .onlineCall, microphone: self.originalMicrophone,
+            mode: .onlineCall,
+            microphone: self.originalMicrophone,
             outputRoute: MeetingCaptureEngine.currentOutputRouteSnapshot()
         ) else {
             self.stateLock.withLock { self.phase = .avCapture }
@@ -5107,12 +5370,13 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
             self.abortUpgrade(candidateMicCapture: candidateMicCapture, reason: "No microphone audio was captured within 2s.")
             return
         }
-        guard !(self.stateLock.withLock({ self.stopRequested })) else {
+        guard !(self.stateLock.withLock { self.stopRequested }) else {
             self.abortUpgrade(candidateMicCapture: candidateMicCapture, reason: nil)
             return
         }
         guard case .voiceProcessing = MeetingCapturePathDecider.decide(
-            mode: .onlineCall, microphone: self.originalMicrophone,
+            mode: .onlineCall,
+            microphone: self.originalMicrophone,
             outputRoute: MeetingCaptureEngine.currentOutputRouteSnapshot()
         ) else {
             self.abortUpgrade(candidateMicCapture: candidateMicCapture, reason: "Route changed back before the upgrade committed.")
@@ -5407,6 +5671,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
 
         let outcome: MeetingMicrophoneBindingOutcome
         do {
+            // Owned capture is present here; keep its optional lifetime so rollback releases hardware before replacement.
+            // swiftlint:disable:next force_unwrapping
             outcome = try await candidate!.start(
                 microphone: elected.identity,
                 authorizationPreflighted: true,
@@ -5450,6 +5716,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
         guard self.ownsSafeRecovery(generation),
               await self.waitForBufferProgress(
                   timeoutSeconds: Self.firstBufferDeadlineSeconds,
+                  // Owned capture is present here; keep its optional lifetime so rollback releases hardware before replacement.
+                  // swiftlint:disable:next force_unwrapping
                   using: candidate!
               ),
               self.ownsSafeRecovery(generation),
@@ -5497,6 +5765,8 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
             return
         }
 
+        // Owned capture is present here; keep its optional lifetime so rollback releases hardware before replacement.
+        // swiftlint:disable:next force_unwrapping
         let settled = await candidate!.settledConfiguration()
         var recordedNewEra = false
         do {
@@ -5866,7 +6136,7 @@ private final nonisolated class VoiceProcessingMeetingRuntime: MeetingCaptureRun
         let shouldReplayRouteChange = self.stateLock.withLock { () -> Bool in
             guard self.transitionGeneration == generation else { return false }
             self.transitionTask = nil
-            guard (self.phase == .avCapture || self.phase == .vpio),
+            guard self.phase == .avCapture || self.phase == .vpio,
                   self.routeChangeDirty,
                   !self.stopRequested
             else { return false }

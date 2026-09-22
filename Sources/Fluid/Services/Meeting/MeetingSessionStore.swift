@@ -444,7 +444,7 @@ actor MeetingSessionStore: MeetingSessionStoring {
         var reconciled = inputChunk
         if var archive = reconciled.playbackArchiveAsset,
            archive.presence == .ready,
-           (!archive.validationIssues().isEmpty || !self.assetMatchesDisk(archive, sessionDirectory: sessionDirectory))
+           !archive.validationIssues().isEmpty || !self.assetMatchesDisk(archive, sessionDirectory: sessionDirectory)
         {
             // The archive is derived and optional. Quarantine only it; authoritative PCM remains
             // finalized and retryable for a later archive job.
@@ -462,12 +462,12 @@ actor MeetingSessionStore: MeetingSessionStoring {
             relativePath: asset.relativeFilePath,
             sessionDirectory: sessionDirectory
         ), let attributes = try? self.fileSystem.manager.attributesOfItem(atPath: url.path),
-           let size = (attributes[.size] as? NSNumber)?.int64Value,
-           size == asset.byteCount,
-           size > 0,
-           let expectedHash = asset.sha256,
-           let hash = self.sha256(of: url),
-           hash == expectedHash
+        let size = (attributes[.size] as? NSNumber)?.int64Value,
+        size == asset.byteCount,
+        size > 0,
+        let expectedHash = asset.sha256,
+        let hash = self.sha256(of: url),
+        hash == expectedHash
         else { return false }
         return true
     }
@@ -497,8 +497,7 @@ actor MeetingSessionStore: MeetingSessionStoring {
         var digest = SHA256()
         while true {
             let data: Data
-            do { data = try handle.read(upToCount: 1 << 20) ?? Data() }
-            catch { return nil }
+            do { data = try handle.read(upToCount: 1 << 20) ?? Data() } catch { return nil }
             guard !data.isEmpty else { break }
             digest.update(data: data)
         }

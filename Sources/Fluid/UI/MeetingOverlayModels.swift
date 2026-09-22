@@ -171,7 +171,7 @@ struct MeetingOverlayPresentationReducer: Equatable, Sendable {
 
     mutating func apply(_ event: MeetingOverlayPresentationEvent) {
         switch event {
-        case .recordingStarted(let sessionID):
+        case let .recordingStarted(sessionID):
             guard self.sessionID != sessionID else { return }
             self.sessionID = sessionID
             self.presentation = MeetingOverlayPresentation(self.preference)
@@ -180,7 +180,7 @@ struct MeetingOverlayPresentationReducer: Equatable, Sendable {
         case .recordingStopped:
             self.sessionID = nil
             self.presentation = nil
-        case .preferenceChanged(let preference):
+        case let .preferenceChanged(preference):
             self.preference = preference
         case .toggleRequested:
             guard self.sessionID != nil, let presentation else { return }

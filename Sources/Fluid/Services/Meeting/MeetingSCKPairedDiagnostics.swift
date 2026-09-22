@@ -1,7 +1,7 @@
 #if DEBUG
 
-import Foundation
 import CoreMedia
+import Foundation
 
 /// Phase 0 C2 is deliberately diagnostic-only.  The collector receives metadata from the two
 /// outputs of one ScreenCaptureKit stream, but never receives (or retains) PCM, transcript text,
@@ -14,20 +14,20 @@ nonisolated enum MeetingSCKPairedDiagnosticGate {
     static let autorunEnvironmentKey = "FLUIDVOICE_C2_AUTORUN"
 
     static func enabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment[Self.environmentKey] == "1"
+        environment[self.environmentKey] == "1"
     }
 
     static func hardwareEnabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        guard self.enabled(environment: environment), environment[Self.hardwareEnvironmentKey] == "1" else {
+        guard self.enabled(environment: environment), environment[self.hardwareEnvironmentKey] == "1" else {
             return false
         }
-        return !(environment[Self.targetBundleIDEnvironmentKey] ?? "")
+        return !(environment[self.targetBundleIDEnvironmentKey] ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func autorunEnabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
         self.hardwareEnabled(environment: environment)
-            && environment[Self.autorunEnvironmentKey] == "1"
+            && environment[self.autorunEnvironmentKey] == "1"
     }
 }
 
@@ -124,6 +124,8 @@ nonisolated struct MeetingSCKPairedTrackReport: Codable, Equatable, Sendable {
     let maxAbsoluteJitterSeconds: Double?
     let malformedMetadataCount: Int
 
+    // These snapshot helpers are shared by neighboring types within this file only.
+    // swiftlint:disable:next strict_fileprivate
     fileprivate init(state: MeetingSCKPairedTrackState) {
         self.sampleCount = state.sampleCount
         self.validTimestampCount = state.validTimestampCount
@@ -170,6 +172,8 @@ nonisolated struct MeetingSCKPairedCrossTrackReport: Codable, Equatable, Sendabl
     let sharedClockEstablished: Bool
     let aecEvaluated: Bool
 
+    // These snapshot helpers are shared by neighboring types within this file only.
+    // swiftlint:disable:next strict_fileprivate
     fileprivate init(application: MeetingSCKPairedTrackReport, microphone: MeetingSCKPairedTrackReport) {
         if let app = application.firstPresentationSeconds, let mic = microphone.firstPresentationSeconds {
             self.firstPresentationOffsetSeconds = mic - app
@@ -182,7 +186,8 @@ nonisolated struct MeetingSCKPairedCrossTrackReport: Codable, Equatable, Sendabl
             self.lastPresentationOffsetSeconds = nil
         }
         if let appSpan = application.timestampSpanSeconds, let micSpan = microphone.timestampSpanSeconds,
-           appSpan > 0, micSpan.isFinite {
+           appSpan > 0, micSpan.isFinite
+        {
             self.relativeTimestampSpanDifferencePPM = (micSpan / appSpan - 1) * 1_000_000
         } else {
             self.relativeTimestampSpanDifferencePPM = nil
@@ -212,6 +217,8 @@ nonisolated struct MeetingSCKPairedDiagnosticReport: Codable, Equatable, Sendabl
     let failOpen: Bool
     let reasons: [String]
 
+    // These snapshot helpers are shared by neighboring types within this file only.
+    // swiftlint:disable:next strict_fileprivate
     fileprivate init(
         enabled: Bool,
         configuration: MeetingSCKPairedDiagnosticConfiguration,
@@ -239,7 +246,7 @@ nonisolated struct MeetingSCKPairedDiagnosticReport: Codable, Equatable, Sendabl
             "diagnostic-only",
             "no raw PCM or transcript retention",
             "shared clock not established",
-            "acoustic delay and AEC not evaluated"
+            "acoustic delay and AEC not evaluated",
         ]
     }
 
@@ -383,12 +390,14 @@ nonisolated enum MeetingSCKPairedDiagnosticHarness {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> MeetingSCKPairedDiagnosticReport {
         let collector = MeetingSCKPairedDiagnosticCollector(configuration: configuration, environment: environment)
-        for sample in samples { collector.record(sample) }
+        for sample in samples {
+            collector.record(sample)
+        }
         return collector.report()
     }
 }
 
-nonisolated private struct MeetingSCKPairedTrackState {
+private nonisolated struct MeetingSCKPairedTrackState {
     var sampleCount = 0
     var validTimestampCount = 0
     var invalidTimestampCount = 0
@@ -418,14 +427,14 @@ nonisolated private struct MeetingSCKPairedTrackState {
         let validDuration = sample.durationSeconds.map { $0.isFinite && $0 > 0 } ?? false
         let validPTS = sample.presentationSeconds.map(\.isFinite) ?? false
         let validFrameGeometry: Bool = {
-            guard validFormat, validDuration else { return false }
+            guard validFormat, validDuration, let duration = sample.durationSeconds else { return false }
             let frameDuration = Double(sample.frameCount) / sample.sampleRateHz
             let tolerance = max(1.5 / sample.sampleRateHz, 0.001)
-            return frameDuration.isFinite && abs(frameDuration - sample.durationSeconds!) <= tolerance
+            return frameDuration.isFinite && abs(frameDuration - duration) <= tolerance
         }()
         let validEnd: Bool = {
-            guard validPTS, validDuration else { return false }
-            return (sample.presentationSeconds! + sample.durationSeconds!).isFinite
+            guard validPTS, validDuration, let pts = sample.presentationSeconds, let duration = sample.durationSeconds else { return false }
+            return (pts + duration).isFinite
         }()
         guard validFormat && validDuration && validPTS && validFrameGeometry && validEnd else {
             self.invalidTimestampCount += validPTS ? 0 : 1
@@ -433,8 +442,7 @@ nonisolated private struct MeetingSCKPairedTrackState {
             return
         }
 
-        let pts = sample.presentationSeconds!
-        let duration = sample.durationSeconds!
+        guard let pts = sample.presentationSeconds, let duration = sample.durationSeconds else { return }
         self.validTimestampCount += 1
         self.deliveredDurationSeconds += duration
         if self.firstSampleRateHz == nil {
@@ -445,7 +453,8 @@ nonisolated private struct MeetingSCKPairedTrackState {
         }
 
         if let previousPTS = self.previousPresentationSeconds,
-           let previousDuration = self.previousDurationSeconds {
+           let previousDuration = self.previousDurationSeconds
+        {
             let delta = pts - previousPTS
             // CMTime-to-Double conversion can perturb an otherwise contiguous boundary by a few
             // nanoseconds. Half a sample is a conservative representational tolerance: it ignores
@@ -464,9 +473,10 @@ nonisolated private struct MeetingSCKPairedTrackState {
         }
         if let arrival = sample.arrivalSeconds, arrival.isFinite,
            let previousArrival = self.previousArrivalSeconds,
-           let previousDuration = self.previousDurationSeconds {
+           let previousDuration = self.previousDurationSeconds
+        {
             let deliveryDelta = arrival - previousArrival
-            if deliveryDelta.isFinite && deliveryDelta >= 0 {
+            if deliveryDelta.isFinite, deliveryDelta >= 0 {
                 let jitter = abs(deliveryDelta - previousDuration)
                 self.jitterObservationCount += 1
                 self.jitterAbsoluteSum += jitter

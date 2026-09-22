@@ -31,29 +31,53 @@ final class MeetingPCMStoragePolicyTests: XCTestCase {
         let timebase = MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil)
         var session = MeetingSession(configuration: configuration, timebase: timebase)
         let chunk = MeetingAudioChunk(
-            id: UUID(), sequence: 0, relativeFilePath: pcmPath,
+            id: UUID(),
+            sequence: 0,
+            relativeFilePath: pcmPath,
             presentationStart: MeetingMediaTime(value: 0, timescale: 1),
             presentationEnd: MeetingMediaTime(value: 1, timescale: 1),
-            discontinuities: [], sha256: "hash", byteCount: 1, finalizationState: .finalized,
+            discontinuities: [],
+            sha256: "hash",
+            byteCount: 1,
+            finalizationState: .finalized,
             audioSchemaVersion: 2,
             captureAnalysisAsset: MeetingAudioAsset(
-                role: .captureAnalysis, encoding: .linearPCMFloat32CAFV1, presence: .ready,
-                relativeFilePath: pcmPath, byteCount: 1, sha256: "hash", sampleRate: 48_000,
-                channelCount: 1, frameCount: 1
+                role: .captureAnalysis,
+                encoding: .linearPCMFloat32CAFV1,
+                presence: .ready,
+                relativeFilePath: pcmPath,
+                byteCount: 1,
+                sha256: "hash",
+                sampleRate: 48_000,
+                channelCount: 1,
+                frameCount: 1
             )
         )
         session.audioTracks = [MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
-            format: nil, timebase: timebase, health: .waiting, chunks: [chunk]
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
+            format: nil,
+            timebase: timebase,
+            health: .waiting,
+            chunks: [chunk]
         )]
 
         XCTAssertEqual(MeetingAudioPresentation.firstPlaybackURL(in: session, directory: root), pcmURL)
 
         var archivedChunk = chunk
         archivedChunk.playbackArchiveAsset = MeetingAudioAsset(
-            role: .playbackArchive, encoding: .aacLCM4AV1, presence: .ready,
-            relativeFilePath: archivePath, byteCount: 1, sha256: "archive", sampleRate: 48_000,
-            channelCount: 1, frameCount: 1, sourceAssetSHA256: "hash"
+            role: .playbackArchive,
+            encoding: .aacLCM4AV1,
+            presence: .ready,
+            relativeFilePath: archivePath,
+            byteCount: 1,
+            sha256: "archive",
+            sampleRate: 48_000,
+            channelCount: 1,
+            frameCount: 1,
+            sourceAssetSHA256: "hash"
         )
         session.audioTracks[0].chunks = [archivedChunk]
         let archiveURL = root.appendingPathComponent(archivePath)

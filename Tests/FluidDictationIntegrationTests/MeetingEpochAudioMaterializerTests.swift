@@ -38,11 +38,17 @@ final class MeetingEpochAudioMaterializerTests: XCTestCase {
             sampleRate: sampleRate,
             channels: AVAudioChannelCount(channels),
             interleaved: false
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         )!
         let frameCount = AVAudioFrameCount((seconds * sampleRate).rounded())
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)!
         buffer.frameLength = frameCount
         for channel in 0..<channels {
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             let data = buffer.floatChannelData![channel]
             for frame in 0..<Int(frameCount) {
                 let half = frame >= Int(frameCount) / 2
@@ -61,7 +67,11 @@ final class MeetingEpochAudioMaterializerTests: XCTestCase {
         }
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let byteCount = (attributes[.size] as? NSNumber)!.int64Value
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let sha256 = MeetingChunkPathConfinement.sha256Hex(contentsOf: url)!
         return WrittenChunk(
             url: url,

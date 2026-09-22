@@ -38,7 +38,8 @@ while ProcessInfo.processInfo.systemUptime < deadline {
             "frontmostAppNotWriter": NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown",
         ]
         if let data = try? JSONSerialization.data(withJSONObject: event, options: [.sortedKeys]),
-           let line = String(data: data, encoding: .utf8) {
+           let line = String(data: data, encoding: .utf8)
+        {
             print(line)
             fflush(stdout)
         }

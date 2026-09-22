@@ -346,8 +346,10 @@ final class MeetingSessionCoordinator: ObservableObject {
             (offer.state == .interrupted || offer.state == .failed) ? offer : nil
         }
         return try await self.performStartRecording(
-            configuration: configuration, passiveOffer: passiveOffer,
-            resolvingSourceID: resolvingSourceID, reservation: reservation
+            configuration: configuration,
+            passiveOffer: passiveOffer,
+            resolvingSourceID: resolvingSourceID,
+            reservation: reservation
         )
     }
 
@@ -1294,11 +1296,11 @@ final class MeetingSessionCoordinator: ObservableObject {
         }
         guard !viable.isEmpty else { return }
 
-        let active = viable.sorted { lhs, rhs in
+        guard let active = viable.sorted(by: { lhs, rhs in
             lhs.startedAt != rhs.startedAt
                 ? lhs.startedAt < rhs.startedAt
                 : lhs.id.uuidString < rhs.id.uuidString
-        }.last!
+        }).last else { return }
 
         for session in viable {
             guard session.id == active.id else {

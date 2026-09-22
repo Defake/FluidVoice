@@ -70,7 +70,8 @@ final class DictionaryTrainingEndpointMonitor {
 
                 var cursor = DictionaryTrainingAudioCursor(generation: asr.dictionaryTrainingAudioGeneration)
                 while !Task.isCancelled {
-                    guard DictionaryMatcherExperiment.sharedFeaturesEnabled, generation == DictionaryMatcherExperiment.generation, asr.isRunning, asr.dictionaryCaptureToken == captureToken else { return }
+                    guard DictionaryMatcherExperiment.sharedFeaturesEnabled, generation == DictionaryMatcherExperiment.generation, asr.isRunning,
+                          asr.dictionaryCaptureToken == captureToken else { return }
                     cursor.synchronize(generation: asr.dictionaryTrainingAudioGeneration)
 
                     let chunk = asr.dictionaryTrainingAudioChunk(

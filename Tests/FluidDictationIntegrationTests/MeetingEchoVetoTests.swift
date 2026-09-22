@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import AVFoundation
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -28,6 +28,8 @@ final class MeetingEchoVetoTests: XCTestCase {
         }
         buffer.frameLength = buffer.frameCapacity
         samples.withUnsafeBufferPointer { ptr in
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             buffer.floatChannelData![0].update(from: ptr.baseAddress!, count: samples.count)
         }
         try file.write(from: buffer)
@@ -70,18 +72,21 @@ final class MeetingEchoVetoTests: XCTestCase {
 
     private struct LCG {
         private var state: UInt64
-        init(seed: UInt64) { self.state = seed &+ 0x9E3779B97F4A7C15 }
+        init(seed: UInt64) { self.state = seed &+ 0x9e3779b97f4a7c15 }
         mutating func nextUnit() -> Float {
-            self.state = self.state &* 6364136223846793005 &+ 1442695040888963407
+            self.state = self.state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
             return Float(Double(self.state >> 11) / Double(1 << 53))
         }
+
         mutating func nextSigned() -> Float { self.nextUnit() * 2 - 1 }
     }
 
     private func bandLimitedNoise(count: Int, seed: UInt64) -> [Float] {
         var generator = LCG(seed: seed)
         var white = [Float](repeating: 0, count: count)
-        for i in 0..<count { white[i] = generator.nextSigned() }
+        for i in 0..<count {
+            white[i] = generator.nextSigned()
+        }
         var smoothed = [Float](repeating: 0, count: count)
         for i in 0..<count {
             let a = white[i]
@@ -94,7 +99,7 @@ final class MeetingEchoVetoTests: XCTestCase {
 
     // MARK: - 1. Reference gathering: straddling two app chunks
 
-    func testReferenceSpansStraddlingTwoAppChunksReturnsBothWithOffsets() {
+    func testReferenceSpansStraddlingTwoAppChunksReturnsBothWithOffsets() throws {
         let appChunkA = self.makeChunk(sequence: 0, relativeFilePath: "a.caf", presentationStart: 0, presentationEnd: 10)
         let appChunkB = self.makeChunk(sequence: 1, relativeFilePath: "b.caf", presentationStart: 10, presentationEnd: 20)
         // Mic chunk [8, 14) straddles the app boundary at 10.
@@ -104,11 +109,11 @@ final class MeetingEchoVetoTests: XCTestCase {
             origin: 0
         )
         XCTAssertEqual(spans.count, 2)
-        let first = try! XCTUnwrap(spans.first { $0.chunk.id == appChunkA.id })
+        let first = try XCTUnwrap(spans.first { $0.chunk.id == appChunkA.id })
         XCTAssertEqual(first.localRange, 8.0..<10.0, "local coordinates are relative to appChunkA's own start")
         XCTAssertEqual(first.outputOffset, 0, accuracy: 1e-9)
 
-        let second = try! XCTUnwrap(spans.first { $0.chunk.id == appChunkB.id })
+        let second = try XCTUnwrap(spans.first { $0.chunk.id == appChunkB.id })
         XCTAssertEqual(second.localRange, 0.0..<4.0, "local coordinates are relative to appChunkB's own start")
         XCTAssertEqual(second.outputOffset, 2, accuracy: 1e-9)
     }
@@ -138,15 +143,15 @@ final class MeetingEchoVetoTests: XCTestCase {
         // AVAudioFile reads may legitimately short-read (fewer frames than requested); a short
         // read only ever drops the tail, so the head is a reliable, non-flaky probe of "was this
         // chunk actually read". The missing chunk's region must be all zero regardless.
-        for (actual, expected) in zip(output.prefix(1_000), goodSamples.prefix(1_000)) {
+        for (actual, expected) in zip(output.prefix(1000), goodSamples.prefix(1000)) {
             XCTAssertEqual(actual, expected, accuracy: 1e-4)
         }
-        XCTAssertTrue(output.suffix(1_000).allSatisfy { $0 == 0 }, "a missing chunk's file must zero-fill, not throw")
+        XCTAssertTrue(output.suffix(1000).allSatisfy { $0 == 0 }, "a missing chunk's file must zero-fill, not throw")
     }
 
     // MARK: - 3. Reference gathering: independently rotated chunk boundaries
 
-    func testReferenceSpansMapIndependentlyRotatedBoundariesCorrectly() {
+    func testReferenceSpansMapIndependentlyRotatedBoundariesCorrectly() throws {
         // Mic rotates every 7s, app rotates every 5s: chunk indices never line up.
         let micChunkSessionRange = (start: 14.0, end: 21.0)
         let appChunks = [
@@ -162,15 +167,15 @@ final class MeetingEchoVetoTests: XCTestCase {
         // [14,21) intersects app2 [10,15), app3 [15,20), app4 [20,25).
         XCTAssertEqual(Set(spans.map(\.chunk.sequence)), [2, 3, 4])
 
-        let fromApp2 = try! XCTUnwrap(spans.first { $0.chunk.sequence == 2 })
+        let fromApp2 = try XCTUnwrap(spans.first { $0.chunk.sequence == 2 })
         XCTAssertEqual(fromApp2.localRange, 4.0..<5.0)
         XCTAssertEqual(fromApp2.outputOffset, 0, accuracy: 1e-9)
 
-        let fromApp3 = try! XCTUnwrap(spans.first { $0.chunk.sequence == 3 })
+        let fromApp3 = try XCTUnwrap(spans.first { $0.chunk.sequence == 3 })
         XCTAssertEqual(fromApp3.localRange, 0.0..<5.0)
         XCTAssertEqual(fromApp3.outputOffset, 1, accuracy: 1e-9)
 
-        let fromApp4 = try! XCTUnwrap(spans.first { $0.chunk.sequence == 4 })
+        let fromApp4 = try XCTUnwrap(spans.first { $0.chunk.sequence == 4 })
         XCTAssertEqual(fromApp4.localRange, 0.0..<1.0)
         XCTAssertEqual(fromApp4.outputOffset, 6, accuracy: 1e-9)
     }
@@ -213,9 +218,17 @@ final class MeetingEchoVetoTests: XCTestCase {
     func testEffectiveEchoMatrix() {
         func turn(isLikelyEcho: Bool, signalVerdict: TurnEchoVerdict) -> MeetingProcessingPipeline.StagedMicrophoneTurn {
             MeetingProcessingPipeline.StagedMicrophoneTurn(
-                chunkID: UUID(), index: 0, clusterID: UUID(), clusterLabel: "0",
-                start: 0, end: 1, text: "hi", overlapsRemote: true,
-                isLikelyEcho: isLikelyEcho, echoScored: true, signalVerdict: signalVerdict
+                chunkID: UUID(),
+                index: 0,
+                clusterID: UUID(),
+                clusterLabel: "0",
+                start: 0,
+                end: 1,
+                text: "hi",
+                overlapsRemote: true,
+                isLikelyEcho: isLikelyEcho,
+                echoScored: true,
+                signalVerdict: signalVerdict
             )
         }
         XCTAssertFalse(turn(isLikelyEcho: true, signalVerdict: .residualNotExplained).effectiveEcho)
@@ -231,10 +244,17 @@ final class MeetingEchoVetoTests: XCTestCase {
     func testTextEchoObservationIsExcludedBeforeMicrophoneStitching() {
         func turn(key: String, isLikelyEcho: Bool) -> MeetingProcessingPipeline.StagedMicrophoneTurn {
             MeetingProcessingPipeline.StagedMicrophoneTurn(
-                chunkID: UUID(), index: 0, clusterID: UUID(), clusterLabel: "0",
+                chunkID: UUID(),
+                index: 0,
+                clusterID: UUID(),
+                clusterLabel: "0",
                 diarizationObservationKey: key,
-                start: 0, end: 1, text: "hi", overlapsRemote: true,
-                isLikelyEcho: isLikelyEcho, echoScored: true
+                start: 0,
+                end: 1,
+                text: "hi",
+                overlapsRemote: true,
+                isLikelyEcho: isLikelyEcho,
+                echoScored: true
             )
         }
         let keys = MeetingProcessingPipeline.trustedMicrophoneObservationKeys(from: [
@@ -253,14 +273,30 @@ final class MeetingEchoVetoTests: XCTestCase {
         func turns(signalVerdict: TurnEchoVerdict) -> [MeetingProcessingPipeline.StagedMicrophoneTurn] {
             [
                 MeetingProcessingPipeline.StagedMicrophoneTurn(
-                    chunkID: UUID(), index: 0, clusterID: localCluster, clusterLabel: "local",
-                    start: 0, end: 5, text: "clean local speech", overlapsRemote: false,
-                    isLikelyEcho: false, echoScored: false, signalVerdict: signalVerdict
+                    chunkID: UUID(),
+                    index: 0,
+                    clusterID: localCluster,
+                    clusterLabel: "local",
+                    start: 0,
+                    end: 5,
+                    text: "clean local speech",
+                    overlapsRemote: false,
+                    isLikelyEcho: false,
+                    echoScored: false,
+                    signalVerdict: signalVerdict
                 ),
                 MeetingProcessingPipeline.StagedMicrophoneTurn(
-                    chunkID: UUID(), index: 1, clusterID: remoteCluster, clusterLabel: "remote",
-                    start: 5, end: 6, text: "echoed", overlapsRemote: true,
-                    isLikelyEcho: true, echoScored: true, signalVerdict: signalVerdict
+                    chunkID: UUID(),
+                    index: 1,
+                    clusterID: remoteCluster,
+                    clusterLabel: "remote",
+                    start: 5,
+                    end: 6,
+                    text: "echoed",
+                    overlapsRemote: true,
+                    isLikelyEcho: true,
+                    echoScored: true,
+                    signalVerdict: signalVerdict
                 ),
             ]
         }

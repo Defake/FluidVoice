@@ -6,7 +6,7 @@ final class DashboardLayoutTests: XCTestCase {
     func testSetupCardsAlwaysFillTheirRows() {
         for width in stride(from: 320, through: 2000, by: 1) {
             let layout = DashboardLayout(width: CGFloat(width))
-            for count in 1 ... 3 {
+            for count in 1...3 {
                 XCTAssertEqual(count % layout.setupColumns(count: count), 0)
                 if layout.setupColumns(count: count) > 1 {
                     XCTAssertGreaterThanOrEqual((layout.contentWidth - CGFloat(count - 1) * 10) / CGFloat(count), 280)
@@ -96,11 +96,27 @@ final class DashboardLayoutTests: XCTestCase {
     }
 
     func testExistingSuccessfulUseCountsEvenWhenNoWordsChanged() throws {
-        let entry = TranscriptionHistoryEntry(timestamp: Date(), rawText: "Already correct.", processedText: "Already correct.", appName: "Notes", windowTitle: "", wasAIProcessed: true, processingModel: "fluid-1-mini")
+        let entry = TranscriptionHistoryEntry(
+            timestamp: Date(),
+            rawText: "Already correct.",
+            processedText: "Already correct.",
+            appName: "Notes",
+            windowTitle: "",
+            wasAIProcessed: true,
+            processingModel: "fluid-1-mini"
+        )
         let snapshot = try StatsSnapshot.build(entries: [entry], now: Date(), calendar: .current)
         XCTAssertTrue(snapshot.hasFluidIntelligenceUse)
         XCTAssertEqual(snapshot.fluidFixedWords, 0)
-        let failed = TranscriptionHistoryEntry(timestamp: Date(), rawText: "Raw", processedText: "Raw", appName: "Notes", windowTitle: "", wasAIProcessed: false, processingModel: "fluid-1-mini")
+        let failed = TranscriptionHistoryEntry(
+            timestamp: Date(),
+            rawText: "Raw",
+            processedText: "Raw",
+            appName: "Notes",
+            windowTitle: "",
+            wasAIProcessed: false,
+            processingModel: "fluid-1-mini"
+        )
         XCTAssertFalse(try StatsSnapshot.build(entries: [failed], now: Date(), calendar: .current).hasFluidIntelligenceUse)
     }
 }

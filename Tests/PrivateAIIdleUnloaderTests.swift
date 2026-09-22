@@ -44,7 +44,7 @@ enum PrivateAIIdleUnloaderTests {
             let recorder = Recorder()
             await recorder.set(delayMs: 150)
             let unloader = makeUnloader(recorder)
-            for _ in 0 ..< 4 {
+            for _ in 0..<4 {
                 await unloader.tracking {}
                 await pause(60)
             }

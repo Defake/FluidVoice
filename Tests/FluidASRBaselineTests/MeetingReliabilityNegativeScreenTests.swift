@@ -46,15 +46,19 @@ final class MeetingReliabilityNegativeScreenTests: XCTestCase {
             throw XCTSkip("opt-in: FLUID_RELIABILITY_NEGATIVE_SCREEN=1; default 600 audio seconds per condition/mode")
         }
         #if arch(arm64)
-        try validateHost()
+        try self.validateHost()
         let env = ProcessInfo.processInfo.environment
         let seconds = try boundedInteger(env["FLUID_RELIABILITY_SECONDS"], default: 600, range: 60...600)
         let budgetSeconds = try boundedInteger(env["FLUID_RELIABILITY_WALL_SECONDS"], default: 1200, range: 60...1800)
         guard let root = BaselineInputLoader.inputsRoot() else { throw ScreenError.invalidInputs }
         let manifest = try BaselineInputLoader.loadManifest(from: root)
         let manifestHash = try BaselineHashing.sha256Hex(ofFileAt: root.appendingPathComponent("manifest.json"))
-        var report = NegativeScreenReport(manifestSHA256: manifestHash, modelRepository: manifest.modelRepository,
-                                         requestedAudioSecondsPerConditionMode: seconds, wallBudgetSeconds: budgetSeconds)
+        var report = NegativeScreenReport(
+            manifestSHA256: manifestHash,
+            modelRepository: manifest.modelRepository,
+            requestedAudioSecondsPerConditionMode: seconds,
+            wallBudgetSeconds: budgetSeconds
+        )
         defer { attach(report) }
         var activeManager: AsrManager?
         do {
@@ -77,12 +81,15 @@ final class MeetingReliabilityNegativeScreenTests: XCTestCase {
             guard !vocabulary.isEmpty else { throw ScreenError.invalidVocabulary }
             report.phase = "local_model_load"
             let loadStart = Date()
-            let models = AsrModels(
-                encoder: try MLModel(contentsOf: repository.appendingPathComponent("Encoder.mlmodelc"), configuration: config),
-                preprocessor: try MLModel(contentsOf: repository.appendingPathComponent("Preprocessor.mlmodelc"), configuration: preprocessorConfig),
-                decoder: try MLModel(contentsOf: repository.appendingPathComponent("Decoder.mlmodelc"), configuration: config),
-                joint: try MLModel(contentsOf: repository.appendingPathComponent("JointDecision.mlmodelc"), configuration: config),
-                configuration: config, vocabulary: vocabulary, version: .v2)
+            let models = try AsrModels(
+                encoder: MLModel(contentsOf: repository.appendingPathComponent("Encoder.mlmodelc"), configuration: config),
+                preprocessor: MLModel(contentsOf: repository.appendingPathComponent("Preprocessor.mlmodelc"), configuration: preprocessorConfig),
+                decoder: MLModel(contentsOf: repository.appendingPathComponent("Decoder.mlmodelc"), configuration: config),
+                joint: MLModel(contentsOf: repository.appendingPathComponent("JointDecision.mlmodelc"), configuration: config),
+                configuration: config,
+                vocabulary: vocabulary,
+                version: .v2
+            )
             let manager = AsrManager()
             activeManager = manager
             try await manager.initialize(models: models)
@@ -105,12 +112,15 @@ final class MeetingReliabilityNegativeScreenTests: XCTestCase {
                         let start = clock.now
                         let result = try await manager.transcribe(samples, source: .microphone)
                         let elapsed = start.duration(to: clock.now).components
-                        report.runs.append(.init(condition: noise ? "synthetic_uniform_noise_peak_0.001" : "digital_silence",
-                                                 mode: segmentSeconds == 60 ? "whole_chunk_60s" : "short_turn_3s",
-                                                 startSample: offset, sampleCount: count,
-                                                 nonempty: !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                                 whitespaceWordCount: ReliabilitySyntheticInput.wordCount(result.text),
-                                                 latencySeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18))
+                        report.runs.append(.init(
+                            condition: noise ? "synthetic_uniform_noise_peak_0.001" : "digital_silence",
+                            mode: segmentSeconds == 60 ? "whole_chunk_60s" : "short_turn_3s",
+                            startSample: offset,
+                            sampleCount: count,
+                            nonempty: !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                            whitespaceWordCount: ReliabilitySyntheticInput.wordCount(result.text),
+                            latencySeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+                        ))
                         offset += count
                     }
                 }
@@ -158,13 +168,14 @@ final class MeetingReliabilityNegativeScreenTests: XCTestCase {
             guard try BaselineHashing.sha256Hex(ofFileAt: url) == artifact.sha256 else { throw ScreenError.artifactHashMismatch }
         }
         // Reject unmanifested files too: a partial manifest cannot bless an unverified model.
-        guard let enumerator = FileManager.default.enumerator(at: repository, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else { throw ScreenError.artifactEnumerationFailed }
+        guard let enumerator = FileManager.default.enumerator(at: repository, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        else { throw ScreenError.artifactEnumerationFailed }
         var actual = Set<String>()
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard values.isSymbolicLink != true else { throw ScreenError.symbolicLinkArtifact }
             if values.isRegularFile == true {
-                actual.insert(manifest.modelRepository + "/" + (try ReliabilitySyntheticInput.relativeArtifactPath(url, under: repository)))
+                try actual.insert(manifest.modelRepository + "/" + (ReliabilitySyntheticInput.relativeArtifactPath(url, under: repository)))
             }
         }
         guard actual == Set(paths) else { throw ScreenError.artifactSetMismatch }
@@ -182,7 +193,7 @@ final class MeetingReliabilityNegativeScreenTests: XCTestCase {
     }
 }
 
-nonisolated private enum ScreenError: Error {
+private nonisolated enum ScreenError: Error {
     case invalidInputs, invalidConfiguration, unsafeHost, wallBudgetExceeded
     case invalidRepository, duplicateArtifactPaths, invalidArtifactPath, artifactHashMismatch
     case artifactEnumerationFailed, symbolicLinkArtifact, artifactSetMismatch, invalidVocabulary
@@ -198,14 +209,16 @@ nonisolated enum ReliabilitySyntheticInput {
               Array(childParts.prefix(rootParts.count)) == rootParts else { throw ScreenError.invalidArtifactPath }
         return childParts.dropFirst(rootParts.count).joined(separator: "/")
     }
+
     static func samples(count: Int, noise: Bool, seed: UInt64) -> [Float] {
         guard noise else { return [Float](repeating: 0, count: count) }
         var state = seed
         return (0..<count).map { _ in
-            state = state &* 6364136223846793005 &+ 1442695040888963407
-            return (Float(state >> 40) / Float(0xFFFFFF) * 2 - 1) * 0.001
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return (Float(state >> 40) / Float(0xffffff) * 2 - 1) * 0.001
         }
     }
+
     static func wordCount(_ text: String) -> Int { text.split(whereSeparator: { $0.isWhitespace }).count }
     static func segmentLengths(totalSeconds: Int, segmentSeconds: Int) -> [Int] {
         precondition(totalSeconds >= 0 && segmentSeconds > 0)
@@ -213,7 +226,7 @@ nonisolated enum ReliabilitySyntheticInput {
     }
 }
 
-nonisolated private struct NegativeScreenReport: Encodable {
+private nonisolated struct NegativeScreenReport: Encodable {
     let schemaVersion = 1
     let kind = "synthetic_negative_asr_screen_not_meeting_pipeline"
     let verdict = "measured_only"
@@ -224,6 +237,8 @@ nonisolated private struct NegativeScreenReport: Encodable {
     let seed = "0x46565030; LCG64; top24-bit uniform; peak=0.001 (~-60dBFS)"
     let modelProvenance = "Preexisting host-bundled ASRBaselineInputs; exact artifact-set SHA256 verification against manifest; manifest is integrity provenance, not independent publisher authentication"
     let networkPolicy = "Direct local CoreML constructors; no downloader; sandbox required and network/audio-input entitlements forbidden"
+    // Keep the exact fixture text or diagnostic output together for comparison.
+    // swiftlint:disable:next line_length
     let scope = "No recorded audio read. No VAD, AEC, diarization, speaker profiles, production provider, or live recognizer. Noise is not AEC residual. Whitespace-delimited word counts, not linguistic token accuracy. Repeated silence is deterministic exposure, not independent statistical trials. No emptiness assertion. Wall budget checked between calls; a non-cooperative CoreML call may exceed it."
     let notTested = ["real AEC residual", "quiet speech recall", "short spoken acknowledgments", "double talk", "playback leakage", "caption reset recovery"]
     let manifestSHA256: String
@@ -243,14 +258,14 @@ nonisolated private struct NegativeScreenReport: Encodable {
         let nonempty: Bool
         let whitespaceWordCount: Int
         let latencySeconds: Double
-        var audioSeconds: Double { Double(sampleCount) / 16_000 }
+        var audioSeconds: Double { Double(self.sampleCount) / 16_000 }
         enum CodingKeys: CodingKey { case condition, mode, startSample, sampleCount, nonempty, whitespaceWordCount, latencySeconds, audioSeconds }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
-            try c.encode(condition, forKey: .condition); try c.encode(mode, forKey: .mode)
-            try c.encode(startSample, forKey: .startSample); try c.encode(sampleCount, forKey: .sampleCount)
-            try c.encode(nonempty, forKey: .nonempty); try c.encode(whitespaceWordCount, forKey: .whitespaceWordCount)
-            try c.encode(latencySeconds, forKey: .latencySeconds); try c.encode(audioSeconds, forKey: .audioSeconds)
+            try c.encode(self.condition, forKey: .condition); try c.encode(self.mode, forKey: .mode)
+            try c.encode(self.startSample, forKey: .startSample); try c.encode(self.sampleCount, forKey: .sampleCount)
+            try c.encode(self.nonempty, forKey: .nonempty); try c.encode(self.whitespaceWordCount, forKey: .whitespaceWordCount)
+            try c.encode(self.latencySeconds, forKey: .latencySeconds); try c.encode(self.audioSeconds, forKey: .audioSeconds)
         }
     }
 }

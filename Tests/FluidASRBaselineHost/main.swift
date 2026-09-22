@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 
 if CommandLine.arguments.contains(MeetingReferenceSynchronizerReplayCLI.argument)
-    || ProcessInfo.processInfo.environment[MeetingReferenceSynchronizerReplayCLI.environmentKey] == "1" {
+    || ProcessInfo.processInfo.environment[MeetingReferenceSynchronizerReplayCLI.environmentKey] == "1"
+{
     let status = MeetingReferenceSynchronizerReplayCLI.run(
         arguments: CommandLine.arguments,
         // A path-selected replay does not need stdin. Avoid waiting on an attached
@@ -11,8 +12,9 @@ if CommandLine.arguments.contains(MeetingReferenceSynchronizerReplayCLI.argument
             ? Data() : (MeetingReferenceSynchronizerReplayCLI.readBoundedStandardInput() ?? Data()),
         output: { data in
             FileHandle.standardOutput.write(data)
-            FileHandle.standardOutput.write(Data([0x0A]))
-        })
+            FileHandle.standardOutput.write(Data([0x0a]))
+        }
+    )
     exit(status)
 }
 

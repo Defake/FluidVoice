@@ -504,7 +504,7 @@ final class MeetingDetectionPromptController: ObservableObject {
     static func defaultFrame(panelSize: NSSize, visibleFrame: NSRect) -> NSRect {
         NSRect(
             x: visibleFrame.midX - panelSize.width / 2,
-            y: visibleFrame.maxY - panelSize.height - Self.defaultTopInset,
+            y: visibleFrame.maxY - panelSize.height - self.defaultTopInset,
             width: panelSize.width,
             height: panelSize.height
         )

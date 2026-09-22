@@ -1915,9 +1915,11 @@ extension AIEnhancementSettingsView {
                                     .font(.fluidSystem(.caption2))
                                     .foregroundStyle(.secondary)
                             } else if self.promptTest.isActive {
-                                Text("Press the hotkey to start/stop recording. The transcription will be post-processed using your draft prompt and shown below (nothing will be typed into other apps).")
-                                    .font(.fluidSystem(.caption2))
-                                    .foregroundStyle(.secondary)
+                                Text(
+                                    "Press the hotkey to start/stop recording. The transcription will be post-processed using your draft prompt and shown below (nothing will be typed into other apps)."
+                                )
+                                .font(.fluidSystem(.caption2))
+                                .foregroundStyle(.secondary)
                             }
 
                             if self.promptTest.isActive {

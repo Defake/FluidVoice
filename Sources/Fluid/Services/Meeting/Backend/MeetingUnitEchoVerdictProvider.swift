@@ -24,8 +24,6 @@ nonisolated protocol MeetingUnitEchoVerdictProviding: Sendable {
 /// with `missingEchoVerdict`, so canonical online output can never be published on absent echo
 /// evidence.
 nonisolated struct MeetingFailClosedEchoVerdictProvider: MeetingUnitEchoVerdictProviding {
-    init() {}
-
     func echoVerdicts(
         for _: MeetingFinalTranscriptEvidence,
         manifest _: MeetingAnalysisManifest,
@@ -113,7 +111,7 @@ nonisolated struct MeetingTextOverlapEchoVerdictProvider: MeetingUnitEchoVerdict
             let micContext = microphoneUnits.filter {
                 $0.unit.trackID == mic.unit.trackID
                     && min($0.presentation.end, context.end)
-                        - max($0.presentation.start, context.start) > self.tolerance
+                    - max($0.presentation.start, context.start) > self.tolerance
             }.sorted {
                 ($0.presentation.start, $0.presentation.end, $0.unit.id)
                     < ($1.presentation.start, $1.presentation.end, $1.unit.id)
@@ -144,5 +142,4 @@ nonisolated struct MeetingTextOverlapEchoVerdictProvider: MeetingUnitEchoVerdict
         }
         return verdicts
     }
-
 }

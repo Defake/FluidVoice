@@ -71,7 +71,7 @@ nonisolated struct MeetingStage05AdapterDrain: Equatable, Sendable {
 /// here as diagnostics; nothing is flattened or invented.
 final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
     static let supportedSampleRateHz = 48_000.0
-    static let maximumBlocksPerTrack = 2_000
+    static let maximumBlocksPerTrack = 2000
     static let maximumFramesPerTrack = 960_000
     /// Harness-private sample attachment a controller may set to forward an explicit
     /// discontinuity. ScreenCaptureKit audio callbacks carry no standard discontinuity
@@ -107,7 +107,7 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
         case failure(MeetingStage05AdapterRejection)
     }
 
-    // MARK: Validation
+    // MARK: - Validation
 
     static func validate(
         _ frame: MeetingStage05AdapterFrame,
@@ -119,44 +119,45 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
         guard frame.presentationSeconds >= 0,
               frame.arrivalSeconds.map({ $0 >= 0 }) ?? true else { return .negativeTiming }
         guard frame.frameCount > 0, frame.samples.count == frame.frameCount,
-              frame.frameCount <= maximumFramesPerTrack else { return .invalidGeometry }
+              frame.frameCount <= self.maximumFramesPerTrack else { return .invalidGeometry }
         let nominalDuration = Double(frame.frameCount) / frame.sampleRateHz
         guard abs(frame.durationSeconds - nominalDuration) <= 1.5 / frame.sampleRateHz else {
             return .durationMismatch
         }
-        guard frame.sampleRateHz == supportedSampleRateHz else { return .unsupportedSampleRate }
+        guard frame.sampleRateHz == self.supportedSampleRateHz else { return .unsupportedSampleRate }
         guard frame.samples.allSatisfy({ $0.isFinite }) else { return .nonFiniteSamples }
-        guard acceptedFrames + frame.frameCount <= maximumFramesPerTrack else { return .frameLimit }
+        guard acceptedFrames + frame.frameCount <= self.maximumFramesPerTrack else { return .frameLimit }
         return nil
     }
 
-    // MARK: Constructed-frame seam (offline tests and pre-extracted callbacks)
+    // MARK: - Constructed-frame seam (offline tests and pre-extracted callbacks)
 
     @discardableResult
     func appendRenderFrame(_ frame: MeetingStage05AdapterFrame) -> MeetingStage05AdapterRejection? {
-        lock.lock(); defer { lock.unlock() }
+        self.lock.lock(); defer { lock.unlock() }
         guard let sequence = reserveSequence(cursor: &renderCursor) else { return .blockLimit }
         if let rejection = Self.validate(frame, acceptedFrames: renderCursor.acceptedFrames) {
-            recordRejection(rejection, cursor: &renderCursor)
+            self.recordRejection(rejection, cursor: &self.renderCursor)
             return rejection
         }
-        detect(frame, cursor: &renderCursor)
-        renderFrames.append(MeetingReferencePCMFrame(
+        self.detect(frame, cursor: &self.renderCursor)
+        self.renderFrames.append(MeetingReferencePCMFrame(
             sequenceNumber: sequence,
             presentationTime: frame.presentationSeconds,
             sampleRate: frame.sampleRateHz,
             samples: frame.samples,
-            discontinuity: frame.discontinuity))
-        advance(frame, cursor: &renderCursor)
+            discontinuity: frame.discontinuity
+        ))
+        self.advance(frame, cursor: &self.renderCursor)
         return nil
     }
 
     @discardableResult
     func appendMicrophoneFrame(_ frame: MeetingStage05AdapterFrame) -> MeetingStage05AdapterRejection? {
-        lock.lock(); defer { lock.unlock() }
+        self.lock.lock(); defer { lock.unlock() }
         guard let sequence = reserveSequence(cursor: &microphoneCursor) else { return .blockLimit }
         if let rejection = Self.validate(frame, acceptedFrames: microphoneCursor.acceptedFrames) {
-            recordRejection(rejection, cursor: &microphoneCursor)
+            self.recordRejection(rejection, cursor: &self.microphoneCursor)
             return rejection
         }
         // PTS converted to the sample-rate timescale; never cumulative samples written.
@@ -164,33 +165,35 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
         let roundedScaled = scaled.rounded()
         guard roundedScaled.isFinite,
               roundedScaled >= Double(Int64.min),
-              roundedScaled < Double(Int64.max) else {
-            recordRejection(.nonFiniteTiming, cursor: &microphoneCursor)
+              roundedScaled < Double(Int64.max)
+        else {
+            self.recordRejection(.nonFiniteTiming, cursor: &self.microphoneCursor)
             return .nonFiniteTiming
         }
-        detect(frame, cursor: &microphoneCursor)
-        microphoneFrames.append(MeetingMicrophonePCMFrame(
+        self.detect(frame, cursor: &self.microphoneCursor)
+        self.microphoneFrames.append(MeetingMicrophonePCMFrame(
             sequenceNumber: sequence,
             sampleTime: Int64(roundedScaled),
             hostTime: frame.arrivalSeconds,
             sampleRate: frame.sampleRateHz,
             samples: frame.samples,
-            routeIdentifier: routeIdentifier,
-            discontinuity: frame.discontinuity))
-        advance(frame, cursor: &microphoneCursor)
+            routeIdentifier: self.routeIdentifier,
+            discontinuity: frame.discontinuity
+        ))
+        self.advance(frame, cursor: &self.microphoneCursor)
         return nil
     }
 
-    // MARK: Live CMSampleBuffer entry points
+    // MARK: - Live CMSampleBuffer entry points
 
     @discardableResult
     func appendRender(_ sampleBuffer: CMSampleBuffer, arrivalSeconds: Double) -> MeetingStage05AdapterRejection? {
         switch Self.extract(sampleBuffer, arrivalSeconds: arrivalSeconds) {
-        case .frame(let frame): return appendRenderFrame(frame)
-        case .failure(let rejection):
-            lock.lock(); defer { lock.unlock() }
-            guard reserveSequence(cursor: &renderCursor) != nil else { return .blockLimit }
-            recordRejection(rejection, cursor: &renderCursor)
+        case let .frame(frame): return self.appendRenderFrame(frame)
+        case let .failure(rejection):
+            self.lock.lock(); defer { lock.unlock() }
+            guard self.reserveSequence(cursor: &self.renderCursor) != nil else { return .blockLimit }
+            self.recordRejection(rejection, cursor: &self.renderCursor)
             return rejection
         }
     }
@@ -198,11 +201,11 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
     @discardableResult
     func appendMicrophone(_ sampleBuffer: CMSampleBuffer, arrivalSeconds: Double) -> MeetingStage05AdapterRejection? {
         switch Self.extract(sampleBuffer, arrivalSeconds: arrivalSeconds) {
-        case .frame(let frame): return appendMicrophoneFrame(frame)
-        case .failure(let rejection):
-            lock.lock(); defer { lock.unlock() }
-            guard reserveSequence(cursor: &microphoneCursor) != nil else { return .blockLimit }
-            recordRejection(rejection, cursor: &microphoneCursor)
+        case let .frame(frame): return self.appendMicrophoneFrame(frame)
+        case let .failure(rejection):
+            self.lock.lock(); defer { lock.unlock() }
+            guard self.reserveSequence(cursor: &self.microphoneCursor) != nil else { return .blockLimit }
+            self.recordRejection(rejection, cursor: &self.microphoneCursor)
             return rejection
         }
     }
@@ -218,22 +221,33 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
             return .failure(.unsupportedFormat)
         }
         let count = CMSampleBufferGetNumSamples(sampleBuffer)
-        guard count > 0, count <= maximumFramesPerTrack else { return .failure(.invalidGeometry) }
+        guard count > 0, count <= self.maximumFramesPerTrack else { return .failure(.invalidGeometry) }
         let byteCount = count * nativeFormat.bytesPerFrame
         var requiredSize = 0
         guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: &requiredSize, bufferListOut: nil,
-            bufferListSize: 0, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil,
-            flags: 0, blockBufferOut: nil) == noErr, requiredSize > 0 else { return .failure(.invalidGeometry) }
+            sampleBuffer,
+            bufferListSizeNeededOut: &requiredSize,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: nil
+        ) == noErr, requiredSize > 0 else { return .failure(.invalidGeometry) }
         let raw = UnsafeMutableRawPointer.allocate(byteCount: requiredSize, alignment: MemoryLayout<AudioBufferList>.alignment)
         defer { raw.deallocate() }
         let list = raw.bindMemory(to: AudioBufferList.self, capacity: 1)
         var retained: CMBlockBuffer?
         guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: nil, bufferListOut: list,
-            bufferListSize: requiredSize, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil,
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: list,
+            bufferListSize: requiredSize,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
             flags: UInt32(kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment),
-            blockBufferOut: &retained) == noErr else { return .failure(.invalidGeometry) }
+            blockBufferOut: &retained
+        ) == noErr else { return .failure(.invalidGeometry) }
         let buffers = UnsafeMutableAudioBufferListPointer(list)
         guard buffers.count == 1, buffers[0].mNumberChannels == 1,
               buffers[0].mDataByteSize == UInt32(byteCount), let pointer = buffers[0].mData
@@ -247,26 +261,28 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
             sampleRateHz: asbd.mSampleRate,
             arrivalSeconds: arrivalSeconds,
             samples: samples,
-            discontinuity: hasDiscontinuityAttachment(sampleBuffer)))
+            discontinuity: self.hasDiscontinuityAttachment(sampleBuffer)
+        ))
     }
 
     static func hasDiscontinuityAttachment(_ sampleBuffer: CMSampleBuffer) -> Bool {
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [NSDictionary],
               let first = attachments.first else { return false }
-        return (first[discontinuityAttachmentKey] as? Bool) == true
+        return (first[self.discontinuityAttachmentKey] as? Bool) == true
     }
 
-    // MARK: Drain and synchronize
+    // MARK: - Drain and synchronize
 
     /// Returns the bounded per-track inputs and diagnostics. Call only after both callback
     /// queues have been drained; this method performs no queue work itself.
     func drain() -> MeetingStage05AdapterDrain {
-        lock.lock(); defer { lock.unlock() }
+        self.lock.lock(); defer { lock.unlock() }
         return MeetingStage05AdapterDrain(
-            microphone: microphoneFrames,
-            reference: renderFrames,
-            microphoneDiagnostics: microphoneCursor.diagnostics,
-            renderDiagnostics: renderCursor.diagnostics)
+            microphone: self.microphoneFrames,
+            reference: self.renderFrames,
+            microphoneDiagnostics: self.microphoneCursor.diagnostics,
+            renderDiagnostics: self.renderCursor.diagnostics
+        )
     }
 
     /// Runs the pure synchronizer over the drained callbacks. No clock drift is estimated
@@ -274,16 +290,19 @@ final class MeetingStage05SCKFrameAdapter: @unchecked Sendable {
     func synchronize(
         configuration: MeetingReferenceSynchronizerConfiguration = .init()
     ) -> (MeetingStage05AdapterDrain, MeetingSynchronizationResult) {
-        let drained = drain()
-        return (drained, MeetingReferenceSynchronizer(configuration: configuration)
-            .synchronize(microphone: drained.microphone, reference: drained.reference))
+        let drained = self.drain()
+        return (
+            drained,
+            MeetingReferenceSynchronizer(configuration: configuration)
+                .synchronize(microphone: drained.microphone, reference: drained.reference)
+        )
     }
 
-    // MARK: Per-callback observation
+    // MARK: - Per-callback observation
 
     private func reserveSequence(cursor: inout Cursor) -> Int? {
         guard cursor.nextSequence < Self.maximumBlocksPerTrack else {
-            recordRejection(.blockLimit, cursor: &cursor)
+            self.recordRejection(.blockLimit, cursor: &cursor)
             return nil
         }
         let reserved = cursor.nextSequence

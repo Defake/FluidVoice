@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 final class MeetingEchoSignalScorerTests: XCTestCase {
-    private let sampleRate = 16000.0
+    private let sampleRate = 16_000.0
     private var hopSeconds: Double { Double(MeetingEchoSignalScorer.hopLength) / self.sampleRate }
     /// Tight enough to catch the sidelobe/wrong-sign regressions; the fixed estimator errs by 0 samples.
     private var delayAccuracySeconds: Double { 2.0 / self.sampleRate }
@@ -11,7 +11,7 @@ final class MeetingEchoSignalScorerTests: XCTestCase {
     func testEstimateDelayRecoversPositiveLag() throws {
         let delaySamples = 400
         var lcg = LCG(seed: 1)
-        let reference = self.bandLimitedNoise(count: 12000, generator: &lcg)
+        let reference = self.bandLimitedNoise(count: 12_000, generator: &lcg)
         var noiseLCG = LCG(seed: 2)
         let mic = self.delayedAndScaled(reference, bySamples: delaySamples, scale: 0.5, noiseAmplitude: 0.01, generator: &noiseLCG)
 
@@ -26,7 +26,7 @@ final class MeetingEchoSignalScorerTests: XCTestCase {
     func testEstimateDelayRecoversNegativeLag() throws {
         let delaySamples = -350
         var lcg = LCG(seed: 3)
-        let reference = self.bandLimitedNoise(count: 12000, generator: &lcg)
+        let reference = self.bandLimitedNoise(count: 12_000, generator: &lcg)
         var noiseLCG = LCG(seed: 4)
         let mic = self.delayedAndScaled(reference, bySamples: delaySamples, scale: 0.6, noiseAmplitude: 0.01, generator: &noiseLCG)
 
@@ -42,7 +42,7 @@ final class MeetingEchoSignalScorerTests: XCTestCase {
         // Inverted polarity puts the true peak negative; signed argmax used to pick a sidelobe.
         let delaySamples = 400
         var lcg = LCG(seed: 60)
-        let reference = self.bandLimitedNoise(count: 12000, generator: &lcg)
+        let reference = self.bandLimitedNoise(count: 12_000, generator: &lcg)
         var noiseLCG = LCG(seed: 61)
         let mic = self.delayedAndScaled(reference, bySamples: delaySamples, scale: -0.5, noiseAmplitude: 0.01, generator: &noiseLCG)
 
@@ -71,7 +71,7 @@ final class MeetingEchoSignalScorerTests: XCTestCase {
     func testEstimateDelayHandlesMismatchedLengths() throws {
         let delaySamples = 200
         var lcg = LCG(seed: 62)
-        let reference = self.bandLimitedNoise(count: 12000, generator: &lcg)
+        let reference = self.bandLimitedNoise(count: 12_000, generator: &lcg)
         var noiseLCG = LCG(seed: 63)
         let fullMic = self.delayedAndScaled(reference, bySamples: delaySamples, scale: 0.5, noiseAmplitude: 0.01, generator: &noiseLCG)
         let mic = Array(fullMic.prefix(9000))
@@ -338,18 +338,21 @@ final class MeetingEchoSignalScorerTests: XCTestCase {
 
     private struct LCG {
         private var state: UInt64
-        init(seed: UInt64) { self.state = seed &+ 0x9E3779B97F4A7C15 }
+        init(seed: UInt64) { self.state = seed &+ 0x9e3779b97f4a7c15 }
         mutating func nextUnit() -> Float {
-            self.state = self.state &* 6364136223846793005 &+ 1442695040888963407
+            self.state = self.state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
             return Float(Double(self.state >> 11) / Double(1 << 53))
         }
+
         mutating func nextSigned() -> Float { self.nextUnit() * 2 - 1 }
     }
 
     /// Cheap 3-tap moving-average smoothing gives GCC-PHAT a less impulsive, more speech-like spectrum.
     private func bandLimitedNoise(count: Int, generator: inout LCG) -> [Float] {
         var white = [Float](repeating: 0, count: count)
-        for i in 0..<count { white[i] = generator.nextSigned() }
+        for i in 0..<count {
+            white[i] = generator.nextSigned()
+        }
         var smoothed = [Float](repeating: 0, count: count)
         for i in 0..<count {
             let a = white[i]

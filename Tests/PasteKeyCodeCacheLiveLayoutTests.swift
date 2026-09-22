@@ -31,7 +31,9 @@ enum PasteKeyCodeCacheLiveLayoutTests {
             let restored = TISSelectInputSource(original)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
             let disabled = wasEnabled ? noErr : TISDisableInputSource(dvorak)
-            print("RESTORE selection=\(restored) removeTemporaryDvorak=\(disabled) current=\(value(TISCopyCurrentKeyboardInputSource().takeRetainedValue(), kTISPropertyInputSourceID))")
+            print(
+                "RESTORE selection=\(restored) removeTemporaryDvorak=\(disabled) current=\(value(TISCopyCurrentKeyboardInputSource().takeRetainedValue(), kTISPropertyInputSourceID))"
+            )
         }
         guard TISEnableInputSource(dvorak) == noErr else { throw NSError(domain: "Enable failed", code: 2) }
         var refreshes = 0
@@ -51,7 +53,9 @@ enum PasteKeyCodeCacheLiveLayoutTests {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.001))
             }
             guard cache.snapshot() == expected else { throw NSError(domain: "Stale cache", code: 4) }
-            print("SWITCH \(self.value(source, kTISPropertyInputSourceID)) expected=\(expected) immediate=\(immediate) refreshed=\(cache.snapshot()) elapsedMs=\((ProcessInfo.processInfo.systemUptime - start) * 1000)")
+            print(
+                "SWITCH \(self.value(source, kTISPropertyInputSourceID)) expected=\(expected) immediate=\(immediate) refreshed=\(cache.snapshot()) elapsedMs=\((ProcessInfo.processInfo.systemUptime - start) * 1000)"
+            )
         }
         // Several changes without yielding the main run loop: the request must use
         // the final layout, even if notifications are still queued or coalesced.

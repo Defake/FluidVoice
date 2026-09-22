@@ -390,7 +390,10 @@ private struct AIProvidersPresentation: View {
                     .font(self.theme.typography.bodySmall)
                     .foregroundStyle(self.supportingText)
                 Divider()
-                ForEach(panel == .manage ? ["Model downloads", "Backend & context", "Startup preferences", "Storage & maintenance"] : ["Connection details", "Model selection", "Verification"], id: \.self) { label in
+                ForEach(
+                    panel == .manage ? ["Model downloads", "Backend & context", "Startup preferences", "Storage & maintenance"] : ["Connection details", "Model selection", "Verification"],
+                    id: \.self
+                ) { label in
                     Text(label).font(self.theme.typography.body)
                 }
             }

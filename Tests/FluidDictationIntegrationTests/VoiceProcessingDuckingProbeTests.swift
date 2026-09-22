@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import AVFoundation
+@testable import FluidVoice_Debug
 import Foundation
 import ScreenCaptureKit
 import XCTest
@@ -99,7 +99,6 @@ final class VoiceProcessingDuckingProbeTests: XCTestCase {
         print("[vpio] buffers=\(stats.buffers) copyFailures=\(stats.copyFailures) framesTotal=\(stats.frames) streamError=\(errorDelegate.lastError ?? "none")")
         XCTAssertGreaterThan(baseline, 0, "SCStream captured no audio; tone or permission problem")
     }
-
 }
 
 private actor AudioLevelCollector {
@@ -152,7 +151,9 @@ private final class LevelStreamOutput: NSObject, SCStreamOutput {
             return
         }
         var sum = 0.0
-        for i in 0..<Int(frames) { sum += Double(channel[i]) * Double(channel[i]) }
+        for i in 0..<Int(frames) {
+            sum += Double(channel[i]) * Double(channel[i])
+        }
         Task { [collector] in await collector.add(sumOfSquares: sum, frames: Int(frames)) }
     }
 }

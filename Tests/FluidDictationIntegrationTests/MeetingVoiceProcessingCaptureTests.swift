@@ -1,10 +1,10 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreAudio
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
-import ScreenCaptureKit
 import os
+import ScreenCaptureKit
 import XCTest
 
 /// Hardware/permission-free: ScreenCaptureKit and AVAudioEngine integration paths need live
@@ -48,20 +48,22 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
     func testDirectAEC3GateDefaultsOnAndHasExactDisableEscapeHatch() {
         XCTAssertTrue(MeetingDirectAEC3Gate.enabled(environment: [:]))
         XCTAssertTrue(MeetingDirectAEC3Gate.enabled(environment: [
-            MeetingDirectAEC3Gate.disableEnvironmentKey: "true"
+            MeetingDirectAEC3Gate.disableEnvironmentKey: "true",
         ]))
         XCTAssertFalse(MeetingDirectAEC3Gate.enabled(environment: [
-            MeetingDirectAEC3Gate.disableEnvironmentKey: "1"
+            MeetingDirectAEC3Gate.disableEnvironmentKey: "1",
         ]))
     }
 
-#if DEBUG
+    #if DEBUG
     func testExplicitC2GateCanForcePairedScreenCaptureKitWithoutChangingDefault() {
         let defaultDecision = MeetingCapturePathDecider.decide(
             mode: .onlineCall, microphone: self.mic(), outputRoute: self.viableRoute()
         )
         let forcedDecision = MeetingCapturePathDecider.decide(
-            mode: .onlineCall, microphone: self.mic(), outputRoute: self.viableRoute(),
+            mode: .onlineCall,
+            microphone: self.mic(),
+            outputRoute: self.viableRoute(),
             forcePairedScreenCaptureKit: true,
             preferDirectAEC3: true
         )
@@ -78,13 +80,13 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
     func testC2GateIsOnlyEnabledByExplicitEnvironmentValue() {
         XCTAssertFalse(MeetingSCKPairedDiagnosticGate.enabled(environment: [:]))
         XCTAssertFalse(MeetingSCKPairedDiagnosticGate.enabled(environment: [
-            MeetingSCKPairedDiagnosticGate.environmentKey: "true"
+            MeetingSCKPairedDiagnosticGate.environmentKey: "true",
         ]))
         XCTAssertTrue(MeetingSCKPairedDiagnosticGate.enabled(environment: [
-            MeetingSCKPairedDiagnosticGate.environmentKey: "1"
+            MeetingSCKPairedDiagnosticGate.environmentKey: "1",
         ]))
     }
-#endif
+    #endif
 
     func testDecisionDeclinesForInRoomMode() {
         let decision = MeetingCapturePathDecider.decide(mode: .inRoom, microphone: self.mic(), outputRoute: self.viableRoute())
@@ -161,8 +163,11 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
 
     func testRawRouteRequiresPositiveHeadphoneEvidence() {
         let unknownBluetooth = MeetingOutputRouteSnapshot(
-            deviceExists: true, isBluetooth: true, isBuiltIn: false,
-            isHeadphonesDataSource: false, terminalTypes: []
+            deviceExists: true,
+            isBluetooth: true,
+            isBuiltIn: false,
+            isHeadphonesDataSource: false,
+            terminalTypes: []
         )
         XCTAssertEqual(MeetingRawMicrophoneProtection.classify(unknownBluetooth), .unprotected)
 
@@ -179,7 +184,9 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         XCTAssertEqual(MeetingRawMicrophoneProtection.classify(headphones), .acousticallyClosed)
 
         let builtInHeadphoneJack = MeetingOutputRouteSnapshot(
-            deviceExists: true, isBluetooth: false, isBuiltIn: true,
+            deviceExists: true,
+            isBluetooth: false,
+            isBuiltIn: true,
             isHeadphonesDataSource: true
         )
         XCTAssertEqual(MeetingRawMicrophoneProtection.classify(builtInHeadphoneJack), .acousticallyClosed)
@@ -197,12 +204,20 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
     func testTurnCrossingUnprotectedEraIsRejectedAsAWhole() {
         let eras = [
             MeetingCaptureEra(
-                method: .voiceProcessing, deviceUID: "mic", deviceName: "Mic",
-                roleAtElection: .unknown, echoProtection: .voiceProcessed, startSeconds: -.infinity
+                method: .voiceProcessing,
+                deviceUID: "mic",
+                deviceName: "Mic",
+                roleAtElection: .unknown,
+                echoProtection: .voiceProcessed,
+                startSeconds: -.infinity
             ),
             MeetingCaptureEra(
-                method: .avCaptureSession, deviceUID: "mic", deviceName: "Mic",
-                roleAtElection: .unknown, echoProtection: .unprotected, startSeconds: 10
+                method: .avCaptureSession,
+                deviceUID: "mic",
+                deviceName: "Mic",
+                roleAtElection: .unknown,
+                echoProtection: .unprotected,
+                startSeconds: 10
             ),
         ]
         XCTAssertTrue(MeetingProcessingPipeline.microphoneIntervalIsAdmitted(start: 8, end: 9.9, eras: eras))
@@ -249,26 +264,40 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
             sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(
-                startedHostTime: 0, machTimebaseNumerator: 1,
-                machTimebaseDenominator: 1, firstPresentationTime: nil
+                startedHostTime: 0,
+                machTimebaseNumerator: 1,
+                machTimebaseDenominator: 1,
+                firstPresentationTime: nil
             ),
             health: .waiting,
             chunks: [MeetingAudioChunk(
-                id: UUID(), sequence: 0, relativeFilePath: "mic.m4a",
+                id: UUID(),
+                sequence: 0,
+                relativeFilePath: "mic.m4a",
                 presentationStart: MeetingMediaTime(value: 100, timescale: 1),
                 presentationEnd: MeetingMediaTime(value: 120, timescale: 1),
-                discontinuities: [], sha256: "x", byteCount: 1,
+                discontinuities: [],
+                sha256: "x",
+                byteCount: 1,
                 finalizationState: .finalized
             )],
             captureMethod: .avCaptureSession,
             captureEras: [
                 MeetingCaptureEra(
-                    method: .voiceProcessing, deviceUID: "mic", deviceName: "Mic",
-                    roleAtElection: .unknown, echoProtection: .voiceProcessed, startSeconds: 0
+                    method: .voiceProcessing,
+                    deviceUID: "mic",
+                    deviceName: "Mic",
+                    roleAtElection: .unknown,
+                    echoProtection: .voiceProcessed,
+                    startSeconds: 0
                 ),
                 MeetingCaptureEra(
-                    method: .avCaptureSession, deviceUID: "mic", deviceName: "Mic",
-                    roleAtElection: .unknown, echoProtection: .unprotected, startSeconds: 110
+                    method: .avCaptureSession,
+                    deviceUID: "mic",
+                    deviceName: "Mic",
+                    roleAtElection: .unknown,
+                    echoProtection: .unprotected,
+                    startSeconds: 110
                 ),
             ]
         )
@@ -281,10 +310,16 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
     // MARK: - Commit gate
 
     private func makeSampleBuffer(ptsSeconds: Double = 0) -> CMSampleBuffer {
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 480)!
         buffer.frameLength = 480
         let pts = CMTime(seconds: ptsSeconds, preferredTimescale: 48_000)
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         return meetingMicrophoneSynthesizeSampleBuffer(from: buffer, presentationTime: pts)!
     }
 
@@ -323,7 +358,7 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
     func testGateAbortsAndSwallowsAfterRingExhaustion() throws {
         // Cap sized to fit exactly one sample's worth of bytes: the second sample must not fit.
         let one = self.makeSampleBuffer()
-        let bytes = CMBlockBufferGetDataLength(try XCTUnwrap(CMSampleBufferGetDataBuffer(one)))
+        let bytes = try CMBlockBufferGetDataLength(XCTUnwrap(CMSampleBufferGetDataBuffer(one)))
         XCTAssertGreaterThan(bytes, 0)
         let gate = MeetingVoiceProcessingCommitGate(ringCapBytes: bytes)
         XCTAssertEqual(gate.offer(one), .buffered)
@@ -542,7 +577,8 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         XCTAssertEqual(startEntered.wait(timeout: .now() + 1), .success)
         let stopTask = Task { await lifecycle.stop() }
         XCTAssertEqual(
-            stopRan.wait(timeout: .now() + 0.1), .timedOut,
+            stopRan.wait(timeout: .now() + 0.1),
+            .timedOut,
             "retirement must not bypass an uninterruptible startRunning call"
         )
 
@@ -573,7 +609,8 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         let lateStartSucceeded = await lifecycle.start()
         XCTAssertFalse(lateStartSucceeded)
         XCTAssertEqual(
-            startRan.wait(timeout: .now() + 0.1), .timedOut,
+            startRan.wait(timeout: .now() + 0.1),
+            .timedOut,
             "retirement must permanently seal the lifecycle against late restarts"
         )
 
@@ -768,10 +805,15 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
             health: .waiting,
             chunks: [MeetingAudioChunk(
-                id: UUID(), sequence: 0, relativeFilePath: "x.m4a",
+                id: UUID(),
+                sequence: 0,
+                relativeFilePath: "x.m4a",
                 presentationStart: MeetingMediaTime(value: Int64(chunkStart * 48_000), timescale: 48_000),
                 presentationEnd: MeetingMediaTime(value: Int64((chunkStart + 60) * 48_000), timescale: 48_000),
-                discontinuities: [], sha256: "x", byteCount: 1, finalizationState: .finalized
+                discontinuities: [],
+                sha256: "x",
+                byteCount: 1,
+                finalizationState: .finalized
             )]
         )
         track.captureMethod = captureMethod
@@ -797,10 +839,10 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         var clock = MeetingMicrophonePTSClock(timebase: mach_timebase_info_data_t(numer: 1, denom: 1))
         let ppm = 6.7e-6
         let windowSeconds = 0.1
-        let windows = 9_500 // 950s: past the ~12.5min materiality crossover at 6.7ppm
+        let windows = 9500 // 950s: past the ~12.5min materiality crossover at 6.7ppm
         for i in 0..<windows {
             let hostSeconds = Double(i) * windowSeconds * (1 - ppm) // fast mic: less host time per window
-            _ = clock.stamp(hostTime: UInt64(hostSeconds * 1_000_000_000), frameCount: 4_800)
+            _ = clock.stamp(hostTime: UInt64(hostSeconds * 1_000_000_000), frameCount: 4800)
         }
         let elapsed = Double(windows - 1) * windowSeconds * (1 - ppm)
         let cumulative = clock.cumulativeAbsorbedCorrectionSeconds
@@ -847,10 +889,14 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         let sessionDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sessionDirectory) }
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         let backpressureCount = OSAllocatedUnfairLock<Int>(initialState: 0)
         let writer = try MeetingAudioChunkWriter(track: track, sessionDirectory: sessionDirectory, chunkDuration: 60) { event in
@@ -876,10 +922,15 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         let sessionDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sessionDirectory) }
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone, sourceIdentifier: "mic", sourceDisplayName: "Mic",
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: "mic",
+            sourceDisplayName: "Mic",
             format: nil,
             timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil),
-            health: .waiting, chunks: [], captureMethod: .screenCaptureKit
+            health: .waiting,
+            chunks: [],
+            captureMethod: .screenCaptureKit
         )
         let writer = try MeetingAudioChunkWriter(track: track, sessionDirectory: sessionDirectory, chunkDuration: 60) { _ in }
 
@@ -938,7 +989,7 @@ final class MeetingVoiceProcessingCaptureTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(MeetingAudioTrack.self, from: try encoder.encode(track))
+        let decoded = try decoder.decode(MeetingAudioTrack.self, from: encoder.encode(track))
         XCTAssertEqual(decoded.captureMethod, .voiceProcessing)
         XCTAssertEqual(decoded.clockDrift, drift)
     }

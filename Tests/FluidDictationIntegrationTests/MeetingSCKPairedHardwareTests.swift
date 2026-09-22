@@ -1,8 +1,8 @@
 #if DEBUG
 
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import ScreenCaptureKit
 import XCTest
@@ -22,7 +22,8 @@ final class MeetingSCKPairedHardwareTests: XCTestCase {
             )
         }
         guard let bundleID = environment[MeetingSCKPairedDiagnosticGate.targetBundleIDEnvironmentKey]?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty else {
+            .trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty
+        else {
             throw XCTSkip("FLUIDVOICE_C2_TARGET_BUNDLE_ID is empty")
         }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
@@ -87,6 +88,8 @@ final class MeetingSCKPairedHardwareTests: XCTestCase {
 
         let report = collector.report()
         let data = try report.jsonData()
+        // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+        // swiftlint:disable:next optional_data_string_conversion
         print("[C2] sorted report JSON: \(String(decoding: data, as: UTF8.self))")
         XCTAssertTrue(report.enabled)
         XCTAssertEqual(report.provenance, provenance)

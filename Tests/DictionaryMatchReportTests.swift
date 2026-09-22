@@ -49,7 +49,15 @@ struct DictionaryMatchReportTests {
         precondition(legacy.matchThreshold == nil)
 
         let individual = [Float(0.49), 0.83, 0.62].enumerated().map { index, score in
-            DictionaryMatchReport.Candidate(id: "sample-\(index)", word: "ModelOpt", sampleNumber: index + 1, enrollmentCount: 3, eligible: true, score: score, heard: "sample \(index + 1)")
+            DictionaryMatchReport.Candidate(
+                id: "sample-\(index)",
+                word: "ModelOpt",
+                sampleNumber: index + 1,
+                enrollmentCount: 3,
+                eligible: true,
+                score: score,
+                heard: "sample \(index + 1)"
+            )
         }
         let selected = DictionaryMatchReport.bestCandidates(from: individual)
         precondition(selected.count == 1 && selected[0].score == 0.83)

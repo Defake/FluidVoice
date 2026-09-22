@@ -288,7 +288,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         on owner: MeetingASRPreparationOwner
     ) -> ContinuationGate {
         let secondWaiterEntered = ContinuationGate()
-#if DEBUG
+        #if DEBUG
         let waiters = OrchestrationRecorder()
         owner.didBeginWaitingForTesting = {
             waiters.record("waiting")
@@ -296,7 +296,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
                 secondWaiterEntered.open()
             }
         }
-#endif
+        #endif
         return secondWaiterEntered
     }
 
@@ -636,8 +636,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
             do {
                 _ = try await preparation.value
                 XCTFail("Expected retirement cancellation")
-            } catch is CancellationError {
-            }
+            } catch is CancellationError {}
             XCTAssertEqual(harness.recorder.count(of: "factory"), 0)
             XCTAssertEqual(harness.recorder.count(of: "drain"), 1)
             XCTAssertFalse(harness.owner.isClaimed)
@@ -660,8 +659,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
             do {
                 _ = try await preparation.value
                 XCTFail("Expected invalid-lease cancellation")
-            } catch is CancellationError {
-            }
+            } catch is CancellationError {}
             XCTAssertEqual(harness.recorder.count(of: "factory"), 0)
             XCTAssertEqual(harness.recorder.count(of: "drain"), 1)
             XCTAssertFalse(harness.owner.isClaimed)
@@ -677,8 +675,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
                     lease: lease, attemptID: UUID(), configuration: MeetingFinalProcessingConfiguration()
                 )
                 XCTFail("Expected retirement failure")
-            } catch PreparationTestError.retireFailed {
-            }
+            } catch PreparationTestError.retireFailed {}
             XCTAssertEqual(harness.recorder.events, ["retire", "drain"])
             XCTAssertFalse(harness.owner.isClaimed)
         }
@@ -711,8 +708,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         do {
             _ = try await preparation.value
             XCTFail("Expected preparation failure")
-        } catch PreparationTestError.prepareFailed {
-        }
+        } catch PreparationTestError.prepareFailed {}
         await release.value
         XCTAssertFalse(harness.owner.isClaimed)
     }
@@ -749,9 +745,9 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         harness.provider.blockPrepare(on: providerGate)
         harness.provider.onPrepareEntered { entered.open() }
         let secondWaiterEntered = self.installSecondWaiterAcknowledgement(on: harness.owner)
-#if !DEBUG
+        #if !DEBUG
         let secondStarted = ContinuationGate()
-#endif
+        #endif
         let first = Task { @MainActor in
             try await harness.owner.prepare(
                 lease: lease, attemptID: attemptID, configuration: MeetingFinalProcessingConfiguration()
@@ -760,19 +756,19 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         let enteredObserved = await waitUntilCondition { entered.opened }
         XCTAssertTrue(enteredObserved)
         let second = Task { @MainActor in
-#if !DEBUG
+            #if !DEBUG
             secondStarted.open()
-#endif
+            #endif
             return try await harness.owner.prepare(
                 lease: lease, attemptID: attemptID, configuration: MeetingFinalProcessingConfiguration()
             )
         }
         // Both waiters join the same exact operation; cancellation of one cancels the shared worker.
-#if DEBUG
+        #if DEBUG
         let secondObserved = await waitUntilCondition { secondWaiterEntered.opened }
-#else
+        #else
         let secondObserved = await waitUntilCondition { secondStarted.opened }
-#endif
+        #endif
         XCTAssertTrue(secondObserved)
         second.cancel()
         providerGate.open()
@@ -794,7 +790,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         XCTAssertFalse(harness.owner.isClaimed)
     }
 
-#if DEBUG
+    #if DEBUG
     func testReadyTransitionCancelsJoinedWaiterBeforeEitherCanReturn() async throws {
         var joinedWaiter: Task<any TranscriptionProvider, Error>?
         let harness = self.makeHarness()
@@ -809,9 +805,9 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         harness.provider.blockPrepare(on: providerGate)
         harness.provider.onPrepareEntered { entered.open() }
         let secondWaiterEntered = self.installSecondWaiterAcknowledgement(on: harness.owner)
-#if !DEBUG
+        #if !DEBUG
         let secondStarted = ContinuationGate()
-#endif
+        #endif
 
         let first = Task { @MainActor in
             try await harness.owner.prepare(
@@ -821,19 +817,19 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         let enteredObserved = await waitUntilCondition { entered.opened }
         XCTAssertTrue(enteredObserved)
         let second = Task { @MainActor in
-#if !DEBUG
+            #if !DEBUG
             secondStarted.open()
-#endif
+            #endif
             return try await harness.owner.prepare(
                 lease: lease, attemptID: attemptID, configuration: MeetingFinalProcessingConfiguration()
             )
         }
         joinedWaiter = second
-#if DEBUG
+        #if DEBUG
         let secondObserved = await waitUntilCondition { secondWaiterEntered.opened }
-#else
+        #else
         let secondObserved = await waitUntilCondition { secondStarted.opened }
-#endif
+        #endif
         XCTAssertTrue(secondObserved)
         providerGate.open()
 
@@ -855,7 +851,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         XCTAssertFalse(harness.owner.isClaimed)
         joinedWaiter = nil
     }
-#endif
+    #endif
 
     func testProgressHopsToMainActorAndStaleEventsAreDroppedAfterReleaseAndLeaseChange() async throws {
         let harness = self.makeHarness()
@@ -978,8 +974,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
             do {
                 _ = try await preparation.value
                 XCTFail("Expected cancelled preparation")
-            } catch is CancellationError {
-            }
+            } catch is CancellationError {}
             XCTAssertTrue(deliveries.events.isEmpty)
         }
 
@@ -1012,8 +1007,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
             do {
                 _ = try await preparation.value
                 XCTFail("Expected invalidated preparation")
-            } catch is CancellationError {
-            }
+            } catch is CancellationError {}
             XCTAssertTrue(deliveries.events.isEmpty)
         }
     }
@@ -1096,7 +1090,7 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         XCTAssertTrue(harness.owner.isClaimed)
         XCTAssertEqual(harness.recorder.count(of: "drain"), 0)
 
-        await harness.owner.release(try XCTUnwrap(harness.owner.currentClaimToken))
+        try await harness.owner.release(XCTUnwrap(harness.owner.currentClaimToken))
         XCTAssertFalse(harness.owner.isClaimed)
         XCTAssertEqual(harness.recorder.count(of: "drain"), 1)
     }
@@ -1121,9 +1115,9 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
             drainExecutor: { _ in }
         )
         let secondWaiterEntered = self.installSecondWaiterAcknowledgement(on: owner)
-#if !DEBUG
+        #if !DEBUG
         let secondStarted = ContinuationGate()
-#endif
+        #endif
         self.addTeardownBlock { @MainActor in
             providerGate.open()
             if let token = owner.currentClaimToken {
@@ -1145,9 +1139,9 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
         let enteredObserved = await waitUntilCondition { providerEntered.opened }
         XCTAssertTrue(enteredObserved)
         let second = Task { @MainActor in
-#if !DEBUG
+            #if !DEBUG
             secondStarted.open()
-#endif
+            #endif
             do {
                 _ = try await owner.prepare(
                     lease: lease, attemptID: attemptID, configuration: MeetingFinalProcessingConfiguration()
@@ -1157,11 +1151,11 @@ final class MeetingASRPreparationOwnerTests: XCTestCase {
                 return false
             }
         }
-#if DEBUG
+        #if DEBUG
         let secondObserved = await waitUntilCondition { secondWaiterEntered.opened }
-#else
+        #else
         let secondObserved = await waitUntilCondition { secondStarted.opened }
-#endif
+        #endif
         XCTAssertTrue(secondObserved)
         providerGate.open()
         let firstSucceeded = await first.value
@@ -1622,10 +1616,10 @@ final class ASRServiceMeetingASRScopeTests: XCTestCase {
         let provider = try FluidAudioProvider(meetingConfiguration: MeetingFinalProcessingConfiguration())
         XCTAssertEqual(provider.modelOverride, .parakeetTDTv2)
         #if DEBUG
-            let options = provider.effectiveEnhancementOptionsForTesting
-            XCTAssertFalse(options.experimentalUnifiedFinalEnabled)
-            XCTAssertFalse(options.pronunciationMatchingEnabled)
-            XCTAssertTrue(options.customDictionaryEntries.isEmpty)
+        let options = provider.effectiveEnhancementOptionsForTesting
+        XCTAssertFalse(options.experimentalUnifiedFinalEnabled)
+        XCTAssertFalse(options.pronunciationMatchingEnabled)
+        XCTAssertTrue(options.customDictionaryEntries.isEmpty)
         #endif
         // Dictation selection is untouched by meeting provider construction.
         XCTAssertEqual(settings.selectedSpeechModel, .parakeetTDT)

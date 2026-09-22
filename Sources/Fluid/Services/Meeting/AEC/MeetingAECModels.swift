@@ -142,7 +142,7 @@ nonisolated enum MeetingAECConstants {
     static let attestationFrames = 200
     static let maximumBlocksPerInput = 64
     static let maximumSamplesPerInput = 24_000
-    static let maximumCaptureWaitSamples = 4_800
+    static let maximumCaptureWaitSamples = 4800
     static let maximumClockResidualSamples: Int64 = 1
 
     static let provenance = MeetingAECProvenance(

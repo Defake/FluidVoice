@@ -47,7 +47,7 @@ nonisolated struct MeetingMicrophoneEvidence: Equatable, Sendable {
 
         init?(sessionID: UUID, chunkID: UUID, turnIndex: Int, captureEpoch: UInt64, observation: Observation) {
             guard turnIndex >= 0 else { return nil }
-            if case .clusterLabel(let label) = observation, label.isEmpty { return nil }
+            if case let .clusterLabel(label) = observation, label.isEmpty { return nil }
             self.sessionID = sessionID
             self.chunkID = chunkID
             self.turnIndex = turnIndex
@@ -55,10 +55,10 @@ nonisolated struct MeetingMicrophoneEvidence: Equatable, Sendable {
             self.observation = observation
         }
 
-        var turnKey: String { "microphone:\(chunkID.uuidString):\(turnIndex)" }
+        var turnKey: String { "microphone:\(self.chunkID.uuidString):\(self.turnIndex)" }
         var observationKey: String? {
-            guard case .clusterLabel(let label) = observation else { return nil }
-            return "microphone:\(chunkID.uuidString):\(label)"
+            guard case let .clusterLabel(label) = observation else { return nil }
+            return "microphone:\(self.chunkID.uuidString):\(label)"
         }
     }
 
@@ -79,6 +79,7 @@ nonisolated struct MeetingMicrophoneEvidence: Equatable, Sendable {
         enum State: Equatable, Sendable {
             case insufficientEvidence, observing, duplicateCandidate, duplicateSupported
         }
+
         let state: State
         let identity: Identity
         let interval: Interval
@@ -103,15 +104,17 @@ nonisolated struct MeetingMicrophoneEvidence: Equatable, Sendable {
 
     /// Compatibility projection only; detailed unknown reasons survive in the evidence itself.
     var legacySignalVerdict: TurnEchoVerdict {
-        guard case .measured(let verdict) = signalVerdict else { return .unknown }
+        guard case let .measured(verdict) = signalVerdict else { return .unknown }
         return verdict
     }
 }
 
 /// Stage A seam; the only implementation is a test fake. Stage B owns real paired-audio analysis.
 nonisolated protocol MeetingPlaybackDuplicateEvidenceSource: Sendable {
-    func evidence(for identity: MeetingMicrophoneEvidence.Identity,
-                  interval: MeetingMicrophoneEvidence.Interval) -> MeetingMicrophoneEvidence.Measurement<MeetingMicrophoneEvidence.TemporalDuplicate>
+    func evidence(
+        for identity: MeetingMicrophoneEvidence.Identity,
+        interval: MeetingMicrophoneEvidence.Interval
+    ) -> MeetingMicrophoneEvidence.Measurement<MeetingMicrophoneEvidence.TemporalDuplicate>
 }
 
 /// Test-only caller contract: no runtime enablement flag or production invocation in Stage A.
@@ -121,11 +124,13 @@ nonisolated enum MeetingMicrophoneShadowPolicy {
     enum ProposedOutcome: Equatable, Sendable {
         case uncertainCandidate
     }
+
     enum Reason: Equatable, Sendable {
         case legacyRescueDisagreement, playbackDuplicateCandidate, speechActivityIsNotNearEndProof
         case negativeActivityIsNotSpeechAbsenceProof, insufficientEvidence
         case staleTemporalEvidence, invalidTemporalEvidence, missingPlaybackContext
     }
+
     struct Evaluation: Equatable, Sendable {
         let outcome: ProposedOutcome = .uncertainCandidate
         let experimental = true
@@ -139,18 +144,22 @@ nonisolated enum MeetingMicrophoneShadowPolicy {
     static func evaluate(_ evidence: MeetingMicrophoneEvidence) -> Evaluation {
         func result(_ reason: Reason) -> Evaluation {
             let unknown: MeetingMicrophoneEvidence.UnknownReason?
-            if case .unavailable(let why) = evidence.signalVerdict { unknown = why } else { unknown = nil }
-            return Evaluation(reason: reason, identity: evidence.identity, interval: evidence.interval,
-                              signalUnknownReason: unknown)
+            if case let .unavailable(why) = evidence.signalVerdict { unknown = why } else { unknown = nil }
+            return Evaluation(
+                reason: reason,
+                identity: evidence.identity,
+                interval: evidence.interval,
+                signalUnknownReason: unknown
+            )
         }
-        if case .measured(let temporal) = evidence.temporalDuplicate {
+        if case let .measured(temporal) = evidence.temporalDuplicate {
             guard temporal.identity == evidence.identity,
                   temporal.interval == evidence.interval else { return result(.staleTemporalEvidence) }
             guard temporal.supportingWindows >= 0 else { return result(.invalidTemporalEvidence) }
-            if case .measured(let lag) = temporal.microphoneDelaySeconds, !lag.isFinite {
+            if case let .measured(lag) = temporal.microphoneDelaySeconds, !lag.isFinite {
                 return result(.invalidTemporalEvidence)
             }
-            if case .measured(let spread) = temporal.lagSpreadSeconds, !spread.isFinite || spread < 0 {
+            if case let .measured(spread) = temporal.lagSpreadSeconds, !spread.isFinite || spread < 0 {
                 return result(.invalidTemporalEvidence)
             }
             if temporal.state == .duplicateSupported {
@@ -169,7 +178,7 @@ nonisolated enum MeetingMicrophoneShadowPolicy {
         if evidence.signalVerdict == .measured(.echo) || evidence.textEcho == .measured(true) {
             return result(.playbackDuplicateCandidate)
         }
-        if case .measured(let temporal) = evidence.temporalDuplicate, temporal.state == .duplicateSupported {
+        if case let .measured(temporal) = evidence.temporalDuplicate, temporal.state == .duplicateSupported {
             return result(.playbackDuplicateCandidate)
         }
         switch evidence.speechActivity {

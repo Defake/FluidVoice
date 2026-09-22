@@ -2542,6 +2542,9 @@ private extension GlobalHotkeyManager {
 
     func traceStopUnlocked(since startedAt: TimeInterval) {
         self.isProcessingStop = false
-        DebugLogger.shared.debug("CLOSE_DETAIL shortcutUnlocked uptime=\(ProcessInfo.processInfo.systemUptime) heldMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)", source: "StopTiming")
+        DebugLogger.shared.debug(
+            "CLOSE_DETAIL shortcutUnlocked uptime=\(ProcessInfo.processInfo.systemUptime) heldMs=\((ProcessInfo.processInfo.systemUptime - startedAt) * 1000)",
+            source: "StopTiming"
+        )
     }
 }

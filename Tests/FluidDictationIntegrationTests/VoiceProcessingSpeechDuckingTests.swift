@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import AVFoundation
+@testable import FluidVoice_Debug
 import Foundation
 import ScreenCaptureKit
 import XCTest
@@ -76,7 +76,11 @@ final class VoiceProcessingSpeechDuckingTests: XCTestCase {
             let mean = values.reduce(0, +) / Double(values.count)
             print(String(
                 format: "[speech] %-18@ seconds=%d  mean=%.1f dBFS  min=%.1f  max=%.1f  swing=%.1f dB",
-                label as NSString, values.count, dB(mean), dB(values.min() ?? 0), dB(values.max() ?? 0),
+                label as NSString,
+                values.count,
+                dB(mean),
+                dB(values.min() ?? 0),
+                dB(values.max() ?? 0),
                 dB(values.max() ?? 0) - dB(values.min() ?? 0)
             ))
         }
@@ -170,7 +174,9 @@ private final class TimelineStreamOutput: NSObject, SCStreamOutput {
             sampleBuffer, at: 0, frameCount: Int32(frames), into: buffer.mutableAudioBufferList
         ) == noErr, let channel = buffer.floatChannelData?[0] else { return }
         var sum = 0.0
-        for i in 0..<Int(frames) { sum += Double(channel[i]) * Double(channel[i]) }
+        for i in 0..<Int(frames) {
+            sum += Double(channel[i]) * Double(channel[i])
+        }
         Task { [recorder] in await recorder.add(sumOfSquares: sum, frames: Int(frames)) }
     }
 }

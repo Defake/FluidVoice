@@ -70,6 +70,8 @@ final class MeetingAnalysisManifestTests: XCTestCase {
         kind: MeetingAudioTrackKind,
         chunks: [MeetingAudioChunk],
         captureMethod: MeetingAudioTrackCaptureMethod? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         eras: [MeetingCaptureEra]? = nil,
         hostClock: UInt64 = 42
     ) -> MeetingAudioTrack {
@@ -172,6 +174,8 @@ final class MeetingAnalysisManifestTests: XCTestCase {
     private func replacing(
         _ manifest: MeetingAnalysisManifest,
         origin: Double? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         tracks: [MeetingAnalysisTrackManifest]? = nil
     ) -> MeetingAnalysisManifest {
         MeetingAnalysisManifest(
@@ -203,6 +207,8 @@ final class MeetingAnalysisManifestTests: XCTestCase {
         let pcm = MeetingCodecPriming.notApplicable(.linearPCMFloat32CAFV1)
         let encoded = try encoder.encode(pcm)
         XCTAssertEqual(
+            // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+            // swiftlint:disable:next optional_data_string_conversion
             String(decoding: encoded, as: UTF8.self),
             #"{"notApplicable":{"_0":"linearPCMFloat32CAFV1"}}"#
         )
@@ -548,8 +554,12 @@ final class MeetingAnalysisManifestTests: XCTestCase {
             channels: 1,
             interleaved: true
         ))
-        let file = try AVAudioFile(forWriting: pcmURL, settings: format.settings,
-                                   commonFormat: .pcmFormatFloat32, interleaved: true)
+        let file = try AVAudioFile(
+            forWriting: pcmURL,
+            settings: format.settings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: true
+        )
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1600))
         buffer.frameLength = 1600
         try file.write(from: buffer)
@@ -568,10 +578,16 @@ final class MeetingAnalysisManifestTests: XCTestCase {
             frameCount: 1600
         )
         let chunk = MeetingAudioChunk(
-            id: UUID(), sequence: 0, relativeFilePath: "archive/chunk-0.m4a",
-            presentationStart: self.mediaTime(0), presentationEnd: self.mediaTime(0.1),
-            discontinuities: [], sha256: String(repeating: "a", count: 64), byteCount: 1,
-            finalizationState: .finalized, audioSchemaVersion: 2,
+            id: UUID(),
+            sequence: 0,
+            relativeFilePath: "archive/chunk-0.m4a",
+            presentationStart: self.mediaTime(0),
+            presentationEnd: self.mediaTime(0.1),
+            discontinuities: [],
+            sha256: String(repeating: "a", count: 64),
+            byteCount: 1,
+            finalizationState: .finalized,
+            audioSchemaVersion: 2,
             captureAnalysisAsset: asset
         )
         let result = MeetingChunkAudioObserver(sessionDirectory: root)

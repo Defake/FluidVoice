@@ -30,11 +30,11 @@ final class SearchIndexTests: XCTestCase {
     }
 
     private func ids(_ kind: SearchIndexKind, query: String) async throws -> Set<UUID> {
-        Set(try await self.index.query(kind, text: query, limit: 50).map(\.id))
+        try Set(await self.index.query(kind, text: query, limit: 50).map(\.id))
     }
 
     private func count(_ kind: SearchIndexKind) async throws -> Int {
-        Int(try await self.index.namespace(kind).count().count)
+        try Int(await self.index.namespace(kind).count().count)
     }
 
     // MARK: - Reconcile

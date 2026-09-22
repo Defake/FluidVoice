@@ -38,7 +38,10 @@ enum OverlayCloseRunLoopProbe {
             let now = ProcessInfo.processInfo.systemUptime
             let elapsed = (now - state.previousAt) * 1000
             if state.previousPhase != CFRunLoopActivity.beforeWaiting.rawValue, elapsed > 8 {
-                DebugLogger.shared.debug("CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)", source: "StopTiming")
+                DebugLogger.shared.debug(
+                    "CLOSE_DETAIL runLoop fromPhase=\(state.previousPhase) toPhase=\(activity.rawValue) startUptime=\(state.previousAt) occupiedMs=\(elapsed)",
+                    source: "StopTiming"
+                )
             }
             state.previousAt = now
             state.previousPhase = activity.rawValue

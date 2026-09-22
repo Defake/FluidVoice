@@ -186,8 +186,11 @@ nonisolated enum MeetingEchoSignalScorer {
         }
         for range in blockRanges where range.count >= self.minimumFramesPerBlock {
             self.scoreBlock(
-                micFrameRMS: micFrameRMS, micSpectra: micSpectra, refSpectra: refSpectra,
-                range: range, into: &result
+                micFrameRMS: micFrameRMS,
+                micSpectra: micSpectra,
+                refSpectra: refSpectra,
+                range: range,
+                into: &result
             )
         }
         return EchoFrameScores(fractions: result, hopSeconds: hopSeconds)
@@ -320,7 +323,9 @@ nonisolated enum MeetingEchoSignalScorer {
 
     private static func nextPowerOfTwo(_ value: Int) -> Int {
         var power = 1
-        while power < value { power <<= 1 }
+        while power < value {
+            power <<= 1
+        }
         return power
     }
 
@@ -349,8 +354,12 @@ nonisolated enum MeetingEchoSignalScorer {
         var spectrum: Spectrum?
         real.withUnsafeMutableBufferPointer { realPtr in
             imag.withUnsafeMutableBufferPointer { imagPtr in
+                // Buffer size and channel topology are validated before this synchronous C call.
+                // swiftlint:disable:next force_unwrapping
                 var split = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
                 signal.withUnsafeBufferPointer { signalPtr in
+                    // Buffer size and channel topology are validated before this synchronous C call.
+                    // swiftlint:disable:next force_unwrapping
                     signalPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: fftSize / 2) { complexPtr in
                         vDSP_ctoz(complexPtr, 2, &split, 1, vDSP_Length(fftSize / 2))
                     }
@@ -393,9 +402,13 @@ nonisolated enum MeetingEchoSignalScorer {
         var result = [Float](repeating: 0, count: fftSize)
         crossReal.withUnsafeMutableBufferPointer { realPtr in
             crossImag.withUnsafeMutableBufferPointer { imagPtr in
+                // Buffer size and channel topology are validated before this synchronous C call.
+                // swiftlint:disable:next force_unwrapping
                 var split = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
                 vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_INVERSE))
                 result.withUnsafeMutableBufferPointer { resultPtr in
+                    // Buffer size and channel topology are validated before this synchronous C call.
+                    // swiftlint:disable:next force_unwrapping
                     resultPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: halfN) { complexPtr in
                         vDSP_ztoc(&split, 1, complexPtr, 2, vDSP_Length(halfN))
                     }

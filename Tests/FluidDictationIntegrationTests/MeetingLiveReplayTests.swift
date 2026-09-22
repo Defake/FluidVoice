@@ -1,6 +1,6 @@
-@testable import FluidVoice_Debug
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -29,7 +29,9 @@ final class MeetingLiveReplayTests: XCTestCase {
 
         let micSamples = try Self.load16kMonoFloatSamples(path: micPath)
         let appSamples = try Self.load16kMonoFloatSamples(path: appPath)
-        print("[replay] mic samples=\(micSamples.count) (\(Double(micSamples.count) / Self.sampleRate)s), app samples=\(appSamples.count) (\(Double(appSamples.count) / Self.sampleRate)s)")
+        print(
+            "[replay] mic samples=\(micSamples.count) (\(Double(micSamples.count) / Self.sampleRate)s), app samples=\(appSamples.count) (\(Double(appSamples.count) / Self.sampleRate)s)"
+        )
 
         guard let pcmFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Self.sampleRate, channels: 1, interleaved: false),
               let formatDescription = Self.makeFormatDescription(format: pcmFormat)
@@ -103,7 +105,7 @@ final class MeetingLiveReplayTests: XCTestCase {
         // scheduled, which would test harness timing, not the pipeline. Cap the feed rate at
         // `accelerationFactor`x real time instead — still far from a real 192s sleep, but paced
         // enough for the actor's drain loop to keep up with genuine ASR inference.
-        let accelerationFactor: Double = 1.5
+        let accelerationFactor = 1.5
         let feedStart = Date()
         var bufferFailures = 0
         var sampleBufferFailures = 0
@@ -133,7 +135,11 @@ final class MeetingLiveReplayTests: XCTestCase {
             }
         }
         let feedElapsed = Date().timeIntervalSince(feedStart)
-        print("[replay] fed \(events.count) chunks in \(String(format: "%.2f", feedElapsed))s (offered=\(offeredCount), bufferFailures=\(bufferFailures), sampleBufferFailures=\(sampleBufferFailures), totalWaitSeconds=\(String(format: "%.2f", totalWaitSeconds)))")
+        print(
+            // Keep the exact fixture text or diagnostic output together for comparison.
+            // swiftlint:disable:next line_length
+            "[replay] fed \(events.count) chunks in \(String(format: "%.2f", feedElapsed))s (offered=\(offeredCount), bufferFailures=\(bufferFailures), sampleBufferFailures=\(sampleBufferFailures), totalWaitSeconds=\(String(format: "%.2f", totalWaitSeconds)))"
+        )
 
         // Let the drain loops work through whatever is still queued, until the transcript stops
         // changing.

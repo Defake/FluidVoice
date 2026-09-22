@@ -48,7 +48,10 @@ final class MeetingFallbackEchoProbeTests: XCTestCase {
             let verdict = outcome.verdicts[0].map { String(describing: $0) } ?? "nil"
             print(String(
                 format: "[probe] chunk seq=%d span=[%.1f-%.1f] verdict=%@ delay=%@",
-                chunk.sequence, chunkOffset, chunkOffset + chunkDuration, verdict,
+                chunk.sequence,
+                chunkOffset,
+                chunkOffset + chunkDuration,
+                verdict,
                 outcome.acceptedDelaySeconds.map { String(format: "%.4fs", $0) } ?? "none"
             ))
         }
@@ -106,7 +109,9 @@ final class MeetingFallbackEchoProbeTests: XCTestCase {
             )
             print(String(
                 format: "[turn] %-22@ [%.1f-%.1f] verdict=%@ delay=%@",
-                label as NSString, start, clampedEnd,
+                label as NSString,
+                start,
+                clampedEnd,
                 outcome.verdicts[0].map { String(describing: $0) } ?? "nil",
                 outcome.acceptedDelaySeconds.map { String(format: "%.4fs", $0) } ?? "none"
             ))

@@ -15,10 +15,20 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
     }
 
     static func main() async throws {
-        let keys = ["DictionarySharedFeatureMatcherEnabled", "DictionaryTemporalMatcherEnabled", "DictionaryNegativeLearningEnabled", "DictionaryNegativeComparisonEnabled", "DictionaryPronunciationGeneration"]
+        let keys = [
+            "DictionarySharedFeatureMatcherEnabled",
+            "DictionaryTemporalMatcherEnabled",
+            "DictionaryNegativeLearningEnabled",
+            "DictionaryNegativeComparisonEnabled",
+            "DictionaryPronunciationGeneration",
+        ]
         let savedPreferences = keys.map { UserDefaults.standard.object(forKey: $0) }
-        defer { for (key, value) in zip(keys, savedPreferences) { UserDefaults.standard.set(value, forKey: key) } }
-        for key in keys { UserDefaults.standard.set(true, forKey: key) }
+        defer { for (key, value) in zip(keys, savedPreferences) {
+            UserDefaults.standard.set(value, forKey: key)
+        } }
+        for key in keys {
+            UserDefaults.standard.set(true, forKey: key)
+        }
         UserDefaults.standard.set(false, forKey: keys[0])
         self.expect(!DictionaryMatcherExperiment.positiveEnabled && !DictionaryMatcherExperiment.needsFrames, "Off overrides legacy matching preferences")
         self.expect(!DictionaryMatcherExperiment.collectNegatives && !DictionaryMatcherExperiment.compareNegatives, "Off disables negative audio learning and comparisons")
@@ -38,12 +48,12 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         let sharedDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextual, references: refs)
         self.expect(sharedDecision?.accepted == true, "Shared sentence features use their calibrated operating point")
         self.expect(DictionaryExperimentalMatcher.positive(query: contextual, references: refs)?.accepted == false, "Shared thresholds must not loosen isolated-query scoring")
-        let weakContext = DictionaryMatchFrames(hiddenSize: 2, values: [0.58, 0.814616, 0.58, 0.814616, 0.58, 0.814616])
+        let weakContext = DictionaryMatchFrames(hiddenSize: 2, values: [0.58, 0.814_616, 0.58, 0.814_616, 0.58, 0.814_616])
         let weakShared = await DictionaryExperimentalMatcher.compareSharedFeatures(query: weakContext, references: refs)
         self.expect(weakShared?.accepted == false, "Shared matching still rejects weak overall similarity")
         let missingShared = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextual, references: [positive])
         self.expect(missingShared == nil, "Missing reference features must not accept a candidate")
-        let contextualChunk = DictionaryMatchFrames(hiddenSize: 2, values: [0.56, 0.828493, 0.56, 0.828493, 0.56, 0.828493])
+        let contextualChunk = DictionaryMatchFrames(hiddenSize: 2, values: [0.56, 0.828_493, 0.56, 0.828_493, 0.56, 0.828_493])
         let chunkDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextualChunk, references: refs, chunked: true)
         let shortDecision = await DictionaryExperimentalMatcher.compareSharedFeatures(query: contextualChunk, references: refs)
         self.expect(chunkDecision?.accepted == true && shortDecision?.accepted == false, "Long-window calibration must not loosen the short-recording operating point")
@@ -58,30 +68,84 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         self.expect(!DictionaryExperimentalMatcher.negativeAllows(query: negative, references: refs, negatives: [negative]), "Close negative with margin vetoes")
         self.expect(DictionaryExperimentalMatcher.negativeAllows(query: positive, references: refs, negatives: [negative]), "Unrelated negative is inert")
         let now = Date(), entry = UUID()
-        let evidence = DictionaryAcousticEvidence(id: UUID(), entryID: entry, label: "Manimekalai", profileKey: "profile", modelKey: "parakeet-v2", sourceWordRange: 1..<2, frames: positive)
+        let evidence = DictionaryAcousticEvidence(
+            id: UUID(),
+            entryID: entry,
+            label: "Manimekalai",
+            profileKey: "profile",
+            modelKey: "parakeet-v2",
+            sourceWordRange: 1..<2,
+            frames: positive
+        )
         // nil selects the default evidence; an empty array tests missing evidence.
-        // swiftlint:disable:next discouraged_optional_collection
-        func context(_ text: String = "Hello Manimekalai today", events: [DictionaryAcousticEvidence]? = nil, date: Date? = nil, selected: String = "Manimekalai") -> DictionaryLearningCorrectionContext {
-            let alignment = DictionaryLearningAlignment(modelKey: "parakeet-v2", words: [.init(text: "raw", start: 0, end: 1)], acousticOutput: text, acousticEvidence: events ?? [evidence])
-            guard let recording = DictionaryLearningRecording(alignment: alignment, samples: [0.1, 0.1], now: date ?? now) else { preconditionFailure("Missing fixture: recording") }
+        func context(
+            _ text: String = "Hello Manimekalai today",
+            // nil requests the fixture default; an empty collection tests explicitly missing data.
+            // swiftlint:disable:next discouraged_optional_collection
+            events: [DictionaryAcousticEvidence]? = nil,
+            date: Date? = nil,
+            selected: String = "Manimekalai"
+        ) -> DictionaryLearningCorrectionContext {
+            let alignment = DictionaryLearningAlignment(
+                modelKey: "parakeet-v2",
+                words: [.init(text: "raw", start: 0, end: 1)],
+                acousticOutput: text,
+                acousticEvidence: events ?? [evidence]
+            )
+            guard let recording = DictionaryLearningRecording(alignment: alignment, samples: [0.1, 0.1], now: date ?? now)
+            else { preconditionFailure("Missing fixture: recording") }
             return .init(recording: recording, deliveredTextBeforeEdit: text, selectedUTF16Range: (text as NSString).range(of: selected))
         }
-        guard let correction = DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "another", now: now) else { preconditionFailure("Missing fixture: correction") }
+        guard let correction = DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "another", now: now)
+        else { preconditionFailure("Missing fixture: correction") }
         self.expect(correction.evidence.id == evidence.id, "Keep exact accepted occurrence")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "better Manimekalai", now: now) == nil, "Added words never become negatives")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "Manimekalais", now: now) == nil, "Plural edits never become negatives")
-        guard let featureOnly = DictionaryLearningRecording(alignment: context().recording.alignment, samples: [0.1], retainAudio: false, now: now) else { preconditionFailure("Missing fixture: featureOnly") }
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "better Manimekalai", now: now) == nil,
+            "Added words never become negatives"
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "Manimekalais", now: now) == nil,
+            "Plural edits never become negatives"
+        )
+        guard let featureOnly = DictionaryLearningRecording(alignment: context().recording.alignment, samples: [0.1], retainAudio: false, now: now)
+        else { preconditionFailure("Missing fixture: featureOnly") }
         self.expect(featureOnly.samples.isEmpty && featureOnly.alignment.acousticEvidence.count == 1, "Negative-only observation does not retain full PCM")
         let punctuated = context("Hello Manimekalai.")
-        let punctuationContext = DictionaryLearningCorrectionContext(recording: punctuated.recording, deliveredTextBeforeEdit: punctuated.deliveredTextBeforeEdit, selectedUTF16Range: NSRange(location: 6, length: 12))
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: punctuationContext, heard: "Manimekalai", corrected: "another", now: now) != nil, "Sentence punctuation still maps to the exact occurrence")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "MANIMEKALAI!", now: now) == nil, "Case and punctuation are not negative examples")
+        let punctuationContext = DictionaryLearningCorrectionContext(
+            recording: punctuated.recording,
+            deliveredTextBeforeEdit: punctuated.deliveredTextBeforeEdit,
+            selectedUTF16Range: NSRange(location: 6, length: 12)
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: punctuationContext, heard: "Manimekalai", corrected: "another", now: now) != nil,
+            "Sentence punctuation still maps to the exact occurrence"
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "MANIMEKALAI!", now: now) == nil,
+            "Case and punctuation are not negative examples"
+        )
         self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(), heard: "Manimekalai", corrected: "", now: now) == nil, "Deletion is ambiguous")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(events: []), heard: "Manimekalai", corrected: "other", now: now) == nil, "No acoustic acceptance means no negative")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context("Manimekalai and Manimekalai"), heard: "Manimekalai", corrected: "other", now: now) == nil, "Repeated names are ambiguous")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(selected: "Mani"), heard: "Mani", corrected: "other", now: now) == nil, "Partial label edit is ambiguous")
-        self.expect(DictionaryNegativeEvidenceResolver.resolve(context: context(date: now.addingTimeInterval(-121)), heard: "Manimekalai", corrected: "other", now: now) == nil, "Expired recording rejected")
-        let changed = DictionaryLearningCorrectionContext(recording: context().recording, deliveredTextBeforeEdit: "Hello Manimekalai tomorrow", selectedUTF16Range: NSRange(location: 6, length: 11))
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(events: []), heard: "Manimekalai", corrected: "other", now: now) == nil,
+            "No acoustic acceptance means no negative"
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context("Manimekalai and Manimekalai"), heard: "Manimekalai", corrected: "other", now: now) == nil,
+            "Repeated names are ambiguous"
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(selected: "Mani"), heard: "Mani", corrected: "other", now: now) == nil,
+            "Partial label edit is ambiguous"
+        )
+        self.expect(
+            DictionaryNegativeEvidenceResolver.resolve(context: context(date: now.addingTimeInterval(-121)), heard: "Manimekalai", corrected: "other", now: now) == nil,
+            "Expired recording rejected"
+        )
+        let changed = DictionaryLearningCorrectionContext(
+            recording: context().recording,
+            deliveredTextBeforeEdit: "Hello Manimekalai tomorrow",
+            selectedUTF16Range: NSRange(location: 6, length: 11)
+        )
         self.expect(DictionaryNegativeEvidenceResolver.resolve(context: changed, heard: "Manimekalai", corrected: "other", now: now) == nil, "AI rewriting invalidates mapping")
 
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -98,13 +162,29 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         let retrained = await store.frames(entryID: entry, profileKey: "changed", modelKey: "parakeet-v2")
         self.expect(retrained.isEmpty, "Retraining invalidates old negatives")
         for _ in 0..<10 {
-            let e = DictionaryAcousticEvidence(id: UUID(), entryID: entry, label: evidence.label, profileKey: "profile", modelKey: evidence.modelKey, sourceWordRange: 1..<2, frames: positive)
+            let e = DictionaryAcousticEvidence(
+                id: UUID(),
+                entryID: entry,
+                label: evidence.label,
+                profileKey: "profile",
+                modelKey: evidence.modelKey,
+                sourceWordRange: 1..<2,
+                frames: positive
+            )
             try await store.save(.init(evidence: e, correctedText: "other", expiresAt: now.addingTimeInterval(120)), expectedRevision: revision)
         }
         let bounded = await store.frames(entryID: entry, profileKey: "profile", modelKey: "parakeet-v2")
         self.expect(bounded.count == 6, "Per-word bank bounded")
         for _ in 0..<40 {
-            let e = DictionaryAcousticEvidence(id: UUID(), entryID: UUID(), label: evidence.label, profileKey: "profile", modelKey: evidence.modelKey, sourceWordRange: 1..<2, frames: positive)
+            let e = DictionaryAcousticEvidence(
+                id: UUID(),
+                entryID: UUID(),
+                label: evidence.label,
+                profileKey: "profile",
+                modelKey: evidence.modelKey,
+                sourceWordRange: 1..<2,
+                frames: positive
+            )
             try await store.save(.init(evidence: e, correctedText: "other", expiresAt: now.addingTimeInterval(120)), expectedRevision: revision)
         }
         let persisted = try PropertyListDecoder().decode([DictionaryNegativeExampleStore.Example].self, from: Data(contentsOf: url))
@@ -137,7 +217,8 @@ enum PronunciationDictionaryStoreError: Error { case inconsistentEnrollment, sta
         let expected = Dictionary(uniqueKeysWithValues: report.decisions.map { ($0.id, $0) })
         for q in input.queries {
             let refs = input.enrollments.filter { $0.word == q.word }.map { DictionaryMatchFrames(hiddenSize: 1024, values: $0.values) }
-            guard let d = DictionaryExperimentalMatcher.positive(query: .init(hiddenSize: 1024, values: q.values), references: refs) else { preconditionFailure("Missing fixture: d") }
+            guard let d = DictionaryExperimentalMatcher.positive(query: .init(hiddenSize: 1024, values: q.values), references: refs)
+            else { preconditionFailure("Missing fixture: d") }
             guard let e = expected[q.id] else { preconditionFailure("Missing fixture: e") }
             self.expect(d.accepted == e.combinedAccepted, "Production scorer parity \(q.id)")
             self.expect(abs(d.meanRelative - e.meanRelative) < 0.00_001 && abs(d.lowerRelative - e.lowerRelative) < 0.00_001, "Production score tolerance \(q.id)")

@@ -1,7 +1,7 @@
-@testable import FluidVoice_Debug
 import AudioToolbox
 import AVFoundation
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import ScreenCaptureKit
 import XCTest
@@ -55,8 +55,10 @@ final class MeetingTimelineDriftProbeTests: XCTestCase {
         let microphone = try await MeetingCaptureSourceCatalog.defaultMicrophone(preferredCoreAudioUID: "BuiltInMicrophoneDevice")
         var writerDiscontinuities = 0
         let track = MeetingAudioTrack(
-            id: UUID(), kind: .microphone,
-            sourceIdentifier: microphone.captureDeviceID, sourceDisplayName: microphone.displayName,
+            id: UUID(),
+            kind: .microphone,
+            sourceIdentifier: microphone.captureDeviceID,
+            sourceDisplayName: microphone.displayName,
             format: nil,
             timebase: MeetingTimebaseMetadata(
                 startedHostTime: mach_absolute_time(),
@@ -64,7 +66,8 @@ final class MeetingTimelineDriftProbeTests: XCTestCase {
                 machTimebaseDenominator: Self.timebase.denom,
                 firstPresentationTime: nil
             ),
-            health: .waiting, chunks: []
+            health: .waiting,
+            chunks: []
         )
         let writer = try MeetingAudioChunkWriter(track: track, sessionDirectory: temp, chunkDuration: 60) { _ in }
 
@@ -99,7 +102,11 @@ final class MeetingTimelineDriftProbeTests: XCTestCase {
             let app = await appRecorder.regression()
             print(String(
                 format: "[drift] t=%4.0fs mic n=%5d slope=%+7.3f ppm | app n=%6d slope=%+7.3f ppm",
-                elapsed, mic?.count ?? 0, mic?.slopePPM ?? .nan, app?.count ?? 0, app?.slopePPM ?? .nan
+                elapsed,
+                mic?.count ?? 0,
+                mic?.slopePPM ?? .nan,
+                app?.count ?? 0,
+                app?.slopePPM ?? .nan
             ))
         }
 
@@ -121,7 +128,11 @@ final class MeetingTimelineDriftProbeTests: XCTestCase {
         if let halves = micHalves {
             print(String(format: "[drift] mic half-split: %+.3f / %+.3f ppm (Δ=%.3f)", halves.first, halves.second, abs(halves.first - halves.second)))
         }
-        print("[drift] guards: seqViolations=\(stats.sequenceContinuityViolations) convFail=\(stats.conversionFailures) droppedPostCap=\(stats.droppedPostCapCount) resyncs=\(stats.resyncCount) writerDisc=\(writerDiscontinuities) configChanges=\(stats.configurationChangeEvents) corrections=\(stats.anchorCorrectionCount) absorbed=\(String(format: "%.3f", stats.cumulativeAbsorbedCorrectionSeconds * 1_000))ms stepEvents=\(stats.divergenceStepEventCount)")
+        print(
+            // Keep the exact fixture text or diagnostic output together for comparison.
+            // swiftlint:disable:next line_length
+            "[drift] guards: seqViolations=\(stats.sequenceContinuityViolations) convFail=\(stats.conversionFailures) droppedPostCap=\(stats.droppedPostCapCount) resyncs=\(stats.resyncCount) writerDisc=\(writerDiscontinuities) configChanges=\(stats.configurationChangeEvents) corrections=\(stats.anchorCorrectionCount) absorbed=\(String(format: "%.3f", stats.cumulativeAbsorbedCorrectionSeconds * 1000))ms stepEvents=\(stats.divergenceStepEventCount)"
+        )
         print("[drift] NOTE: absolute cross-path offset is unmeasured here (AEC removes acoustic stimuli); Phase 3 validates it on a real call.")
 
         if stats.configurationChangeEvents > 0 {
@@ -141,12 +152,15 @@ final class MeetingTimelineDriftProbeTests: XCTestCase {
         mach_timebase_info(&info)
         return info
     }()
+
     private static let timebaseSeconds = Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000
 
     /// The deterministic latency components — the Phase 3 absolute-offset estimate.
     private static func printLatencyEstimate(capture settled: MeetingMicrophoneSettledConfig?) {
         guard let settled else { return }
-        print("[drift] settled: input=\(settled.settledInputDeviceUID ?? "?") output=\(settled.settledOutputDeviceUID ?? "?") source=\(settled.sourceSampleRate)Hz/\(settled.sourceChannelCount)ch")
+        print(
+            "[drift] settled: input=\(settled.settledInputDeviceUID ?? "?") output=\(settled.settledOutputDeviceUID ?? "?") source=\(settled.sourceSampleRate)Hz/\(settled.sourceChannelCount)ch"
+        )
     }
 }
 

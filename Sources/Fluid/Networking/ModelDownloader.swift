@@ -208,7 +208,10 @@ final class HuggingFaceModelDownloader {
                 downloadedBytes += expectedFileBytes
                 let pct = min(maximumIncompleteProgress, Double(downloadedBytes) / Double(totalBytes))
                 onProgress?(pct, rel)
-                DebugLogger.shared.info(String(format: "[ModelDL] Overall progress: %.1f%% (\(Self.formatBytes(downloadedBytes))/\(Self.formatBytes(totalBytes)))", pct * 100.0), source: "ModelDownloader")
+                DebugLogger.shared.info(
+                    String(format: "[ModelDL] Overall progress: %.1f%% (\(Self.formatBytes(downloadedBytes))/\(Self.formatBytes(totalBytes)))", pct * 100.0),
+                    source: "ModelDownloader"
+                )
             }
         }
 

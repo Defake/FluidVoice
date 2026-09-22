@@ -52,7 +52,11 @@ struct StatsSnapshotTests {
         precondition(stale.currentStreak == 0 && stale.weekdayCurrentStreak == 0 && stale.bestStreak == 2)
         let weekend = try StatsSnapshot.build(entries: [entry(3, text: "x"), entry(4, text: "x"), entry(6, text: "x")], now: date(6), calendar: calendar)
         precondition(weekend.weekdayCurrentStreak == 2 && weekend.weekdayBestStreak == 2)
-        let dst = try StatsSnapshot.build(entries: [entry(7, text: "a", month: 3), entry(8, text: "b", month: 3), entry(9, text: "c", month: 3)], now: date(9, month: 3), calendar: calendar)
+        let dst = try StatsSnapshot.build(
+            entries: [entry(7, text: "a", month: 3), entry(8, text: "b", month: 3), entry(9, text: "c", month: 3)],
+            now: date(9, month: 3),
+            calendar: calendar
+        )
         precondition(dst.currentStreak == 3 && dst.bestStreak == 3, "Streaks must use calendar days across DST")
         let large = Array(repeating: entry(7, text: String(repeating: "word ", count: 100)), count: 9000)
         let start = Date()

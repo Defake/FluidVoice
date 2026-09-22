@@ -66,28 +66,28 @@ final class MeetingWindowSelectorTests: XCTestCase {
     }
 
     func testExactMinimumSizeIsIncludedAndOnePixelUnderIsNot() {
-        let atMinimum = candidate(1, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        let atMinimum = self.candidate(1, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 200, height: 100))
         XCTAssertEqual(MeetingWindowSelector.selectWindow(from: [atMinimum])?.windowID, 1)
-        let underWidth = candidate(2, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 199, height: 100))
-        let underHeight = candidate(3, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 200, height: 99))
+        let underWidth = self.candidate(2, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 199, height: 100))
+        let underHeight = self.candidate(3, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 200, height: 99))
         XCTAssertNil(MeetingWindowSelector.selectWindow(from: [underWidth, underHeight]))
     }
 
     func testWhitespaceOnlyTitleCountsAsUntitled() {
-        let whitespace = candidate(1, title: "   \n", frame: CGRect(x: 0, y: 0, width: 2000, height: 1500), zOrderIndex: 0)
-        let titled = candidate(2, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 400, height: 300), zOrderIndex: 5)
+        let whitespace = self.candidate(1, title: "   \n", frame: CGRect(x: 0, y: 0, width: 2000, height: 1500), zOrderIndex: 0)
+        let titled = self.candidate(2, title: "Meeting", frame: CGRect(x: 0, y: 0, width: 400, height: 300), zOrderIndex: 5)
         XCTAssertEqual(MeetingWindowSelector.selectWindow(from: [whitespace, titled])?.windowID, 2)
     }
 
     func testLargerAreaBeatsSmallerWindowIDWhenTitleAndZOrderTie() {
-        let smallEarlyID = candidate(1, title: "A", frame: CGRect(x: 0, y: 0, width: 400, height: 300), zOrderIndex: 2)
-        let largeLateID = candidate(9, title: "B", frame: CGRect(x: 0, y: 0, width: 900, height: 700), zOrderIndex: 2)
+        let smallEarlyID = self.candidate(1, title: "A", frame: CGRect(x: 0, y: 0, width: 400, height: 300), zOrderIndex: 2)
+        let largeLateID = self.candidate(9, title: "B", frame: CGRect(x: 0, y: 0, width: 900, height: 700), zOrderIndex: 2)
         XCTAssertEqual(MeetingWindowSelector.selectWindow(from: [smallEarlyID, largeLateID])?.windowID, 9)
     }
 
     func testFrontmostBeatsSmallerWindowID() {
-        let behindEarlyID = candidate(1, title: "A", frame: CGRect(x: 0, y: 0, width: 800, height: 600), zOrderIndex: 4)
-        let frontLateID = candidate(9, title: "B", frame: CGRect(x: 0, y: 0, width: 800, height: 600), zOrderIndex: 1)
+        let behindEarlyID = self.candidate(1, title: "A", frame: CGRect(x: 0, y: 0, width: 800, height: 600), zOrderIndex: 4)
+        let frontLateID = self.candidate(9, title: "B", frame: CGRect(x: 0, y: 0, width: 800, height: 600), zOrderIndex: 1)
         XCTAssertEqual(MeetingWindowSelector.selectWindow(from: [behindEarlyID, frontLateID])?.windowID, 9)
     }
 }

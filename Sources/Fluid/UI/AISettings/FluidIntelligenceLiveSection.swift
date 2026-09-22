@@ -101,7 +101,12 @@ struct FluidIntelligenceLiveSection<Management: View>: View {
             Text(self.verificationError ?? "\(self.verifiedModelName) is ready to use on your Mac.")
         }
         .sheet(isPresented: self.$showsManagement) {
-            FluidManagementSheet(title: "Manage Fluid Intelligence", subtitle: "These settings apply to all Fluid Intelligence models.", symbol: "slider.horizontal.3", close: { self.showsManagement = false }) {
+            FluidManagementSheet(
+                title: "Manage Fluid Intelligence",
+                subtitle: "These settings apply to all Fluid Intelligence models.",
+                symbol: "slider.horizontal.3",
+                close: { self.showsManagement = false }
+            ) {
                 self.management()
                 FluidManagementGroup(title: "Storage") {
                     FluidManagementRow(title: "Downloaded models", detail: "View the model files stored on your Mac.") {

@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import AVFoundation
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -32,10 +32,18 @@ final class VoiceProcessingAsrQualityTests: XCTestCase {
         try await Task.sleep(nanoseconds: 2_000_000_000)
         let processed = try await Self.capture(voiceProcessing: true, label: "TAKE 2 of 2 — voice processing ON")
 
-        print(String(format: "\n[ab] raw   %.1fs  rms=%.5f  (%.1f dBFS)",
-                     Double(raw.count) / 16_000, Self.rms(raw), 20 * log10(max(Self.rms(raw), 1e-9))))
-        print(String(format: "[ab] vpio  %.1fs  rms=%.5f  (%.1f dBFS)",
-                     Double(processed.count) / 16_000, Self.rms(processed), 20 * log10(max(Self.rms(processed), 1e-9))))
+        print(String(
+            format: "\n[ab] raw   %.1fs  rms=%.5f  (%.1f dBFS)",
+            Double(raw.count) / 16_000,
+            Self.rms(raw),
+            20 * log10(max(Self.rms(raw), 1e-9))
+        ))
+        print(String(
+            format: "[ab] vpio  %.1fs  rms=%.5f  (%.1f dBFS)",
+            Double(processed.count) / 16_000,
+            Self.rms(processed),
+            20 * log10(max(Self.rms(processed), 1e-9))
+        ))
 
         let rawText = try await Self.transcribe(raw)
         let vpioText = try await Self.transcribe(processed)
@@ -89,10 +97,12 @@ final class VoiceProcessingAsrQualityTests: XCTestCase {
         else { return "(format error)" }
         var index = 0
         while index < samples.count {
-            let end = min(index + 2_560, samples.count)
+            let end = min(index + 2560, samples.count)
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(end - index)) else { break }
             buffer.frameLength = AVAudioFrameCount(end - index)
             samples[index..<end].withUnsafeBufferPointer { source in
+                // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+                // swiftlint:disable:next force_unwrapping
                 buffer.floatChannelData?[0].update(from: source.baseAddress!, count: end - index)
             }
             try await manager.appendAudio(buffer)

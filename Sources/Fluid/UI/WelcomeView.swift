@@ -1914,7 +1914,12 @@ struct OnboardingFlowView: View {
                             .stroke(accentColor.opacity(ringOpacity), lineWidth: configuration.isHovered && configuration.isEnabled ? 1.4 : 1)
                             .padding(-2)
                     )
-                    .shadow(color: accentColor.opacity(shadowOpacity), radius: configuration.isHovered && configuration.isEnabled ? 16 : 9, x: 0, y: configuration.isHovered && configuration.isEnabled ? 6 : 3)
+                    .shadow(
+                        color: accentColor.opacity(shadowOpacity),
+                        radius: configuration.isHovered && configuration.isEnabled ? 16 : 9,
+                        x: 0,
+                        y: configuration.isHovered && configuration.isEnabled ? 6 : 3
+                    )
             )
             .contentShape(shape)
         }

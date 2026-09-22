@@ -82,9 +82,17 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
         public let durationSeconds: Double
         public let developmentOnly: Bool
 
-        public init(role: String, relativePath: String, sha256: String, codec: String,
-                    lossless: Bool, sampleRateHz: Double, channelCount: Int,
-                    durationSeconds: Double, developmentOnly: Bool = true) {
+        public init(
+            role: String,
+            relativePath: String,
+            sha256: String,
+            codec: String,
+            lossless: Bool,
+            sampleRateHz: Double,
+            channelCount: Int,
+            durationSeconds: Double,
+            developmentOnly: Bool = true
+        ) {
             self.role = role
             self.relativePath = relativePath
             self.sha256 = sha256
@@ -103,8 +111,12 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
         public let frameCount: Int
         public let arrivalSeconds: Double?
 
-        public init(presentationSeconds: Double, durationSeconds: Double, frameCount: Int,
-                    arrivalSeconds: Double?) {
+        public init(
+            presentationSeconds: Double,
+            durationSeconds: Double,
+            frameCount: Int,
+            arrivalSeconds: Double?
+        ) {
             self.presentationSeconds = presentationSeconds; self.durationSeconds = durationSeconds
             self.frameCount = frameCount; self.arrivalSeconds = arrivalSeconds
         }
@@ -117,8 +129,13 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
         public let renderTiming: [TimingBlock]
         public let captureTiming: [TimingBlock]
 
-        public init(ordinal: Int, render: Artifact, capture: Artifact,
-                    renderTiming: [TimingBlock], captureTiming: [TimingBlock]) {
+        public init(
+            ordinal: Int,
+            render: Artifact,
+            capture: Artifact,
+            renderTiming: [TimingBlock],
+            captureTiming: [TimingBlock]
+        ) {
             self.ordinal = ordinal; self.render = render; self.capture = capture
             self.renderTiming = renderTiming; self.captureTiming = captureTiming
         }
@@ -135,13 +152,18 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
     public let provenanceRelativePath: String?
     public let provenanceSha256: String?
 
-    public init(schemaVersion: Int = 1, topology: MeetingSignalDomainGateTopology,
-                route: MeetingSignalDomainGateRoute,
-                referenceScope: MeetingSignalDomainGateReferenceScope,
-                referenceCompletenessMeasured: Bool,
-                consentConfirmed: Bool, artifacts: [Artifact],
-                sessions: [Session] = [], provenanceRelativePath: String? = nil,
-                provenanceSha256: String? = nil) {
+    public init(
+        schemaVersion: Int = 1,
+        topology: MeetingSignalDomainGateTopology,
+        route: MeetingSignalDomainGateRoute,
+        referenceScope: MeetingSignalDomainGateReferenceScope,
+        referenceCompletenessMeasured: Bool,
+        consentConfirmed: Bool,
+        artifacts: [Artifact],
+        sessions: [Session] = [],
+        provenanceRelativePath: String? = nil,
+        provenanceSha256: String? = nil
+    ) {
         self.schemaVersion = schemaVersion
         self.topology = topology
         self.route = route
@@ -156,25 +178,26 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
 
     public func validationReasons() -> [MeetingSignalDomainGateReason] {
         var reasons: [MeetingSignalDomainGateReason] = []
-        if (provenanceRelativePath == nil) != (provenanceSha256 == nil) {
+        if (self.provenanceRelativePath == nil) != (self.provenanceSha256 == nil) {
             reasons.append(.invalidManifest)
         }
         if let path = provenanceRelativePath,
-           (!Self.isSafeRelativePath(path) || provenanceSha256?.count != 64
-            || provenanceSha256 != provenanceSha256?.lowercased()
-            || !(provenanceSha256 ?? "").unicodeScalars.allSatisfy(Self.isHex)) {
+           !Self.isSafeRelativePath(path) || provenanceSha256?.count != 64
+           || provenanceSha256 != provenanceSha256?.lowercased()
+           || !(provenanceSha256 ?? "").unicodeScalars.allSatisfy(Self.isHex)
+        {
             reasons.append(.invalidManifest)
         }
-        if schemaVersion != 1 { reasons.append(.invalidManifest) }
-        if !consentConfirmed { reasons.append(.missingConsent) }
-        if topology != .pairedScreenCaptureKit { reasons.append(.unsupportedTopology) }
-        if route != .builtInSpeakerMicrophone { reasons.append(.unsupportedRoute) }
-        if referenceScope == .unknown { reasons.append(.referenceScopeLimited) }
-        if !referenceCompletenessMeasured { reasons.append(.referenceCompletenessUnobservable) }
-        if !sessions.isEmpty {
-            if !artifacts.isEmpty { reasons.append(.invalidManifest) }
+        if self.schemaVersion != 1 { reasons.append(.invalidManifest) }
+        if !self.consentConfirmed { reasons.append(.missingConsent) }
+        if self.topology != .pairedScreenCaptureKit { reasons.append(.unsupportedTopology) }
+        if self.route != .builtInSpeakerMicrophone { reasons.append(.unsupportedRoute) }
+        if self.referenceScope == .unknown { reasons.append(.referenceScopeLimited) }
+        if !self.referenceCompletenessMeasured { reasons.append(.referenceCompletenessUnobservable) }
+        if !self.sessions.isEmpty {
+            if !self.artifacts.isEmpty { reasons.append(.invalidManifest) }
             var sessionOrdinals = Set<Int>()
-            for session in sessions {
+            for session in self.sessions {
                 if session.ordinal < 0 || !sessionOrdinals.insert(session.ordinal).inserted { reasons.append(.invalidManifest) }
                 if session.render.role.lowercased() != "render" || session.capture.role.lowercased() != "capture" {
                     reasons.append(.invalidManifest)
@@ -182,7 +205,8 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
                 if session.render.relativePath == session.capture.relativePath { reasons.append(.invalidManifest) }
                 if session.render.codec.lowercased() != session.capture.codec.lowercased()
                     || session.render.channelCount != session.capture.channelCount
-                    || abs(session.render.sampleRateHz - session.capture.sampleRateHz) > 1e-6 {
+                    || abs(session.render.sampleRateHz - session.capture.sampleRateHz) > 1e-6
+                {
                     reasons.append(.inconsistentGeometry)
                 }
                 for artifact in [session.render, session.capture] {
@@ -202,20 +226,22 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
             }
             return Self.unique(reasons)
         }
-        guard artifacts.count == 2 else { return reasons + [.invalidManifest] }
+        guard self.artifacts.count == 2 else { return reasons + [.invalidManifest] }
         let roles = Set(artifacts.map { $0.role.lowercased() })
         if roles != Set(["render", "capture"]) { reasons.append(.invalidManifest) }
-        if Set(artifacts.map(\.relativePath)).count != artifacts.count { reasons.append(.invalidManifest) }
-        if artifacts.count == 2,
-           abs(artifacts[0].sampleRateHz - artifacts[1].sampleRateHz) > 1e-6
-            || artifacts[0].channelCount != artifacts[1].channelCount
-            || artifacts[0].codec.lowercased() != artifacts[1].codec.lowercased() {
+        if Set(self.artifacts.map(\.relativePath)).count != self.artifacts.count { reasons.append(.invalidManifest) }
+        if self.artifacts.count == 2,
+           abs(self.artifacts[0].sampleRateHz - self.artifacts[1].sampleRateHz) > 1e-6
+           || self.artifacts[0].channelCount != self.artifacts[1].channelCount
+           || self.artifacts[0].codec.lowercased() != self.artifacts[1].codec.lowercased()
+        {
             reasons.append(.inconsistentGeometry)
         }
-        for artifact in artifacts {
+        for artifact in self.artifacts {
             if !Self.isSafeRelativePath(artifact.relativePath) || artifact.sha256.count != 64
                 || artifact.sha256 != artifact.sha256.lowercased()
-                || !artifact.sha256.unicodeScalars.allSatisfy(Self.isHex) {
+                || !artifact.sha256.unicodeScalars.allSatisfy(Self.isHex)
+            {
                 reasons.append(.invalidManifest)
             }
             if !artifact.lossless { reasons.append(.nonLossless) }
@@ -230,17 +256,20 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
     }
 
     private static let losslessCodecs: Set<String> = ["pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "lpcm"]
-    nonisolated private static func isHex(_ scalar: Unicode.Scalar) -> Bool {
+    private nonisolated static func isHex(_ scalar: Unicode.Scalar) -> Bool {
         (48...57).contains(scalar.value) || (97...102).contains(scalar.value)
     }
+
     private static func isSafeRelativePath(_ path: String) -> Bool {
         guard !path.isEmpty, !path.hasPrefix("/"), !path.hasPrefix("~"), !path.contains("\\") else { return false }
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
         return parts.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
     }
+
     private static func timingReasons(_ blocks: [TimingBlock], artifact: Artifact) -> [MeetingSignalDomainGateReason] {
         guard artifact.sampleRateHz.isFinite, artifact.sampleRateHz > 0,
-              artifact.durationSeconds.isFinite, artifact.durationSeconds > 0 else {
+              artifact.durationSeconds.isFinite, artifact.durationSeconds > 0
+        else {
             return [.invalidTiming]
         }
         guard !blocks.isEmpty else { return [.metadataOnly] }
@@ -251,7 +280,8 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
         for block in blocks {
             guard block.presentationSeconds.isFinite, block.durationSeconds.isFinite,
                   block.durationSeconds > 0, block.frameCount > 0,
-                  block.arrivalSeconds == nil || block.arrivalSeconds!.isFinite else {
+                  (block.arrivalSeconds.map { $0.isFinite } ?? true)
+            else {
                 reasons.append(.invalidTiming); continue
             }
             let blockRate = Double(block.frameCount) / block.durationSeconds
@@ -273,6 +303,7 @@ public struct MeetingSignalDomainGateManifest: Codable, Equatable, Sendable {
         }
         return Self.unique(reasons)
     }
+
     private static func unique(_ reasons: [MeetingSignalDomainGateReason]) -> [MeetingSignalDomainGateReason] {
         var seen = Set<MeetingSignalDomainGateReason>()
         return reasons.filter { seen.insert($0).inserted }
@@ -298,15 +329,25 @@ public struct MeetingSignalDomainGateThresholds: Codable, Equatable, Sendable {
     public let minimumTimingBlockCount: Int
     public let maximumPCMSamples: Int
 
-    public init(minimumValidCoverageFraction: Double = 0.99, maximumDriftPPM: Double = 100,
-                maximumUncorrectedOffsetSeconds: Double = 0.020, maximumRenderLeadSeconds: Double = 0.100,
-                maximumSearchDelaySeconds: Double = 0.500, safetyMarginSeconds: Double = 0.020,
-                minimumBandCoherence: Double = 0.10, minimumExcitationRMS: Double = 0.001,
-                maximumClippingFraction: Double = 0.010, maximumHeldOutLinearResidualFraction: Double = 0.75,
-                maximumIneligibleSessionFraction: Double = 0.25, minimumExposureSeconds: Double = 1.0,
-                requireDeliveryJitter: Bool = true, minimumPathStabilityFraction: Double = 0.5,
-                minimumDelayObservationCount: Int = 3, minimumTimingBlockCount: Int = 3,
-                maximumPCMSamples: Int = 1_000_000) {
+    public init(
+        minimumValidCoverageFraction: Double = 0.99,
+        maximumDriftPPM: Double = 100,
+        maximumUncorrectedOffsetSeconds: Double = 0.020,
+        maximumRenderLeadSeconds: Double = 0.100,
+        maximumSearchDelaySeconds: Double = 0.500,
+        safetyMarginSeconds: Double = 0.020,
+        minimumBandCoherence: Double = 0.10,
+        minimumExcitationRMS: Double = 0.001,
+        maximumClippingFraction: Double = 0.010,
+        maximumHeldOutLinearResidualFraction: Double = 0.75,
+        maximumIneligibleSessionFraction: Double = 0.25,
+        minimumExposureSeconds: Double = 1.0,
+        requireDeliveryJitter: Bool = true,
+        minimumPathStabilityFraction: Double = 0.5,
+        minimumDelayObservationCount: Int = 3,
+        minimumTimingBlockCount: Int = 3,
+        maximumPCMSamples: Int = 1_000_000
+    ) {
         self.minimumValidCoverageFraction = minimumValidCoverageFraction
         self.maximumDriftPPM = maximumDriftPPM
         self.maximumUncorrectedOffsetSeconds = maximumUncorrectedOffsetSeconds
@@ -334,12 +375,14 @@ public struct MeetingSignalDomainGateThresholds: Codable, Equatable, Sendable {
              minimumExposureSeconds, requireDeliveryJitter, minimumPathStabilityFraction,
              minimumDelayObservationCount, minimumTimingBlockCount, maximumPCMSamples
     }
+
     private struct DynamicKey: CodingKey {
         var stringValue: String
         init?(stringValue: String) { self.stringValue = stringValue }
         var intValue: Int?
         init?(intValue: Int) { return nil }
     }
+
     public init(from decoder: Decoder) throws {
         let dynamic = try decoder.container(keyedBy: DynamicKey.self)
         let allowed = Set(CodingKeys.allCases.map(\.rawValue))
@@ -347,42 +390,44 @@ public struct MeetingSignalDomainGateThresholds: Codable, Equatable, Sendable {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown threshold key"))
         }
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(minimumValidCoverageFraction: try c.decodeIfPresent(Double.self, forKey: .minimumValidCoverageFraction) ?? 0.99,
-                  maximumDriftPPM: try c.decodeIfPresent(Double.self, forKey: .maximumDriftPPM) ?? 100,
-                  maximumUncorrectedOffsetSeconds: try c.decodeIfPresent(Double.self, forKey: .maximumUncorrectedOffsetSeconds) ?? 0.020,
-                  maximumRenderLeadSeconds: try c.decodeIfPresent(Double.self, forKey: .maximumRenderLeadSeconds) ?? 0.100,
-                  maximumSearchDelaySeconds: try c.decodeIfPresent(Double.self, forKey: .maximumSearchDelaySeconds) ?? 0.500,
-                  safetyMarginSeconds: try c.decodeIfPresent(Double.self, forKey: .safetyMarginSeconds) ?? 0.020,
-                  minimumBandCoherence: try c.decodeIfPresent(Double.self, forKey: .minimumBandCoherence) ?? 0.10,
-                  minimumExcitationRMS: try c.decodeIfPresent(Double.self, forKey: .minimumExcitationRMS) ?? 0.001,
-                  maximumClippingFraction: try c.decodeIfPresent(Double.self, forKey: .maximumClippingFraction) ?? 0.010,
-                  maximumHeldOutLinearResidualFraction: try c.decodeIfPresent(Double.self, forKey: .maximumHeldOutLinearResidualFraction) ?? 0.75,
-                  maximumIneligibleSessionFraction: try c.decodeIfPresent(Double.self, forKey: .maximumIneligibleSessionFraction) ?? 0.25,
-                  minimumExposureSeconds: try c.decodeIfPresent(Double.self, forKey: .minimumExposureSeconds) ?? 1.0,
-                  requireDeliveryJitter: try c.decodeIfPresent(Bool.self, forKey: .requireDeliveryJitter) ?? true,
-                  minimumPathStabilityFraction: try c.decodeIfPresent(Double.self, forKey: .minimumPathStabilityFraction) ?? 0.5,
-                  minimumDelayObservationCount: try c.decodeIfPresent(Int.self, forKey: .minimumDelayObservationCount) ?? 3,
-                  minimumTimingBlockCount: try c.decodeIfPresent(Int.self, forKey: .minimumTimingBlockCount) ?? 3,
-                  maximumPCMSamples: try c.decodeIfPresent(Int.self, forKey: .maximumPCMSamples) ?? 1_000_000)
+        try self.init(
+            minimumValidCoverageFraction: c.decodeIfPresent(Double.self, forKey: .minimumValidCoverageFraction) ?? 0.99,
+            maximumDriftPPM: c.decodeIfPresent(Double.self, forKey: .maximumDriftPPM) ?? 100,
+            maximumUncorrectedOffsetSeconds: c.decodeIfPresent(Double.self, forKey: .maximumUncorrectedOffsetSeconds) ?? 0.020,
+            maximumRenderLeadSeconds: c.decodeIfPresent(Double.self, forKey: .maximumRenderLeadSeconds) ?? 0.100,
+            maximumSearchDelaySeconds: c.decodeIfPresent(Double.self, forKey: .maximumSearchDelaySeconds) ?? 0.500,
+            safetyMarginSeconds: c.decodeIfPresent(Double.self, forKey: .safetyMarginSeconds) ?? 0.020,
+            minimumBandCoherence: c.decodeIfPresent(Double.self, forKey: .minimumBandCoherence) ?? 0.10,
+            minimumExcitationRMS: c.decodeIfPresent(Double.self, forKey: .minimumExcitationRMS) ?? 0.001,
+            maximumClippingFraction: c.decodeIfPresent(Double.self, forKey: .maximumClippingFraction) ?? 0.010,
+            maximumHeldOutLinearResidualFraction: c.decodeIfPresent(Double.self, forKey: .maximumHeldOutLinearResidualFraction) ?? 0.75,
+            maximumIneligibleSessionFraction: c.decodeIfPresent(Double.self, forKey: .maximumIneligibleSessionFraction) ?? 0.25,
+            minimumExposureSeconds: c.decodeIfPresent(Double.self, forKey: .minimumExposureSeconds) ?? 1.0,
+            requireDeliveryJitter: c.decodeIfPresent(Bool.self, forKey: .requireDeliveryJitter) ?? true,
+            minimumPathStabilityFraction: c.decodeIfPresent(Double.self, forKey: .minimumPathStabilityFraction) ?? 0.5,
+            minimumDelayObservationCount: c.decodeIfPresent(Int.self, forKey: .minimumDelayObservationCount) ?? 3,
+            minimumTimingBlockCount: c.decodeIfPresent(Int.self, forKey: .minimumTimingBlockCount) ?? 3,
+            maximumPCMSamples: c.decodeIfPresent(Int.self, forKey: .maximumPCMSamples) ?? 1_000_000
+        )
     }
 
     public var isValid: Bool {
-        minimumValidCoverageFraction.isFinite && (0...1).contains(minimumValidCoverageFraction)
-            && maximumDriftPPM.isFinite && maximumDriftPPM >= 0
-            && maximumUncorrectedOffsetSeconds.isFinite && maximumUncorrectedOffsetSeconds >= 0
-            && maximumRenderLeadSeconds.isFinite && maximumRenderLeadSeconds >= 0
-            && maximumSearchDelaySeconds.isFinite && maximumSearchDelaySeconds > 0
-            && safetyMarginSeconds.isFinite && safetyMarginSeconds >= 0
-            && safetyMarginSeconds < maximumSearchDelaySeconds
-            && minimumBandCoherence.isFinite && (0...1).contains(minimumBandCoherence)
-            && minimumExcitationRMS.isFinite && minimumExcitationRMS >= 0
-            && maximumClippingFraction.isFinite && (0...1).contains(maximumClippingFraction)
-            && maximumHeldOutLinearResidualFraction.isFinite && (0...1).contains(maximumHeldOutLinearResidualFraction)
-            && maximumIneligibleSessionFraction.isFinite && (0...1).contains(maximumIneligibleSessionFraction)
-            && minimumExposureSeconds.isFinite && minimumExposureSeconds > 0
-            && minimumPathStabilityFraction.isFinite && (0...1).contains(minimumPathStabilityFraction)
-            && minimumDelayObservationCount >= 3 && minimumTimingBlockCount >= 2
-            && (1_000...1_000_000).contains(maximumPCMSamples)
+        self.minimumValidCoverageFraction.isFinite && (0...1).contains(self.minimumValidCoverageFraction)
+            && self.maximumDriftPPM.isFinite && self.maximumDriftPPM >= 0
+            && self.maximumUncorrectedOffsetSeconds.isFinite && self.maximumUncorrectedOffsetSeconds >= 0
+            && self.maximumRenderLeadSeconds.isFinite && self.maximumRenderLeadSeconds >= 0
+            && self.maximumSearchDelaySeconds.isFinite && self.maximumSearchDelaySeconds > 0
+            && self.safetyMarginSeconds.isFinite && self.safetyMarginSeconds >= 0
+            && self.safetyMarginSeconds < self.maximumSearchDelaySeconds
+            && self.minimumBandCoherence.isFinite && (0...1).contains(self.minimumBandCoherence)
+            && self.minimumExcitationRMS.isFinite && self.minimumExcitationRMS >= 0
+            && self.maximumClippingFraction.isFinite && (0...1).contains(self.maximumClippingFraction)
+            && self.maximumHeldOutLinearResidualFraction.isFinite && (0...1).contains(self.maximumHeldOutLinearResidualFraction)
+            && self.maximumIneligibleSessionFraction.isFinite && (0...1).contains(self.maximumIneligibleSessionFraction)
+            && self.minimumExposureSeconds.isFinite && self.minimumExposureSeconds > 0
+            && self.minimumPathStabilityFraction.isFinite && (0...1).contains(self.minimumPathStabilityFraction)
+            && self.minimumDelayObservationCount >= 3 && self.minimumTimingBlockCount >= 2
+            && (1000...1_000_000).contains(self.maximumPCMSamples)
     }
 }
 
@@ -392,8 +437,12 @@ public struct MeetingSignalDomainGateTrackBlock: Sendable {
     public let arrivalSeconds: Double?
     public let samples: [Float]
 
-    public init(presentationSeconds: Double, durationSeconds: Double,
-                arrivalSeconds: Double? = nil, samples: [Float]) {
+    public init(
+        presentationSeconds: Double,
+        durationSeconds: Double,
+        arrivalSeconds: Double? = nil,
+        samples: [Float]
+    ) {
         self.presentationSeconds = presentationSeconds
         self.durationSeconds = durationSeconds
         self.arrivalSeconds = arrivalSeconds
@@ -415,14 +464,20 @@ public struct MeetingSignalDomainGateSession: Sendable {
     public let renderBlocks: [MeetingSignalDomainGateTrackBlock]
     public let captureBlocks: [MeetingSignalDomainGateTrackBlock]
 
-    public init(ordinal: Int, topology: MeetingSignalDomainGateTopology = .pairedScreenCaptureKit,
-                route: MeetingSignalDomainGateRoute = .builtInSpeakerMicrophone,
-                referenceScope: MeetingSignalDomainGateReferenceScope = .selectedApplication,
-                referenceCompletenessMeasured: Bool = true, consentConfirmed: Bool = true,
-                renderCodec: String = "pcm_s16le", captureCodec: String = "pcm_s16le",
-                renderLossless: Bool = true, captureLossless: Bool = true,
-                renderBlocks: [MeetingSignalDomainGateTrackBlock],
-                captureBlocks: [MeetingSignalDomainGateTrackBlock]) {
+    public init(
+        ordinal: Int,
+        topology: MeetingSignalDomainGateTopology = .pairedScreenCaptureKit,
+        route: MeetingSignalDomainGateRoute = .builtInSpeakerMicrophone,
+        referenceScope: MeetingSignalDomainGateReferenceScope = .selectedApplication,
+        referenceCompletenessMeasured: Bool = true,
+        consentConfirmed: Bool = true,
+        renderCodec: String = "pcm_s16le",
+        captureCodec: String = "pcm_s16le",
+        renderLossless: Bool = true,
+        captureLossless: Bool = true,
+        renderBlocks: [MeetingSignalDomainGateTrackBlock],
+        captureBlocks: [MeetingSignalDomainGateTrackBlock]
+    ) {
         self.ordinal = ordinal; self.topology = topology; self.route = route
         self.referenceScope = referenceScope; self.referenceCompletenessMeasured = referenceCompletenessMeasured
         self.consentConfirmed = consentConfirmed; self.renderCodec = renderCodec; self.captureCodec = captureCodec
@@ -475,11 +530,17 @@ public struct MeetingSignalDomainGateReport: Codable, Equatable, Sendable {
     public let transcriptRetained: Bool
     public let pathsRetained: Bool
 
-    public init(outcome: MeetingSignalDomainGateOutcome, topology: MeetingSignalDomainGateTopology,
-                route: MeetingSignalDomainGateRoute, sessionCount: Int, eligibleSessionCount: Int,
-                excludedSessions: [MeetingSignalDomainGateExcludedSession],
-                metrics: [MeetingSignalDomainGateSessionMetrics], reasonCounts: [String: Int],
-                thresholds: MeetingSignalDomainGateThresholds = .init()) {
+    public init(
+        outcome: MeetingSignalDomainGateOutcome,
+        topology: MeetingSignalDomainGateTopology,
+        route: MeetingSignalDomainGateRoute,
+        sessionCount: Int,
+        eligibleSessionCount: Int,
+        excludedSessions: [MeetingSignalDomainGateExcludedSession],
+        metrics: [MeetingSignalDomainGateSessionMetrics],
+        reasonCounts: [String: Int],
+        thresholds: MeetingSignalDomainGateThresholds = .init()
+    ) {
         self.schemaVersion = 1; self.outcome = outcome; self.topology = topology; self.route = route
         self.minimumExposureSeconds = thresholds.minimumExposureSeconds
         self.maximumIneligibleSessionFraction = thresholds.maximumIneligibleSessionFraction
@@ -528,7 +589,8 @@ public enum MeetingSignalDomainGate {
             for component in artifact.relativePath.split(separator: "/") {
                 cursor.appendPathComponent(String(component))
                 if FileManager.default.fileExists(atPath: cursor.path),
-                   (try? FileManager.default.destinationOfSymbolicLink(atPath: cursor.path)) != nil {
+                   (try? FileManager.default.destinationOfSymbolicLink(atPath: cursor.path)) != nil
+                {
                     throw ManifestError.unsafeRelativePath
                 }
             }
@@ -540,12 +602,14 @@ public enum MeetingSignalDomainGate {
             guard let hash = try? sha256(of: resolved), hash == artifact.sha256.lowercased() else { throw ManifestError.hashMismatch }
         }
         if let provenancePath = manifest.provenanceRelativePath, let expected = manifest.provenanceSha256,
-           Self.isSafeRelativePath(provenancePath), expected.count == 64 {
+           Self.isSafeRelativePath(provenancePath), expected.count == 64
+        {
             var provenanceCursor = canonicalRoot
             for component in provenancePath.split(separator: "/") {
                 provenanceCursor.appendPathComponent(String(component))
                 if FileManager.default.fileExists(atPath: provenanceCursor.path),
-                   (try? FileManager.default.destinationOfSymbolicLink(atPath: provenanceCursor.path)) != nil {
+                   (try? FileManager.default.destinationOfSymbolicLink(atPath: provenanceCursor.path)) != nil
+                {
                     throw ManifestError.unsafeRelativePath
                 }
             }
@@ -556,7 +620,8 @@ public enum MeetingSignalDomainGate {
             guard url.pathComponents.count > rootComponents.count,
                   Array(url.pathComponents.prefix(rootComponents.count)) == rootComponents,
                   FileManager.default.fileExists(atPath: url.path),
-                  (try? sha256(of: url)) == expected else {
+                  (try? self.sha256(of: url)) == expected
+            else {
                 throw ManifestError.hashMismatch
             }
             guard let data = try? Data(contentsOf: url),
@@ -588,7 +653,8 @@ public enum MeetingSignalDomainGate {
                   provenance.renderFrameCount == session.renderTiming.reduce(0, { $0 + $1.frameCount }),
                   provenance.captureFrameCount == session.captureTiming.reduce(0, { $0 + $1.frameCount }),
                   provenance.captureConfiguration == "SCStream:48kHz:mono:native-f32le:audio+microphone",
-                  provenance.route == "builtInSpeakerMicrophone" else {
+                  provenance.route == "builtInSpeakerMicrophone"
+            else {
                 throw ManifestError.invalidManifest
             }
         }
@@ -643,10 +709,12 @@ public enum MeetingSignalDomainGate {
         #endif
     }
 
-    public static func evaluate(manifest: MeetingSignalDomainGateManifest,
-                                sessions: [MeetingSignalDomainGateSession],
-                                thresholds: MeetingSignalDomainGateThresholds = .init(),
-                                renderLeadSeconds: Double = 0) -> MeetingSignalDomainGateReport {
+    public static func evaluate(
+        manifest: MeetingSignalDomainGateManifest,
+        sessions: [MeetingSignalDomainGateSession],
+        thresholds: MeetingSignalDomainGateThresholds = .init(),
+        renderLeadSeconds: Double = 0
+    ) -> MeetingSignalDomainGateReport {
         var manifestReasons = manifest.validationReasons()
         if !manifest.sessions.isEmpty {
             let declaredOrdinals = manifest.sessions.map(\.ordinal).sorted()
@@ -661,7 +729,9 @@ public enum MeetingSignalDomainGate {
         var metrics: [MeetingSignalDomainGateSessionMetrics] = []
         var counts: [String: Int] = [:]
         func add(_ reasons: [MeetingSignalDomainGateReason]) {
-            for reason in Set(reasons) { counts[reason.rawValue, default: 0] += 1 }
+            for reason in Set(reasons) {
+                counts[reason.rawValue, default: 0] += 1
+            }
         }
         if !manifestReasons.isEmpty { add(manifestReasons) }
         var ordinals = Set<Int>()
@@ -670,7 +740,7 @@ public enum MeetingSignalDomainGate {
                 let reason: MeetingSignalDomainGateReason = .duplicateOrdinal
                 excluded.append(.init(ordinal: session.ordinal, reasons: [reason])); add([reason]); continue
             }
-            let reasons = validate(session: session, thresholds: thresholds, renderLeadSeconds: renderLeadSeconds)
+            let reasons = self.validate(session: session, thresholds: thresholds, renderLeadSeconds: renderLeadSeconds)
             if !reasons.isEmpty {
                 excluded.append(.init(ordinal: session.ordinal, reasons: reasons)); add(reasons); continue
             }
@@ -695,7 +765,7 @@ public enum MeetingSignalDomainGate {
                 .invalidManifest, .missingConsent, .sourceHashMismatch, .invalidTiming,
                 .duplicateOrdinal, .inconsistentGeometry, .gapDetected, .overlappingBlocks,
                 .excessiveDrift, .delayNonCausal, .delayOutsideSearchRange, .unstablePath,
-                .clipping, .linearPathUnlearnable
+                .clipping, .linearPathUnlearnable,
             ]
             if excluded.contains(where: { !Set($0.reasons).isDisjoint(with: rejectionReasons) }) {
                 return .rejected
@@ -706,64 +776,86 @@ public enum MeetingSignalDomainGate {
             return .proceedToCandidate
         }()
         if eligible == 0 { counts[MeetingSignalDomainGateReason.noEligibleSessions.rawValue, default: 0] += 1 }
-        return .init(outcome: outcome, topology: manifest.topology, route: manifest.route,
-                     sessionCount: sessions.count, eligibleSessionCount: eligible,
-                     excludedSessions: excluded, metrics: metrics, reasonCounts: counts, thresholds: thresholds)
+        return .init(
+            outcome: outcome,
+            topology: manifest.topology,
+            route: manifest.route,
+            sessionCount: sessions.count,
+            eligibleSessionCount: eligible,
+            excludedSessions: excluded,
+            metrics: metrics,
+            reasonCounts: counts,
+            thresholds: thresholds
+        )
     }
 
-    private static func validate(session: MeetingSignalDomainGateSession,
-                                 thresholds: MeetingSignalDomainGateThresholds,
-                                 renderLeadSeconds: Double) -> [MeetingSignalDomainGateReason] {
+    private static func validate(
+        session: MeetingSignalDomainGateSession,
+        thresholds: MeetingSignalDomainGateThresholds,
+        renderLeadSeconds: Double
+    ) -> [MeetingSignalDomainGateReason] {
         var reasons: [MeetingSignalDomainGateReason] = []
         if session.topology != .pairedScreenCaptureKit { reasons.append(.unsupportedTopology) }
         if session.route != .builtInSpeakerMicrophone { reasons.append(.unsupportedRoute) }
         if !session.consentConfirmed { reasons.append(.missingConsent) }
         if !session.renderLossless || !session.captureLossless { reasons.append(.nonLossless) }
-        for codec in [session.renderCodec.lowercased(), session.captureCodec.lowercased()] where !["pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "lpcm"].contains(codec) { reasons.append(.unsupportedCodec) }
+        for codec in [session.renderCodec.lowercased(), session.captureCodec.lowercased()] where !["pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "lpcm"].contains(codec) {
+            reasons.append(.unsupportedCodec)
+        }
         if session.renderBlocks.isEmpty || session.captureBlocks.isEmpty { reasons.append(.metadataOnly) }
         if thresholds.requireDeliveryJitter
             && (session.renderBlocks.contains(where: { $0.arrivalSeconds == nil })
-                || session.captureBlocks.contains(where: { $0.arrivalSeconds == nil })) {
+                || session.captureBlocks.contains(where: { $0.arrivalSeconds == nil }))
+        {
             reasons.append(.missingArrivalMetadata)
         }
         if thresholds.requireDeliveryJitter
             && (session.renderBlocks.count < thresholds.minimumTimingBlockCount
-                || session.captureBlocks.count < thresholds.minimumTimingBlockCount) {
+                || session.captureBlocks.count < thresholds.minimumTimingBlockCount)
+        {
             reasons.append(.insufficientTimingObservations)
         }
         if session.referenceScope == .unknown { reasons.append(.referenceScopeLimited) }
         if !session.referenceCompletenessMeasured { reasons.append(.referenceCompletenessUnobservable) }
         if renderLeadSeconds > thresholds.maximumRenderLeadSeconds { reasons.append(.invalidTiming) }
         let all = session.renderBlocks + session.captureBlocks
-        if all.contains(where: { !$0.presentationSeconds.isFinite || !$0.durationSeconds.isFinite || $0.durationSeconds <= 0 || $0.samples.isEmpty || $0.samples.contains(where: { !$0.isFinite }) }) { reasons.append(.invalidTiming) }
+        if all
+            .contains(where: { !$0.presentationSeconds.isFinite || !$0.durationSeconds.isFinite || $0.durationSeconds <= 0 || $0.samples.isEmpty || $0.samples.contains(where: { !$0.isFinite }) })
+        {
+            reasons.append(.invalidTiming)
+        }
         if session.renderBlocks.reduce(0, { $0 + $1.samples.count }) > thresholds.maximumPCMSamples
-            || session.captureBlocks.reduce(0, { $0 + $1.samples.count }) > thresholds.maximumPCMSamples {
+            || session.captureBlocks.reduce(0, { $0 + $1.samples.count }) > thresholds.maximumPCMSamples
+        {
             reasons.append(.analysisResourceLimitExceeded)
         }
-        if !chronologyIsMonotonic(session.renderBlocks) || !chronologyIsMonotonic(session.captureBlocks) { reasons.append(.invalidTiming) }
+        if !self.chronologyIsMonotonic(session.renderBlocks) || !self.chronologyIsMonotonic(session.captureBlocks) { reasons.append(.invalidTiming) }
         // An empty track is metadata-only, not malformed geometry.  Keep that case explicitly
         // unscored so callers can distinguish absent PCM from a present but inconsistent pair.
         let hasBothTracks = !session.renderBlocks.isEmpty && !session.captureBlocks.isEmpty
-        if hasBothTracks && (!geometryIsConsistent(session.renderBlocks) || !geometryIsConsistent(session.captureBlocks)) {
+        if hasBothTracks && (!self.geometryIsConsistent(session.renderBlocks) || !self.geometryIsConsistent(session.captureBlocks)) {
             reasons.append(.inconsistentGeometry)
         }
-        let renderContinuity = continuity(of: session.renderBlocks)
-        let captureContinuity = continuity(of: session.captureBlocks)
+        let renderContinuity = self.continuity(of: session.renderBlocks)
+        let captureContinuity = self.continuity(of: session.captureBlocks)
         if renderContinuity.hasGap || captureContinuity.hasGap { reasons.append(.gapDetected) }
         if renderContinuity.hasOverlap || captureContinuity.hasOverlap { reasons.append(.overlappingBlocks) }
         if let renderRate = inferredRate(session.renderBlocks), let captureRate = inferredRate(session.captureBlocks),
            abs(renderRate - captureRate) > max(1e-6, renderRate * 1e-6) { reasons.append(.inconsistentGeometry) }
         if hasBothTracks,
            let exposure = [session.renderBlocks, session.captureBlocks].map({ $0.reduce(0) { $0 + $1.durationSeconds } }).min(),
-           exposure < thresholds.minimumExposureSeconds {
+           exposure < thresholds.minimumExposureSeconds
+        {
             reasons.append(.insufficientCoverage)
         }
-        return unique(reasons)
+        return self.unique(reasons)
     }
 
-    private static func measure(session: MeetingSignalDomainGateSession,
-                                thresholds: MeetingSignalDomainGateThresholds,
-                                renderLeadSeconds: Double) -> (metrics: MeetingSignalDomainGateSessionMetrics, reasons: [MeetingSignalDomainGateReason])? {
+    private static func measure(
+        session: MeetingSignalDomainGateSession,
+        thresholds: MeetingSignalDomainGateThresholds,
+        renderLeadSeconds: Double
+    ) -> (metrics: MeetingSignalDomainGateSessionMetrics, reasons: [MeetingSignalDomainGateReason])? {
         let render = session.renderBlocks.flatMap(\.samples); let capture = session.captureBlocks.flatMap(\.samples)
         guard !render.isEmpty, !capture.isEmpty else { return nil }
         let coverage = min(coverage(of: session.renderBlocks), coverage(of: session.captureBlocks))
@@ -771,10 +863,14 @@ public enum MeetingSignalDomainGate {
         if coverage < thresholds.minimumValidCoverageFraction { reasons.append(.insufficientCoverage) }
         let exposure = min(session.renderBlocks.reduce(0) { $0 + $1.durationSeconds }, session.captureBlocks.reduce(0) { $0 + $1.durationSeconds })
         if exposure < thresholds.minimumExposureSeconds { reasons.append(.insufficientCoverage) }
-        let sampleRate = inferRate(session.renderBlocks)
+        let sampleRate = self.inferRate(session.renderBlocks)
         guard sampleRate.isFinite, sampleRate > 0 else { return nil }
-        let delayObservations = delaySamples(render: render, capture: capture, sampleRate: sampleRate,
-                                             maxSeconds: thresholds.maximumSearchDelaySeconds)
+        let delayObservations = self.delaySamples(
+            render: render,
+            capture: capture,
+            sampleRate: sampleRate,
+            maxSeconds: thresholds.maximumSearchDelaySeconds
+        )
         guard !delayObservations.isEmpty else { return nil }
         let delays = delayObservations.map(\.seconds)
         guard let renderOrigin = session.renderBlocks.first?.presentationSeconds,
@@ -784,32 +880,34 @@ public enum MeetingSignalDomainGate {
         // origins from silently disappearing into sample zero.
         let ptsOriginOffset = captureOrigin - renderOrigin
         let signed = delays.map { $0 + ptsOriginOffset + renderLeadSeconds }
-        let driftSamples = windowedDriftPPM(delayObservations)
-        let drift = percentileOptional(driftSamples, 0.50)
+        let driftSamples = self.windowedDriftPPM(delayObservations)
+        let drift = self.percentileOptional(driftSamples, 0.50)
         // Delivery jitter is a within-track property. Do not manufacture a cross-track
         // observation by joining the render and capture arrays at an arbitrary boundary.
-        let jitter = jitterValues(session.renderBlocks) + jitterValues(session.captureBlocks)
+        let jitter = self.jitterValues(session.renderBlocks) + self.jitterValues(session.captureBlocks)
         let medianLagSamples = Int((percentile(delays, 0.50) * sampleRate).rounded())
-        let aligned = align(render: render, capture: capture, lag: medianLagSamples)
-        let bandMeasurements = bandMeasures(render: aligned.render, capture: aligned.capture, sampleRate: sampleRate)
+        let aligned = self.align(render: render, capture: capture, lag: medianLagSamples)
+        let bandMeasurements = self.bandMeasures(render: aligned.render, capture: aligned.capture, sampleRate: sampleRate)
         let coherence = bandMeasurements.coherence
         let bandPower = bandMeasurements.power
         let rms = sqrt(render.reduce(0) { $0 + Double($1) * Double($1) } / Double(render.count))
         let clipping = Double((render + capture).filter { abs($0) >= 0.999 }.count) / Double(render.count + capture.count)
-        let firResidual = heldOutLinearResidualFraction(render: aligned.render,
-                                                        capture: aligned.capture,
-                                                        sampleRate: sampleRate)
-        let stability = pathStability(delays)
-        let badDelay = percentile(signed, 0.99) > thresholds.maximumSearchDelaySeconds - thresholds.safetyMarginSeconds
-            || percentile(signed, 0.01) < -thresholds.safetyMarginSeconds
+        let firResidual = self.heldOutLinearResidualFraction(
+            render: aligned.render,
+            capture: aligned.capture,
+            sampleRate: sampleRate
+        )
+        let stability = self.pathStability(delays)
+        let badDelay = self.percentile(signed, 0.99) > thresholds.maximumSearchDelaySeconds - thresholds.safetyMarginSeconds
+            || self.percentile(signed, 0.01) < -thresholds.safetyMarginSeconds
         if delayObservations.count < thresholds.minimumDelayObservationCount { reasons.append(.delayUnresolved) }
         if driftSamples.isEmpty { reasons.append(.driftUnscored) }
         if driftSamples.contains(where: { abs($0) > thresholds.maximumDriftPPM }) { reasons.append(.excessiveDrift) }
         if let firstDelay = delays.first, delays.contains(where: { abs($0 - firstDelay) > thresholds.maximumUncorrectedOffsetSeconds }) { reasons.append(.excessiveDrift) }
         if badDelay {
-            if percentile(signed, 0.01) < -thresholds.safetyMarginSeconds {
+            if self.percentile(signed, 0.01) < -thresholds.safetyMarginSeconds {
                 reasons.append(.delayNonCausal)
-            } else if percentile(signed, 0.99) > thresholds.maximumSearchDelaySeconds - thresholds.safetyMarginSeconds {
+            } else if self.percentile(signed, 0.99) > thresholds.maximumSearchDelaySeconds - thresholds.safetyMarginSeconds {
                 reasons.append(.delayOutsideSearchRange)
             }
         }
@@ -822,8 +920,28 @@ public enum MeetingSignalDomainGate {
             reasons.append(.linearPathUnscored)
         }
         if (stability ?? 0) < thresholds.minimumPathStabilityFraction { reasons.append(.unstablePath) }
-        let value = MeetingSignalDomainGateSessionMetrics(sessionOrdinal: session.ordinal, exposureSeconds: exposure, validCoverageFraction: coverage, deliveryJitterP50Seconds: percentileOptional(jitter, 0.50), deliveryJitterP95Seconds: percentileOptional(jitter, 0.95), deliveryJitterP99Seconds: percentileOptional(jitter, 0.99), driftPPM: drift, driftP50PPM: percentileOptional(driftSamples, 0.50), driftP95PPM: percentileOptional(driftSamples, 0.95), driftP99PPM: percentileOptional(driftSamples, 0.99), signedDelayP50Seconds: percentileOptional(signed, 0.50), signedDelayP95Seconds: percentileOptional(signed, 0.95), signedDelayP99Seconds: percentileOptional(signed, 0.99), bandCoherence: coherence, bandPower: bandPower, pathStabilityFraction: stability, clippingFraction: clipping, heldOutLinearResidualFraction: firResidual, delayObservationCount: delayObservations.count)
-        return (value, unique(reasons))
+        let value = MeetingSignalDomainGateSessionMetrics(
+            sessionOrdinal: session.ordinal,
+            exposureSeconds: exposure,
+            validCoverageFraction: coverage,
+            deliveryJitterP50Seconds: self.percentileOptional(jitter, 0.50),
+            deliveryJitterP95Seconds: self.percentileOptional(jitter, 0.95),
+            deliveryJitterP99Seconds: self.percentileOptional(jitter, 0.99),
+            driftPPM: drift,
+            driftP50PPM: self.percentileOptional(driftSamples, 0.50),
+            driftP95PPM: self.percentileOptional(driftSamples, 0.95),
+            driftP99PPM: self.percentileOptional(driftSamples, 0.99),
+            signedDelayP50Seconds: self.percentileOptional(signed, 0.50),
+            signedDelayP95Seconds: self.percentileOptional(signed, 0.95),
+            signedDelayP99Seconds: self.percentileOptional(signed, 0.99),
+            bandCoherence: coherence,
+            bandPower: bandPower,
+            pathStabilityFraction: stability,
+            clippingFraction: clipping,
+            heldOutLinearResidualFraction: firResidual,
+            delayObservationCount: delayObservations.count
+        )
+        return (value, self.unique(reasons))
     }
 
     private static func coverage(of blocks: [MeetingSignalDomainGateTrackBlock]) -> Double {
@@ -833,10 +951,11 @@ public enum MeetingSignalDomainGate {
         guard span > 0 else { return 0 }
         return min(1, blocks.reduce(0) { $0 + $1.durationSeconds } / span)
     }
+
     private static func chronologyIsMonotonic(_ blocks: [MeetingSignalDomainGateTrackBlock]) -> Bool {
-        guard blocks.allSatisfy({ $0.arrivalSeconds == nil || $0.arrivalSeconds!.isFinite }) else { return false }
+        guard blocks.allSatisfy({ $0.arrivalSeconds.map(\.isFinite) ?? true }) else { return false }
         for pair in zip(blocks.dropFirst(), blocks) {
-            let rate = inferredRate(blocks) ?? 1
+            let rate = self.inferredRate(blocks) ?? 1
             let tolerance = max(1e-9, 1 / rate)
             if pair.0.presentationSeconds - pair.1.presentationSeconds < -tolerance { return false }
             if let currentArrival = pair.0.arrivalSeconds, let previousArrival = pair.1.arrivalSeconds,
@@ -844,6 +963,7 @@ public enum MeetingSignalDomainGate {
         }
         return true
     }
+
     private struct BlockContinuityFlags { var hasGap = false; var hasOverlap = false }
     private static func continuity(of blocks: [MeetingSignalDomainGateTrackBlock]) -> BlockContinuityFlags {
         var flags = BlockContinuityFlags()
@@ -855,11 +975,13 @@ public enum MeetingSignalDomainGate {
         }
         return flags
     }
+
     private static func inferredRate(_ blocks: [MeetingSignalDomainGateTrackBlock]) -> Double? {
         guard let first = blocks.first, first.durationSeconds > 0 else { return nil }
         let rate = Double(first.samples.count) / first.durationSeconds
         return rate.isFinite && rate > 0 ? rate : nil
     }
+
     private static func geometryIsConsistent(_ blocks: [MeetingSignalDomainGateTrackBlock]) -> Bool {
         guard let expected = inferredRate(blocks) else { return false }
         return blocks.allSatisfy { block in
@@ -868,22 +990,27 @@ public enum MeetingSignalDomainGate {
             return rate.isFinite && abs(rate - expected) <= max(1e-6, expected * 1e-6)
         }
     }
+
     private static func inferRate(_ blocks: [MeetingSignalDomainGateTrackBlock]) -> Double {
-        inferredRate(blocks) ?? .nan
+        self.inferredRate(blocks) ?? .nan
     }
+
     private static func jitterValues(_ blocks: [MeetingSignalDomainGateTrackBlock]) -> [Double] {
         guard blocks.count > 1 else { return [] }; var values: [Double] = []
-        for pair in zip(blocks.dropFirst(), blocks) { if let a = pair.0.arrivalSeconds, let b = pair.1.arrivalSeconds, a.isFinite, b.isFinite { values.append(abs((a - b) - pair.1.durationSeconds)) } }
+        for pair in zip(blocks.dropFirst(), blocks) {
+            if let a = pair.0.arrivalSeconds, let b = pair.1.arrivalSeconds, a.isFinite, b.isFinite { values.append(abs((a - b) - pair.1.durationSeconds)) }
+        }
         return values
     }
+
     private static func delaySamples(render: [Float], capture: [Float], sampleRate: Double, maxSeconds: Double) -> [(time: Double, seconds: Double)] {
         // Use anti-aliased 1 kHz windows distributed across the complete bounded exposure.
         // Decimation depends on source rate, not recording length, so longer recordings retain
         // the same delay resolution instead of becoming progressively less measurable.
         let n = min(render.count, capture.count); guard n > 8 else { return [] }
-        let decimation = max(1, Int(floor(sampleRate / 1_000)))
-        let reducedRender = antiAliasedDownsample(Array(render.prefix(n)), factor: decimation)
-        let reducedCapture = antiAliasedDownsample(Array(capture.prefix(n)), factor: decimation)
+        let decimation = max(1, Int(floor(sampleRate / 1000)))
+        let reducedRender = self.antiAliasedDownsample(Array(render.prefix(n)), factor: decimation)
+        let reducedCapture = self.antiAliasedDownsample(Array(capture.prefix(n)), factor: decimation)
         let reducedRate = sampleRate / Double(decimation)
         let maxLag = Int(ceil(maxSeconds * reducedRate))
         let window = max(256, maxLag * 2 + 64, Int(ceil(0.5 * reducedRate)))
@@ -905,11 +1032,11 @@ public enum MeetingSignalDomainGate {
             let centeredCapture = captureWindow.map { Double($0) - captureMean }
             let lower: Int
             let upper: Int
-            if priorLag == nil || ordinal.isMultiple(of: 4) {
-                lower = -maxLag; upper = maxLag
+            if let priorLag, !ordinal.isMultiple(of: 4) {
+                lower = max(-maxLag, priorLag - localRadius)
+                upper = min(maxLag, priorLag + localRadius)
             } else {
-                lower = max(-maxLag, priorLag! - localRadius)
-                upper = min(maxLag, priorLag! + localRadius)
+                lower = -maxLag; upper = maxLag
             }
             var bestLag = 0; var best = -Double.infinity
             for lag in lower...upper {
@@ -924,7 +1051,7 @@ public enum MeetingSignalDomainGate {
                 let score = er > 0 && ec > 0 ? abs(dot / sqrt(er * ec)) : -Double.infinity
                 if score > best { best = score; bestLag = lag }
             }
-            if best.isFinite && best > 0.05 {
+            if best.isFinite, best > 0.05 {
                 result.append((Double(start + window / 2) / reducedRate, Double(bestLag) / reducedRate))
                 priorLag = bestLag
             }
@@ -957,6 +1084,7 @@ public enum MeetingSignalDomainGate {
         let offset = min(-lag, n - 1)
         return (Array(render[offset..<n]), Array(capture[..<(n - offset)]))
     }
+
     private static func windowedDriftPPM(_ observations: [(time: Double, seconds: Double)]) -> [Double] {
         guard observations.count > 1 else { return [] }
         return zip(observations.dropFirst(), observations).compactMap { current, previous in
@@ -965,10 +1093,11 @@ public enum MeetingSignalDomainGate {
             return (current.seconds - previous.seconds) / dt * 1_000_000
         }
     }
+
     private static func bandMeasures(render: [Float], capture: [Float], sampleRate: Double) -> (coherence: [Double], power: [Double]) {
         let n = min(render.count, capture.count); guard n > 4 else { return ([0, 0, 0], [0, 0, 0]) }
-        let window = 4_096
-        let bands: [[Double]] = [[250, 500], [750, 1_000, 1_500], [2_500, 4_000, 6_000]]
+        let window = 4096
+        let bands: [[Double]] = [[250, 500], [750, 1000, 1500], [2500, 4000, 6000]]
         return bands.map { frequencies in
             var frequencyCoherences: [Double] = [], frequencyPowers: [Double] = []
             for frequency in frequencies where frequency < sampleRate / 2 {
@@ -1000,20 +1129,26 @@ public enum MeetingSignalDomainGate {
                     frequencyPowers.append(renderPower / Double(max(1, n * n)))
                 }
             }
-            return (frequencyCoherences.isEmpty ? 0 : frequencyCoherences.reduce(0, +) / Double(frequencyCoherences.count),
-                    frequencyPowers.isEmpty ? 0 : frequencyPowers.reduce(0, +) / Double(frequencyPowers.count))
+            return (
+                frequencyCoherences.isEmpty ? 0 : frequencyCoherences.reduce(0, +) / Double(frequencyCoherences.count),
+                frequencyPowers.isEmpty ? 0 : frequencyPowers.reduce(0, +) / Double(frequencyPowers.count)
+            )
         }.reduce(into: ([Double](), [Double]())) { result, value in result.0.append(value.0); result.1.append(value.1) }
     }
+
     /// Fits a bounded 64 ms NLMS path on an early window and scores a disjoint late window.
     /// A high residual means this bounded linear model did not generalize; it does not prove
     /// nonlinear preprocessing. Work is bounded at a 4 kHz analysis rate and 256 taps.
-    private static func heldOutLinearResidualFraction(render: [Float], capture: [Float],
-                                                      sampleRate: Double) -> Double? {
+    private static func heldOutLinearResidualFraction(
+        render: [Float],
+        capture: [Float],
+        sampleRate: Double
+    ) -> Double? {
         let sourceCount = min(render.count, capture.count)
         guard sourceCount >= 512, sampleRate.isFinite, sampleRate > 0 else { return nil }
-        let factor = max(1, Int(floor(sampleRate / 4_000)))
-        let x = antiAliasedDownsample(Array(render.prefix(sourceCount)), factor: factor)
-        let y = antiAliasedDownsample(Array(capture.prefix(sourceCount)), factor: factor)
+        let factor = max(1, Int(floor(sampleRate / 4000)))
+        let x = self.antiAliasedDownsample(Array(render.prefix(sourceCount)), factor: factor)
+        let y = self.antiAliasedDownsample(Array(capture.prefix(sourceCount)), factor: factor)
         let reducedRate = sampleRate / Double(factor)
         let tapCount = min(256, max(16, Int(ceil(0.064 * reducedRate))))
         let count = min(x.count, y.count), split = count * 3 / 4
@@ -1027,23 +1162,39 @@ public enum MeetingSignalDomainGate {
                 prediction += coefficients[tap] * value; norm += value * value
             }
             let scale = 0.5 * (Double(y[index]) - prediction) / norm
-            for tap in 0..<tapCount { coefficients[tap] += scale * Double(x[index - tap]) }
+            for tap in 0..<tapCount {
+                coefficients[tap] += scale * Double(x[index - tap])
+            }
         }
         let testStart = max(split, count - Int(4 * reducedRate))
         var errorEnergy = 0.0, targetEnergy = 0.0, observations = 0
         for index in max(testStart, tapCount - 1)..<count {
             var prediction = 0.0
-            for tap in 0..<tapCount { prediction += coefficients[tap] * Double(x[index - tap]) }
+            for tap in 0..<tapCount {
+                prediction += coefficients[tap] * Double(x[index - tap])
+            }
             let target = Double(y[index]), error = target - prediction
             errorEnergy += error * error; targetEnergy += target * target; observations += 1
         }
         guard observations > 64, targetEnergy > 1e-12 else { return nil }
         return min(1, max(0, errorEnergy / targetEnergy))
     }
-    private static func pathStability(_ values: [Double]) -> Double? { guard !values.isEmpty else { return nil }; let median = percentile(values, 0.5); let tolerance = max(1e-4, abs(median) * 0.10); return Double(values.filter { abs($0 - median) <= tolerance }.count) / Double(values.count) }
-    private static func percentile(_ values: [Double], _ p: Double) -> Double { let sorted = values.sorted(); guard let first = sorted.first else { return .nan }; if sorted.count == 1 { return first }; let index = min(Double(sorted.count - 1), max(0, p * Double(sorted.count - 1))); let low = Int(index.rounded(.down)); let high = Int(index.rounded(.up)); return sorted[low] + (sorted[high] - sorted[low]) * (index - Double(low)) }
-    private static func percentileOptional(_ values: [Double], _ p: Double) -> Double? { values.isEmpty ? nil : percentile(values, p) }
-    private static func unique(_ reasons: [MeetingSignalDomainGateReason]) -> [MeetingSignalDomainGateReason] { var seen = Set<MeetingSignalDomainGateReason>(); return reasons.filter { seen.insert($0).inserted } }
+
+    private static func pathStability(_ values: [Double]) -> Double? { guard !values.isEmpty else { return nil }; let median = self.percentile(values, 0.5); let tolerance = max(
+        1e-4,
+        abs(median) * 0.10
+    ); return Double(values.filter { abs($0 - median) <= tolerance }.count) / Double(values.count) }
+    private static func percentile(_ values: [Double], _ p: Double) -> Double { let sorted = values.sorted(); guard let first = sorted.first
+        else { return .nan }; if sorted.count == 1 { return first }; let index = min(
+            Double(sorted.count - 1),
+            max(0, p * Double(sorted.count - 1))
+        ); let low = Int(index.rounded(.down)); let high = Int(index.rounded(.up)); return sorted[low] + (sorted[high] - sorted[low]) * (index - Double(low))
+    }
+
+    private static func percentileOptional(_ values: [Double], _ p: Double) -> Double? { values.isEmpty ? nil : self.percentile(values, p) }
+    private static func unique(_ reasons: [MeetingSignalDomainGateReason]) -> [MeetingSignalDomainGateReason] { var seen = Set<MeetingSignalDomainGateReason>(); return reasons
+        .filter { seen.insert($0).inserted }
+    }
 }
 
 /// Executable representation of the single-owner delay rule.  A future engine wrapper can adopt
@@ -1055,23 +1206,27 @@ public struct MeetingAECDelayContract: Codable, Equatable, Sendable {
     public let adaptiveDelayOwner: String
     public let renderBeforeCapture: Bool
 
-    public init(renderLeadSeconds: Double, boundedEngineHintSeconds: Double? = nil,
-                adaptiveDelayOwner: String = "candidateEngine", renderBeforeCapture: Bool = true) {
+    public init(
+        renderLeadSeconds: Double,
+        boundedEngineHintSeconds: Double? = nil,
+        adaptiveDelayOwner: String = "candidateEngine",
+        renderBeforeCapture: Bool = true
+    ) {
         self.renderLeadSeconds = renderLeadSeconds; self.boundedEngineHintSeconds = boundedEngineHintSeconds
         self.adaptiveDelayOwner = adaptiveDelayOwner; self.renderBeforeCapture = renderBeforeCapture
     }
 
     public var isValid: Bool {
-        renderLeadSeconds.isFinite && renderLeadSeconds >= 0 && renderLeadSeconds <= 0.100
-            && (boundedEngineHintSeconds == nil || (boundedEngineHintSeconds!.isFinite && boundedEngineHintSeconds! >= 0 && boundedEngineHintSeconds! <= 0.500))
-            && adaptiveDelayOwner == "candidateEngine" && renderBeforeCapture
+        self.renderLeadSeconds.isFinite && self.renderLeadSeconds >= 0 && self.renderLeadSeconds <= 0.100
+            && (self.boundedEngineHintSeconds.map { $0.isFinite && $0 >= 0 && $0 <= 0.500 } ?? true)
+            && self.adaptiveDelayOwner == "candidateEngine" && self.renderBeforeCapture
     }
 
     /// Checks the ordering invariant a future adapter must prove in an executable test. There
     /// must be exactly one render and one capture event per frame, with render first; a
     /// synchronizer or caller cannot become a second adaptive delay owner.
     public func validates(events: [MeetingAECDelayContractEvent]) -> Bool {
-        guard isValid, !events.isEmpty else { return false }
+        guard self.isValid, !events.isEmpty else { return false }
         let ordered = events.sorted { $0.frameIndex == $1.frameIndex ? $0.kind == .render && $1.kind == .capture : $0.frameIndex < $1.frameIndex }
         guard ordered == events else { return false }
         var byFrame: [Int: [MeetingAECDelayContractEventKind]] = [:]
@@ -1089,7 +1244,7 @@ public struct MeetingAECDelayContract: Codable, Equatable, Sendable {
     /// equal masks/geometry, and a nonnegative frozen lead. The synchronizer remains the sole
     /// owner of clock/epoch mapping; adaptive acoustic delay is still reserved for the candidate.
     public func validates(synchronizedResult: MeetingSynchronizationResult) -> Bool {
-        guard isValid, !synchronizedResult.frames.isEmpty else { return false }
+        guard self.isValid, !synchronizedResult.frames.isEmpty else { return false }
         var previousEpoch = 0
         for (expectedIndex, frame) in synchronizedResult.frames.enumerated() {
             guard frame.index == expectedIndex, frame.epochID >= previousEpoch,

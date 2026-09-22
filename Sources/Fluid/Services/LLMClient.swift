@@ -834,7 +834,10 @@ final nonisolated class LLMClient: @unchecked Sendable {
             DebugLogger.shared.debug("LLMClient: Parsed tool call: \(name)", source: "LLMClient")
         }
 
-        DebugLogger.shared.debug("LLMClient: Returning response. Content length: \(contentText.count), Has thinking: \(thinkingText.isEmpty ? "No" : "Yes (\(thinkingText.count) chars)")", source: "LLMClient")
+        DebugLogger.shared.debug(
+            "LLMClient: Returning response. Content length: \(contentText.count), Has thinking: \(thinkingText.isEmpty ? "No" : "Yes (\(thinkingText.count) chars)")",
+            source: "LLMClient"
+        )
 
         let parsed = Response(
             thinking: thinkingText.isEmpty ? nil : thinkingText,

@@ -64,14 +64,15 @@ nonisolated enum MeetingSCKPairedAutorun {
     @MainActor
     private static func run(environment: [String: String]) async -> Outcome {
         guard CGPreflightScreenCaptureAccess() else {
-            return Self.failure("screen recording access is not preflight-authorized")
+            return failure("screen recording access is not preflight-authorized")
         }
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-            return Self.failure("microphone access is not authorized")
+            return failure("microphone access is not authorized")
         }
         guard let bundleID = environment[MeetingSCKPairedDiagnosticGate.targetBundleIDEnvironmentKey]?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty else {
-            return Self.failure("target bundle ID is empty")
+            .trimmingCharacters(in: .whitespacesAndNewlines), !bundleID.isEmpty
+        else {
+            return failure("target bundle ID is empty")
         }
         guard let microphone = AVCaptureDevice.default(for: .audio), !microphone.uniqueID.isEmpty else {
             return Self.failure("no default microphone device is available")
@@ -119,11 +120,13 @@ nonisolated enum MeetingSCKPairedAutorun {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
         do {
             try stream.addStreamOutput(
-                output, type: .audio,
+                output,
+                type: .audio,
                 sampleHandlerQueue: DispatchQueue(label: "fluidvoice.c2.autorun.application", qos: .userInteractive)
             )
             try stream.addStreamOutput(
-                output, type: .microphone,
+                output,
+                type: .microphone,
                 sampleHandlerQueue: DispatchQueue(label: "fluidvoice.c2.autorun.microphone", qos: .userInteractive)
             )
         } catch {
@@ -181,13 +184,15 @@ nonisolated enum MeetingSCKPairedAutorun {
             return "one or both paired outputs produced no samples"
         }
         guard report.application.validTimestampCount == report.application.sampleCount,
-              report.microphone.validTimestampCount == report.microphone.sampleCount else {
+              report.microphone.validTimestampCount == report.microphone.sampleCount
+        else {
             return "paired output timestamps were malformed"
         }
         guard report.application.firstPresentationSeconds?.isFinite == true,
               report.application.lastPresentationEndSeconds?.isFinite == true,
               report.microphone.firstPresentationSeconds?.isFinite == true,
-              report.microphone.lastPresentationEndSeconds?.isFinite == true else {
+              report.microphone.lastPresentationEndSeconds?.isFinite == true
+        else {
             return "paired output timestamps were non-finite"
         }
         guard report.application.firstSampleRateHz?.isFinite == true,
@@ -195,7 +200,8 @@ nonisolated enum MeetingSCKPairedAutorun {
               (report.application.firstSampleRateHz ?? 0) > 0,
               (report.microphone.firstSampleRateHz ?? 0) > 0,
               (report.application.firstChannelCount ?? 0) > 0,
-              (report.microphone.firstChannelCount ?? 0) > 0 else {
+              (report.microphone.firstChannelCount ?? 0) > 0
+        else {
             return "paired output formats were invalid"
         }
         guard report.acceptedSampleCount == report.application.sampleCount + report.microphone.sampleCount else {
@@ -219,9 +225,12 @@ nonisolated enum MeetingSCKPairedAutorun {
 
     private static func jsonLine(_ object: [String: Any]) -> String? {
         guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else {
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        else {
             return nil
         }
+        // Diagnostic JSON is emitted as UTF-8; decoding keeps the report output nonoptional.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -230,7 +239,7 @@ nonisolated enum MeetingSCKPairedAutorun {
     }
 
     private static func stopCaptureBestEffort(_ stream: SCStream) async {
-        try? await Self.withTimeout(seconds: Self.operationTimeoutSeconds) {
+        try? await self.withTimeout(seconds: self.operationTimeoutSeconds) {
             try await stream.stopCapture()
         }
     }
@@ -246,7 +255,8 @@ nonisolated enum MeetingSCKPairedAutorun {
                 throw AutorunError.timeout
             }
             defer { group.cancelAll() }
-            return try await group.next()!
+            guard let result = try await group.next() else { throw AutorunError.timeout }
+            return result
         }
     }
 }

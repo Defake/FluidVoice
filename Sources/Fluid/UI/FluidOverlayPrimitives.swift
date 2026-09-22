@@ -45,7 +45,7 @@ struct FluidOverlayBorder: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: self.cornerRadius)
         switch self.style {
-        case .staticAngular(let angle, let lineWidth):
+        case let .staticAngular(angle, lineWidth):
             shape.strokeBorder(
                 AngularGradient(
                     stops: FluidOverlayAngularBorderStops.dictationPill,
@@ -54,7 +54,7 @@ struct FluidOverlayBorder: View {
                 ),
                 lineWidth: lineWidth
             )
-        case .linear(let topOpacity, let bottomOpacity, let lineWidth):
+        case let .linear(topOpacity, bottomOpacity, lineWidth):
             shape.strokeBorder(
                 LinearGradient(
                     colors: [

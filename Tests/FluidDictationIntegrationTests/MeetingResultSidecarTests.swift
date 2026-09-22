@@ -22,6 +22,8 @@ final class MeetingResultSidecarTests: XCTestCase {
         confidence: Double? = nil,
         analysisStart: TimeInterval = 1,
         analysisEnd: TimeInterval = 2,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         analysisSpanIDs: [String]? = nil
     ) -> MeetingFinalTextUnit {
         MeetingFinalTextUnit(
@@ -58,8 +60,14 @@ final class MeetingResultSidecarTests: XCTestCase {
 
     private func makeSidecar(
         attemptID: UUID = UUID(),
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         units: [MeetingFinalTextUnit]? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         dispositions: [MeetingTextUnitDispositionRecord]? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         receipts: [MeetingSpanCoverageReceipt]? = nil
     ) -> MeetingResultSidecar {
         let resolvedUnits = units ?? [self.makeUnit()]
@@ -100,11 +108,11 @@ final class MeetingResultSidecarTests: XCTestCase {
                 id: index == 0 ? self.chunkID : UUID(),
                 sequence: index,
                 relativeFilePath: "tracks/fixture-\(index).caf",
-                presentationStart: MeetingMediaTime(value: Int64(start * 1_000), timescale: 1_000),
-                presentationEnd: MeetingMediaTime(value: Int64(end * 1_000), timescale: 1_000),
+                presentationStart: MeetingMediaTime(value: Int64(start * 1000), timescale: 1000),
+                presentationEnd: MeetingMediaTime(value: Int64(end * 1000), timescale: 1000),
                 discontinuities: [],
                 sha256: String(repeating: String((index % 9) + 1), count: 64),
-                byteCount: 1_024,
+                byteCount: 1024,
                 finalizationState: .finalized
             )
             let identity = MeetingAnalysisChunkIdentity(trackID: self.trackID, chunk: chunk)
@@ -311,14 +319,18 @@ final class MeetingResultSidecarTests: XCTestCase {
             dispositions: [
                 MeetingTextUnitDispositionRecord(unitID: "w-0", disposition: .emitted),
                 MeetingTextUnitDispositionRecord(
-                    unitID: "w-amb", disposition: .ambiguousUnassigned,
+                    unitID: "w-amb",
+                    disposition: .ambiguousUnassigned,
                     reasonCode: MeetingUnitDispositionReason.ambiguousSpeaker.rawValue
                 ),
             ],
             receipts: [
                 self.makeReceipt(id: "receipt-0"),
                 self.makeReceipt(
-                    id: "receipt-1", spanID: "span-1", analysisStart: 5, analysisEnd: 9,
+                    id: "receipt-1",
+                    spanID: "span-1",
+                    analysisStart: 5,
+                    analysisEnd: 9,
                     status: .failed
                 ),
             ]
@@ -420,7 +432,8 @@ final class MeetingResultSidecarTests: XCTestCase {
             units: [ambiguousUnit],
             dispositions: [
                 MeetingTextUnitDispositionRecord(
-                    unitID: "w-amb", disposition: .inadmissible,
+                    unitID: "w-amb",
+                    disposition: .inadmissible,
                     reasonCode: MeetingUnitDispositionReason.inadmissibleCaptureEra.rawValue
                 ),
             ]

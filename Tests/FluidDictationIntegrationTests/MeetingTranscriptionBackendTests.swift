@@ -205,6 +205,8 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
 
     private func makeSession(
         languageCode: String = "en",
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         tracks: [MeetingAudioTrack]? = nil,
         processingAttempts: [MeetingProcessingAttempt] = []
     ) -> MeetingSession {
@@ -302,7 +304,8 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         registry.register(Self.fixtureBackendID) { _ in
             FixtureMeetingBackend(descriptor: descriptor, planOverride: { request in
                 MeetingBackendPlan(request: MeetingBackendRequest(
-                    attemptID: request.attemptID, session: request.session,
+                    attemptID: request.attemptID,
+                    session: request.session,
                     sessionDirectory: request.sessionDirectory.appendingPathComponent("another-session"),
                     configuration: request.configuration
                 ), descriptor: descriptor)
@@ -310,7 +313,8 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         }
         do {
             _ = try await self.makePipeline(registry: registry, backendID: nil).process(
-                session: self.makeSession(), sessionDirectory: FileManager.default.temporaryDirectory,
+                session: self.makeSession(),
+                sessionDirectory: FileManager.default.temporaryDirectory,
                 progress: { _ in }
             )
             XCTFail("Substituted request must fail before model work")
@@ -328,14 +332,17 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         registry.register(Self.fixtureBackendID) { context in
             LegacyCallbackBackend(descriptor: descriptor, executor: context.legacyExecutor) { request in
                 MeetingBackendRequest(
-                    attemptID: UUID(), session: request.session, sessionDirectory: request.sessionDirectory,
+                    attemptID: UUID(),
+                    session: request.session,
+                    sessionDirectory: request.sessionDirectory,
                     configuration: request.configuration
                 )
             }
         }
         do {
             _ = try await self.makePipeline(registry: registry, backendID: nil).process(
-                session: self.makeSession(), sessionDirectory: FileManager.default.temporaryDirectory,
+                session: self.makeSession(),
+                sessionDirectory: FileManager.default.temporaryDirectory,
                 progress: { _ in }
             )
             XCTFail("Substituted executor request must fail")
@@ -395,8 +402,7 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         let key = "MeetingTranscriptionBackendID"
         let oldValue = defaults.object(forKey: key)
         defer {
-            if let oldValue { defaults.set(oldValue, forKey: key) }
-            else { defaults.removeObject(forKey: key) }
+            if let oldValue { defaults.set(oldValue, forKey: key) } else { defaults.removeObject(forKey: key) }
         }
         let settings = SettingsStore.shared
         let dictationModel = settings.selectedSpeechModel
@@ -414,8 +420,7 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         let key = "MeetingTranscriptionBackendID"
         let oldValue = defaults.object(forKey: key)
         defer {
-            if let oldValue { defaults.set(oldValue, forKey: key) }
-            else { defaults.removeObject(forKey: key) }
+            if let oldValue { defaults.set(oldValue, forKey: key) } else { defaults.removeObject(forKey: key) }
         }
         let settingsStore = SettingsStore.shared
         let future = MeetingBackendID(rawValue: "future.hosted-provider")
@@ -466,7 +471,8 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         var selectionReads = 0
         let pipeline = MeetingProcessingPipeline(
             asrServiceProvider: { fatalError("Fixture must not load ASR") },
-            serializationGate: MeetingProcessingSerializationGate(), backendRegistry: registry,
+            serializationGate: MeetingProcessingSerializationGate(),
+            backendRegistry: registry,
             backendIDProvider: { selectionReads += 1; return selected }
         )
         let session = self.makeSession()
@@ -836,6 +842,8 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
         trackID: MeetingAudioTrackID? = nil,
         epoch: MeetingAnalysisEpochID? = nil,
         speaker: MeetingBackendSpeakerAssignment? = nil,
+        // nil requests the fixture default; an empty collection tests explicitly missing data.
+        // swiftlint:disable:next discouraged_optional_collection
         analysisSpanIDs: [String]? = nil,
         confidence: Double? = nil
     ) -> MeetingFinalTextUnit {
@@ -874,12 +882,22 @@ final class MeetingTranscriptionBackendTests: XCTestCase {
             units: [
                 self.makeUnit(fixture, id: "w-0", precision: .word, analysisStart: 1, analysisEnd: 1.4),
                 self.makeUnit(
-                    fixture, id: "utt-0", precision: .utterance, text: "a whole sentence",
-                    analysisStart: 2, analysisEnd: 6, speaker: .unassigned, confidence: 0.75
+                    fixture,
+                    id: "utt-0",
+                    precision: .utterance,
+                    text: "a whole sentence",
+                    analysisStart: 2,
+                    analysisEnd: 6,
+                    speaker: .unassigned,
+                    confidence: 0.75
                 ),
                 self.makeUnit(
-                    fixture, id: "utt-1", precision: .utterance, text: "overlapped",
-                    analysisStart: 6, analysisEnd: 7,
+                    fixture,
+                    id: "utt-1",
+                    precision: .utterance,
+                    text: "overlapped",
+                    analysisStart: 6,
+                    analysisEnd: 7,
                     speaker: .ambiguous([
                         MeetingBackendSpeakerToken(analysisEpochID: fixture.epoch, label: "slot-0"),
                         MeetingBackendSpeakerToken(analysisEpochID: fixture.epoch, label: "slot-1"),

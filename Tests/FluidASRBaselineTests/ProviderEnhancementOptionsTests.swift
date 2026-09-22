@@ -8,6 +8,8 @@ import XCTest
 final class ProviderEnhancementOptionsTests: XCTestCase {
     private func makeEntry() -> SettingsStore.CustomDictionaryEntry {
         SettingsStore.CustomDictionaryEntry(
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
             triggers: ["fluid voice", "fluid boys"],
             replacement: "FluidVoice"

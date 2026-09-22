@@ -13,8 +13,7 @@ final class HotkeyShortcutTests: XCTestCase {
         let key = "OverlayGlassOpacity"
         let previous = defaults.object(forKey: key)
         defer {
-            if let previous { defaults.set(previous, forKey: key) }
-            else { defaults.removeObject(forKey: key) }
+            if let previous { defaults.set(previous, forKey: key) } else { defaults.removeObject(forKey: key) }
         }
         for invalid in [Double.nan, .infinity, -.infinity] {
             SettingsStore.shared.overlayGlassOpacity = invalid
@@ -33,8 +32,7 @@ final class HotkeyShortcutTests: XCTestCase {
         let previous = keys.map { defaults.object(forKey: $0) }
         defer {
             for (key, value) in zip(keys, previous) {
-                if let value { defaults.set(value, forKey: key) }
-                else { defaults.removeObject(forKey: key) }
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
         }
         // 800-point minimum window minus sidebar, settings insets, and card padding.

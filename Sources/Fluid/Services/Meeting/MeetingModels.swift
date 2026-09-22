@@ -608,13 +608,15 @@ nonisolated struct MeetingAudioTrack: Identifiable, Equatable, Sendable {
     var timebase: MeetingTimebaseMetadata
     var health: MeetingTrackHealth
     var chunks: [MeetingAudioChunk]
-    var captureMethod: MeetingAudioTrackCaptureMethod? = nil
-    var voiceProcessingConfig: MeetingMicrophoneSettledConfig? = nil
-    var clockDrift: MeetingClockDriftRecord? = nil
-    /// Ordered. PERSISTED startSeconds mixes domains: index 0 stores 0, eras 1+ store raw PTS
-    /// seconds — readers must go through the pipeline's microphoneEras(for:origin:), which
-    /// normalizes to origin-relative. Absence means single-era legacy.
-    var captureEras: [MeetingCaptureEra]? = nil
+    var captureMethod: MeetingAudioTrackCaptureMethod?
+    var voiceProcessingConfig: MeetingMicrophoneSettledConfig?
+    var clockDrift: MeetingClockDriftRecord?
+    // Ordered. PERSISTED startSeconds mixes domains: index 0 stores 0, eras 1+ store raw PTS
+    // seconds — readers must go through the pipeline's microphoneEras(for:origin:), which
+    // normalizes to origin-relative. Absence means single-era legacy.
+    // nil means unavailable; an empty result means available with no values.
+    // swiftlint:disable:next discouraged_optional_collection
+    var captureEras: [MeetingCaptureEra]?
 
     init(
         id: MeetingAudioTrackID,
@@ -628,6 +630,8 @@ nonisolated struct MeetingAudioTrack: Identifiable, Equatable, Sendable {
         captureMethod: MeetingAudioTrackCaptureMethod? = nil,
         voiceProcessingConfig: MeetingMicrophoneSettledConfig? = nil,
         clockDrift: MeetingClockDriftRecord? = nil,
+        // nil means unavailable; an empty result means available with no values.
+        // swiftlint:disable:next discouraged_optional_collection
         captureEras: [MeetingCaptureEra]? = nil
     ) {
         self.id = id
@@ -673,6 +677,8 @@ extension MeetingAudioTrack: Codable {
     private static func decodeTolerantCaptureEras(
         container: KeyedDecodingContainer<CodingKeys>,
         key: CodingKeys
+        // nil means unavailable; an empty result means available with no values.
+        // swiftlint:disable:next discouraged_optional_collection
     ) throws -> [MeetingCaptureEra]? {
         guard container.contains(key) else { return nil }
         var unkeyed = try container.nestedUnkeyedContainer(forKey: key)
@@ -871,7 +877,9 @@ nonisolated struct MeetingSession: Codable, Identifiable, Equatable, Sendable {
     var audioTracks: [MeetingAudioTrack]
     var speakers: [MeetingSessionSpeaker]
     var transcriptSegments: [MeetingTranscriptSegment]
-    /// Audio intervals intentionally excluded from the transcript. Optional for schema-1 sessions.
+    // Audio intervals intentionally excluded from the transcript. Optional for schema-1 sessions.
+    // nil means unavailable; an empty result means available with no values.
+    // swiftlint:disable:next discouraged_optional_collection
     var transcriptCoverageGaps: [MeetingTranscriptCoverageGap]? = nil
     /// Verified reference to the canonical attempt's durable result sidecar inside this session's
     /// directory. Optional and backward compatible: sessions written before canonical publication

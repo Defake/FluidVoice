@@ -31,8 +31,6 @@ nonisolated struct MeetingStage05MockAECSeamResult: Equatable, Sendable {
 /// ordering contract, and returns audio arrays unchanged. It performs no echo
 /// cancellation: no resampling, delay, scaling, suppression, synthesis, or replacement.
 nonisolated struct MeetingStage05MockAECSeam: Sendable {
-    init() {}
-
     func process(_ result: MeetingSynchronizationResult) -> MeetingStage05MockAECSeamResult {
         let structuralContract = MeetingAECDelayContract(renderLeadSeconds: 0)
         guard !result.failedOpen,
@@ -42,13 +40,20 @@ nonisolated struct MeetingStage05MockAECSeam: Sendable {
                       && frame.renderSamples.allSatisfy(\.isFinite)
                       && frame.captureSamples.allSatisfy(\.isFinite)
                       && zip(frame.renderSamples, frame.renderValidMask)
-                          .allSatisfy { $0.1 || $0.0 == 0 }
+                      .allSatisfy { $0.1 || $0.0 == 0 }
                       && zip(frame.captureSamples, frame.captureValidMask)
-                          .allSatisfy { $0.1 || $0.0 == 0 }
-              }) else {
+                      .allSatisfy { $0.1 || $0.0 == 0 }
+              })
+        else {
             return MeetingStage05MockAECSeamResult(
-                frames: result.frames, events: [], observations: [], processedFrameCount: 0,
-                frozenFrameCount: 0, boundaryCount: 0, authorized: false)
+                frames: result.frames,
+                events: [],
+                observations: [],
+                processedFrameCount: 0,
+                frozenFrameCount: 0,
+                boundaryCount: 0,
+                authorized: false
+            )
         }
         var events: [MeetingAECDelayContractEvent] = []
         var observations: [MeetingStage05MockAECObservation] = []
@@ -78,12 +83,15 @@ nonisolated struct MeetingStage05MockAECSeam: Sendable {
                 && frame.captureValidMask.allSatisfy { $0 }
             let mustFreeze = reset || !complete || frame.adaptationFrozen
             observations.append(MeetingStage05MockAECObservation(
-                frameIndex: frame.index, epochID: frame.epochID, reset: reset,
+                frameIndex: frame.index,
+                epochID: frame.epochID,
+                reset: reset,
                 adaptationFrozen: mustFreeze,
                 resynchronizationBoundary: frame.resynchronizationBoundary,
                 renderValidCount: frame.renderValidMask.filter { $0 }.count,
                 captureValidCount: frame.captureValidMask.filter { $0 }.count,
-                unknownReasons: frame.unknownReasons))
+                unknownReasons: frame.unknownReasons
+            ))
             guard !mustFreeze else {
                 frozen += 1
                 continue
@@ -93,9 +101,14 @@ nonisolated struct MeetingStage05MockAECSeam: Sendable {
             processed += 1
         }
         return MeetingStage05MockAECSeamResult(
-            frames: result.frames, events: events, observations: observations,
+            frames: result.frames,
+            events: events,
+            observations: observations,
             processedFrameCount: processed,
-            frozenFrameCount: frozen, boundaryCount: boundaries, authorized: true)
+            frozenFrameCount: frozen,
+            boundaryCount: boundaries,
+            authorized: true
+        )
     }
 }
 

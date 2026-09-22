@@ -48,34 +48,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     func applicationDidFinishLaunching(_ notification: Notification) {
         AccessibilityMessagingTimeout.configure()
         #if DEBUG
-            // Stage 0.5, Trial A, and C2 autoruns must return before Core Audio observers,
-            // logging, AppServices, and UI startup. Each owns one bounded diagnostic stream.
-            if MeetingStage05EvidenceAutorun.startIfRequested() {
-                return
-            }
-            if MeetingExternalReferenceTrialAAutorun.startIfRequested() {
-                return
-            }
-            if MeetingSCKPairedAutorun.startIfRequested() {
-                return
-            }
-            // Must precede every Core Audio observer. Disabled unless explicitly
-            // requested through the Phase 0 diagnostics environment.
-            AudioTopologyDiagnostics.shared.startIfRequested()
-            // App-hosted XCTest otherwise starts the normal UI/audio services alongside the
-            // exclusive VPIO hardware probe. Keep that opt-in diagnostic launch isolated.
-            if ProcessInfo.processInfo.environment["FLUIDVOICE_MIC_PHASE1"] != nil
-                || ProcessInfo.processInfo.environment["FLUIDVOICE_VPIO_ACOUSTIC"] == "1"
-            {
-                return
-            }
+        // Stage 0.5, Trial A, and C2 autoruns must return before Core Audio observers,
+        // logging, AppServices, and UI startup. Each owns one bounded diagnostic stream.
+        if MeetingStage05EvidenceAutorun.startIfRequested() {
+            return
+        }
+        if MeetingExternalReferenceTrialAAutorun.startIfRequested() {
+            return
+        }
+        if MeetingSCKPairedAutorun.startIfRequested() {
+            return
+        }
+        // Must precede every Core Audio observer. Disabled unless explicitly
+        // requested through the Phase 0 diagnostics environment.
+        AudioTopologyDiagnostics.shared.startIfRequested()
+        // App-hosted XCTest otherwise starts the normal UI/audio services alongside the
+        // exclusive VPIO hardware probe. Keep that opt-in diagnostic launch isolated.
+        if ProcessInfo.processInfo.environment["FLUIDVOICE_MIC_PHASE1"] != nil
+            || ProcessInfo.processInfo.environment["FLUIDVOICE_VPIO_ACOUSTIC"] == "1"
+        {
+            return
+        }
         #endif
         // Bring up file logging + crash handlers immediately during launch.
         _ = FileLogger.shared
         TypingService.startKeyboardLayoutTracking()
         _ = TranscriptionHistoryStore.shared
         #if DEBUG
-            MeetingDetectorFeasibilityProbe.startIfRequested()
+        MeetingDetectorFeasibilityProbe.startIfRequested()
         #endif
         // Must be read during the launch callback - the current Apple Event identifies
         // login-item launches (used to optionally start silently, see issue #369).
@@ -157,7 +157,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         self.updateCheckTimer?.invalidate()
         self.updateCheckTimer = nil
         #if DEBUG
-            AudioTopologyDiagnostics.shared.stop()
+        AudioTopologyDiagnostics.shared.stop()
         #endif
     }
 
@@ -339,6 +339,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             }
         }
     }
+
     /// Realize the main window invisibly so ContentView's startup runs, then order it out.
     /// Used for login-item launches when "Show window when launched at login" is off.
     @discardableResult

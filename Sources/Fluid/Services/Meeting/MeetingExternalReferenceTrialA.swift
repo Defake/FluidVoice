@@ -1,7 +1,7 @@
 #if DEBUG
 
-import AppKit
 import Accelerate
+import AppKit
 import AVFoundation
 import CoreAudio
 import CoreMedia
@@ -24,12 +24,12 @@ nonisolated enum MeetingExternalReferenceTrialAGate {
     static let stimulusWindowPlayingMarker = "PLAYING"
 
     static func enabled(environment: [String: String]) -> Bool {
-        environment[Self.environmentKey] == "1"
-            && environment[Self.targetBundleIDEnvironmentKey] == Self.requiredTargetBundleID
+        environment[self.environmentKey] == "1"
+            && environment[self.targetBundleIDEnvironmentKey] == self.requiredTargetBundleID
     }
 
     static func autorunEnabled(environment: [String: String]) -> Bool {
-        self.enabled(environment: environment) && environment[Self.autorunEnvironmentKey] == "1"
+        self.enabled(environment: environment) && environment[self.autorunEnvironmentKey] == "1"
     }
 
     static func stimulusWindowIsPlaying(title: String?) -> Bool {
@@ -43,11 +43,15 @@ nonisolated enum MeetingExternalReferenceTrialAGate {
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated struct MeetingExternalReferenceTrialADisplayCandidate: Equatable, Sendable {
     let displayID: UInt32
     let frame: CGRect
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated struct MeetingExternalReferenceTrialAWindowCandidate: Equatable, Sendable {
     let windowID: UInt32
     let owningBundleIdentifier: String?
@@ -55,6 +59,8 @@ nonisolated struct MeetingExternalReferenceTrialAWindowCandidate: Equatable, Sen
     let title: String?
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated enum MeetingExternalReferenceTrialAWindowSelector {
     /// The owning window is the source of truth for readiness. Application lists can contain
     /// duplicate/stale records for one bundle, so selecting an arbitrary bundle record first can
@@ -73,6 +79,8 @@ nonisolated enum MeetingExternalReferenceTrialAWindowSelector {
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated enum MeetingExternalReferenceTrialADisplaySelector {
     /// Selects the display containing the matched stimulus window. A zero-area intersection or a
     /// tie is ambiguous and fails closed; choosing `displays.first` can silently capture the wrong
@@ -94,6 +102,8 @@ nonisolated enum MeetingExternalReferenceTrialADisplaySelector {
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated struct MeetingExternalReferenceTrialATrackSample: Equatable, Sendable {
     let presentationSeconds: Double
     let durationSeconds: Double
@@ -130,6 +140,8 @@ nonisolated struct MeetingExternalReferenceTrialATrackSample: Equatable, Sendabl
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated struct MeetingExternalReferenceTrialATrackReport: Codable, Equatable, Sendable {
     let callbackCount: Int
     let droppedFrameCount: Int
@@ -178,7 +190,7 @@ nonisolated struct MeetingExternalReferenceTrialATrackReport: Codable, Equatable
                 && sample.channelCount > 0 && sample.rms.isFinite && sample.rms >= 0
                 && sample.peak.isFinite && sample.peak >= 0 && sample.peak <= 1
                 && abs(Double(sample.frameCount) / sample.sampleRateHz - sample.durationSeconds)
-                    <= max(1.5 / sample.sampleRateHz, 0.001)
+                <= max(1.5 / sample.sampleRateHz, 0.001)
             if validTiming { valid.append(sample) } else { invalid += 1 }
         }
         var first: Double?
@@ -292,6 +304,8 @@ nonisolated struct MeetingExternalReferenceTrialATrackReport: Codable, Equatable
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated struct MeetingExternalReferenceTrialAClockReport: Codable, Equatable, Sendable {
     let sharedClockEstablished: Bool
     let acousticDelaySeconds: Double?
@@ -336,7 +350,7 @@ nonisolated struct MeetingExternalReferenceTrialAReport: Codable, Equatable, Sen
     /// Backward-compatible summary used by the offline diagnostic tests. Trial A can report
     /// capture health while remaining invalid as an acoustic measurement until clock mapping is
     /// established.
-    var valid: Bool { acousticMeasurementValid }
+    var valid: Bool { self.acousticMeasurementValid }
 }
 
 /// Lock-protected PCM collector. `reportAndRelease` computes numbers and then drops every sample
@@ -364,12 +378,20 @@ final nonisolated class MeetingExternalReferenceTrialACollector: @unchecked Send
         let duration = CMTimeGetSeconds(CMSampleBufferGetDuration(sampleBuffer))
         let callbackFrames = CMSampleBufferGetNumSamples(sampleBuffer)
         guard let copied = MeetingLiveSampleCopy.copy(sampleBuffer),
-              let channel = copied.buffer.floatChannelData?[0] else {
+              let channel = copied.buffer.floatChannelData?[0]
+        else {
             self.lock.lock(); defer { self.lock.unlock() }
-            self.samples.append(.init(presentationSeconds: pts, durationSeconds: duration,
-                                      frameCount: callbackFrames, sampleRateHz: .nan,
-                                      channelCount: 0, synthesizedTiming: synthesizedTiming,
-                                      rms: .nan, peak: .nan, arrivalSeconds: arrival))
+            self.samples.append(.init(
+                presentationSeconds: pts,
+                durationSeconds: duration,
+                frameCount: callbackFrames,
+                sampleRateHz: .nan,
+                channelCount: 0,
+                synthesizedTiming: synthesizedTiming,
+                rms: .nan,
+                peak: .nan,
+                arrivalSeconds: arrival
+            ))
             return
         }
         let frameCount = Int(copied.buffer.frameLength)
@@ -379,10 +401,16 @@ final nonisolated class MeetingExternalReferenceTrialACollector: @unchecked Send
         vDSP_svesq(channel, 1, &sum, vDSP_Length(frameCount))
         let rms = frameCount > 0 ? sqrt(Double(sum) / Double(frameCount)) : .nan
         let sample = MeetingExternalReferenceTrialATrackSample(
-            presentationSeconds: pts, durationSeconds: duration, frameCount: frameCount,
+            presentationSeconds: pts,
+            durationSeconds: duration,
+            frameCount: frameCount,
             sampleRateHz: copied.buffer.format.sampleRate,
             channelCount: Int(copied.buffer.format.channelCount),
-            synthesizedTiming: synthesizedTiming, rms: rms, peak: Double(peak), arrivalSeconds: arrival)
+            synthesizedTiming: synthesizedTiming,
+            rms: rms,
+            peak: Double(peak),
+            arrivalSeconds: arrival
+        )
         self.lock.lock(); defer { self.lock.unlock() }
         guard self.retainedFrames + frameCount <= self.maximumFrames else {
             self.droppedFrameCount += frameCount
@@ -409,9 +437,13 @@ final nonisolated class MeetingExternalReferenceTrialACollector: @unchecked Send
         self.captureCloseArrivalSeconds = nil
         self.lock.unlock()
         return MeetingExternalReferenceTrialATrackReport.analyze(
-            samples, requestedDurationSeconds: requestedDurationSeconds,
-            droppedFrameCount: droppedFrameCount, callbackCount: callbackCount,
-            captureOpenArrivalSeconds: open, captureCloseArrivalSeconds: close)
+            samples,
+            requestedDurationSeconds: requestedDurationSeconds,
+            droppedFrameCount: droppedFrameCount,
+            callbackCount: callbackCount,
+            captureOpenArrivalSeconds: open,
+            captureCloseArrivalSeconds: close
+        )
     }
 
     func reset() {
@@ -433,6 +465,8 @@ final nonisolated class MeetingExternalReferenceTrialACollector: @unchecked Send
     }
 }
 
+// Keep the subsystem-qualified name distinct from other capture and analysis contracts.
+// swiftlint:disable:next type_name
 nonisolated enum MeetingExternalReferenceTrialAOfflineHarness {
     static func analyze(
         reference: [MeetingExternalReferenceTrialATrackSample],
@@ -440,34 +474,50 @@ nonisolated enum MeetingExternalReferenceTrialAOfflineHarness {
         requestedDurationSeconds: Double = 5
     ) -> MeetingExternalReferenceTrialAReport {
         let referenceReport = MeetingExternalReferenceTrialATrackReport.analyze(
-            reference, requestedDurationSeconds: requestedDurationSeconds)
+            reference, requestedDurationSeconds: requestedDurationSeconds
+        )
         let microphoneReport = MeetingExternalReferenceTrialATrackReport.analyze(
-            microphone, requestedDurationSeconds: requestedDurationSeconds)
+            microphone, requestedDurationSeconds: requestedDurationSeconds
+        )
         let clock = MeetingExternalReferenceTrialAClockReport(
-            sharedClockEstablished: false, acousticDelaySeconds: nil,
+            sharedClockEstablished: false,
+            acousticDelaySeconds: nil,
             relationship: "independent PTS origins; no defensible clock mapping",
-            reason: "acoustic delay and AEC measurement are unknown")
+            reason: "acoustic delay and AEC measurement are unknown"
+        )
         return MeetingExternalReferenceTrialAReport(
             schemaVersion: MeetingExternalReferenceTrialAReport.currentSchemaVersion,
             targetBundleID: MeetingExternalReferenceTrialAGate.requiredTargetBundleID,
-            targetProcessID: 0, targetProcessStable: false,
+            targetProcessID: 0,
+            targetProcessStable: false,
             selectionConfirmed: false,
-            microphoneDeviceID: nil, defaultInputDeviceID: nil,
-            outputDeviceID: nil, defaultOutputDeviceID: nil,
+            microphoneDeviceID: nil,
+            defaultInputDeviceID: nil,
+            outputDeviceID: nil,
+            defaultOutputDeviceID: nil,
             builtInRouteConfirmed: false,
-            postCaptureRouteConfirmed: false, outputVolume: nil,
+            postCaptureRouteConfirmed: false,
+            outputVolume: nil,
             postCaptureOutputVolume: nil,
-            outputVolumeReadable: false, outputVolumeUnchanged: false,
-            combinedPeakBound: nil, measuredCombinedPeak: nil,
+            outputVolumeReadable: false,
+            outputVolumeUnchanged: false,
+            combinedPeakBound: nil,
+            measuredCombinedPeak: nil,
             referenceExcitationConfirmed: false,
             streamErrorCount: 0,
             stopErrorCount: 0,
-            reference: referenceReport, microphone: microphoneReport, clock: clock,
+            reference: referenceReport,
+            microphone: microphoneReport,
+            clock: clock,
             voiceProcessingReadback: nil,
-            appOwnedPlayback: false, rawPCMRetained: false,
-            transcriptRetained: false, persisted: false,
-            captureValid: false, acousticMeasurementValid: false,
-            reasons: ["offline harness", "independent clocks; result is unknown"])
+            appOwnedPlayback: false,
+            rawPCMRetained: false,
+            transcriptRetained: false,
+            persisted: false,
+            captureValid: false,
+            acousticMeasurementValid: false,
+            reasons: ["offline harness", "independent clocks; result is unknown"]
+        )
     }
 }
 
@@ -492,7 +542,8 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
             Darwin.exit(1)
         }
         DispatchQueue.global(qos: .userInitiated).asyncAfter(
-            deadline: .now() + Self.hardWatchdogSeconds, execute: watchdog)
+            deadline: .now() + Self.hardWatchdogSeconds, execute: watchdog
+        )
         Task { @MainActor in
             let outcome: Outcome
             do {
@@ -515,31 +566,34 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
     private enum RunError: Error { case timeout }
     private final class CompletionGate: @unchecked Sendable {
         private let lock = NSLock(); private var done = false
-        func claim() -> Bool { lock.lock(); defer { lock.unlock() }; guard !done else { return false }; done = true; return true }
+        func claim() -> Bool { self.lock.lock(); defer { lock.unlock() }; guard !self.done else { return false }; self.done = true; return true }
     }
 
     @MainActor
     private static func run(environment: [String: String]) async -> Outcome {
-        guard CGPreflightScreenCaptureAccess() else { return Self.failure("screen recording access is not authorized") }
-        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return Self.failure("microphone access is not authorized") }
+        guard CGPreflightScreenCaptureAccess() else { return self.failure("screen recording access is not authorized") }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return self.failure("microphone access is not authorized") }
         guard let targetBundleID = environment[MeetingExternalReferenceTrialAGate.targetBundleIDEnvironmentKey],
-              targetBundleID == MeetingExternalReferenceTrialAGate.requiredTargetBundleID else { return Self.failure("Trial A target must be Chrome") }
+              targetBundleID == MeetingExternalReferenceTrialAGate.requiredTargetBundleID else { return self.failure("Trial A target must be Chrome") }
 
         guard let microphoneDevice = try? await MeetingCaptureSourceCatalog.defaultMicrophone(),
               let inputDevice = AudioDevice.listInputDevices().first(where: { $0.uid == microphoneDevice.coreAudioUID }),
               inputDevice.isAlive, inputDevice.isBuiltIn,
-              AudioDevice.getDefaultInputDevice()?.uid == microphoneDevice.coreAudioUID else {
+              AudioDevice.getDefaultInputDevice()?.uid == microphoneDevice.coreAudioUID
+        else {
             return Self.failure("default live built-in microphone preflight failed")
         }
         let preRoute = MeetingCaptureEngine.currentOutputRouteSnapshot()
         guard MeetingCapturePathDecider.outputRouteDeclineReason(preRoute) == nil,
-              let outputDevice = AudioDevice.getDefaultOutputDevice(), outputDevice.isAlive else {
+              let outputDevice = AudioDevice.getDefaultOutputDevice(), outputDevice.isAlive
+        else {
             return Self.failure("default live built-in speaker preflight failed")
         }
         let volume = Self.readOutputVolume(outputDevice.id)
         let combinedPeakBound = volume.map { Double($0) * 0.08 }
         guard let volume, volume.isFinite, volume > 0, volume <= 0.6,
-              let combinedPeakBound, combinedPeakBound <= 0.15 else {
+              let combinedPeakBound, combinedPeakBound <= 0.15
+        else {
             return Self.failure("output volume or combined peak safety preflight failed")
         }
 
@@ -551,23 +605,28 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
                 windowID: window.windowID,
                 owningBundleIdentifier: owner.bundleIdentifier,
                 owningProcessID: owner.processID,
-                title: window.title)
+                title: window.title
+            )
         }
         guard let selectedWindow = MeetingExternalReferenceTrialAWindowSelector.selectPlayingWindow(
-            from: windowCandidates, targetBundleIdentifier: targetBundleID),
-              let stimulusWindow = content.windows.first(where: { $0.windowID == selectedWindow.windowID }),
-              let application = stimulusWindow.owningApplication,
-              application.bundleIdentifier == targetBundleID,
-              application.processID > 0,
-              NSRunningApplication(processIdentifier: application.processID)?.isTerminated == false else {
+            from: windowCandidates, targetBundleIdentifier: targetBundleID
+        ),
+            let stimulusWindow = content.windows.first(where: { $0.windowID == selectedWindow.windowID }),
+            let application = stimulusWindow.owningApplication,
+            application.bundleIdentifier == targetBundleID,
+            application.processID > 0,
+            NSRunningApplication(processIdentifier: application.processID)?.isTerminated == false
+        else {
             return Self.failure("controlled Chrome PLAYING window is absent, stale, or ambiguous")
         }
         let displayCandidates = content.displays.map {
             MeetingExternalReferenceTrialADisplayCandidate(displayID: $0.displayID, frame: $0.frame)
         }
         guard let displayID = MeetingExternalReferenceTrialADisplaySelector.selectDisplayID(
-            windowFrame: stimulusWindow.frame, displays: displayCandidates),
-              let display = content.displays.first(where: { $0.displayID == displayID }) else {
+            windowFrame: stimulusWindow.frame, displays: displayCandidates
+        ),
+            let display = content.displays.first(where: { $0.displayID == displayID })
+        else {
             return Self.failure("controlled Chrome stimulus window does not intersect exactly one display")
         }
         let referenceCollector = MeetingExternalReferenceTrialACollector()
@@ -584,7 +643,8 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
                 onSample: { _ in },
                 onSampleMetadata: { sampleBuffer, synthesized, _ in
                     microphoneCollector.ingest(sampleBuffer, synthesizedTiming: synthesized)
-                })
+                }
+            )
 
             let filter = SCContentFilter(display: display, including: [application], exceptingWindows: [])
             let configuration = SCStreamConfiguration()
@@ -601,8 +661,10 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
             let output = TrialAStreamOutput(collector: referenceCollector)
             streamOutput = output
             try newStream.addStreamOutput(
-                output, type: .audio,
-                sampleHandlerQueue: DispatchQueue(label: "fluidvoice.trial-a.reference", qos: .userInteractive))
+                output,
+                type: .audio,
+                sampleHandlerQueue: DispatchQueue(label: "fluidvoice.trial-a.reference", qos: .userInteractive)
+            )
             try await Self.withTimeout(seconds: Self.operationTimeoutSeconds) { try await newStream.startCapture() }
             // VPIO must start first to establish its hardware graph, but only samples after this
             // shared capture-open boundary belong to Trial A's bounded five-second window.
@@ -612,8 +674,7 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
             try Task.checkCancellation()
         } catch {
             if let stream {
-                do { try await Self.withTimeout(seconds: Self.operationTimeoutSeconds) { try await stream.stopCapture() } }
-                catch { stopErrorCount += 1 }
+                do { try await Self.withTimeout(seconds: Self.operationTimeoutSeconds) { try await stream.stopCapture() } } catch { stopErrorCount += 1 }
                 if let streamOutput { try? await stream.removeStreamOutput(streamOutput, type: .audio) }
             }
             await capture.stopForPhase1Probe()
@@ -625,17 +686,16 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
         microphoneCollector.markCaptureClosed()
         let voiceProcessingReadback = await capture.voiceProcessingProbeReadback()
         if let stream {
-            do { try await Self.withTimeout(seconds: Self.operationTimeoutSeconds) { try await stream.stopCapture() } }
-            catch { stopErrorCount += 1 }
+            do { try await Self.withTimeout(seconds: Self.operationTimeoutSeconds) { try await stream.stopCapture() } } catch { stopErrorCount += 1 }
             if let streamOutput {
-                do { try await stream.removeStreamOutput(streamOutput, type: .audio) }
-                catch { stopErrorCount += 1 }
+                do { try await stream.removeStreamOutput(streamOutput, type: .audio) } catch { stopErrorCount += 1 }
             }
         }
         // Observe the route and volume while the VPIO generation is still live; teardown may
         // legitimately release the transient I/O unit and would hide a capture-time route change.
         let postCaptureRouteConfirmed = Self.routeIsStillSafe(
-            microphoneUID: microphoneDevice.coreAudioUID, outputDeviceID: outputDevice.id)
+            microphoneUID: microphoneDevice.coreAudioUID, outputDeviceID: outputDevice.id
+        )
         let postCaptureOutputVolume = Self.readOutputVolume(
             AudioDevice.getDefaultOutputDevice()?.id ?? kAudioObjectUnknown).map(Double.init)
         await capture.stopForPhase1Probe()
@@ -649,7 +709,8 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
         }
         let targetProcessStable = NSRunningApplication(processIdentifier: application.processID)?.isTerminated == false
         let voiceProcessingReadbackValid = Self.voiceProcessingReadbackIsValid(
-            voiceProcessingReadback, inputDeviceID: inputDevice.id, outputDeviceID: outputDevice.id)
+            voiceProcessingReadback, inputDeviceID: inputDevice.id, outputDeviceID: outputDevice.id
+        )
         let captureValid = reference.timingValid && microphoneReport.timingValid
             && postCaptureRouteConfirmed && volumeUnchanged
             && (measuredCombinedPeak ?? .infinity) <= 0.15
@@ -659,31 +720,42 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
             && targetProcessStable
             && voiceProcessingReadbackValid
         let clock = MeetingExternalReferenceTrialAClockReport(
-            sharedClockEstablished: false, acousticDelaySeconds: nil,
+            sharedClockEstablished: false,
+            acousticDelaySeconds: nil,
             relationship: "independent PTS origins; no defensible clock mapping",
-            reason: "per-buffer PTS cannot establish an acoustic capture/reference mapping")
+            reason: "per-buffer PTS cannot establish an acoustic capture/reference mapping"
+        )
         let report = MeetingExternalReferenceTrialAReport(
             schemaVersion: MeetingExternalReferenceTrialAReport.currentSchemaVersion,
-            targetBundleID: targetBundleID, targetProcessID: application.processID,
+            targetBundleID: targetBundleID,
+            targetProcessID: application.processID,
             targetProcessStable: targetProcessStable,
             selectionConfirmed: true,
             microphoneDeviceID: inputDevice.id,
             defaultInputDeviceID: AudioDevice.getDefaultInputDevice()?.id,
-            outputDeviceID: outputDevice.id, defaultOutputDeviceID: AudioDevice.getDefaultOutputDevice()?.id,
+            outputDeviceID: outputDevice.id,
+            defaultOutputDeviceID: AudioDevice.getDefaultOutputDevice()?.id,
             builtInRouteConfirmed: true,
             postCaptureRouteConfirmed: postCaptureRouteConfirmed,
-            outputVolume: Double(volume), postCaptureOutputVolume: postCaptureOutputVolume,
-            outputVolumeReadable: true, outputVolumeUnchanged: volumeUnchanged,
+            outputVolume: Double(volume),
+            postCaptureOutputVolume: postCaptureOutputVolume,
+            outputVolumeReadable: true,
+            outputVolumeUnchanged: volumeUnchanged,
             combinedPeakBound: combinedPeakBound,
             measuredCombinedPeak: measuredCombinedPeak,
             referenceExcitationConfirmed: (reference.peak ?? 0) >= 0.001,
             streamErrorCount: streamDelegate.errorCount,
             stopErrorCount: stopErrorCount,
-            reference: reference, microphone: microphoneReport,
-            clock: clock, voiceProcessingReadback: voiceProcessingReadback,
-            appOwnedPlayback: false, rawPCMRetained: false,
-            transcriptRetained: false, persisted: false,
-            captureValid: captureValid, acousticMeasurementValid: false,
+            reference: reference,
+            microphone: microphoneReport,
+            clock: clock,
+            voiceProcessingReadback: voiceProcessingReadback,
+            appOwnedPlayback: false,
+            rawPCMRetained: false,
+            transcriptRetained: false,
+            persisted: false,
+            captureValid: captureValid,
+            acousticMeasurementValid: false,
             reasons: ["diagnostic-only", "no app-owned playback", "independent clocks; acoustic delay unknown"]
                 + ((reference.peak ?? 0) >= 0.001 ? [] : ["reference below excitation floor"])
                 + (postCaptureRouteConfirmed ? [] : ["capture-time route changed or became unreadable"])
@@ -693,9 +765,12 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
                 + (streamDelegate.errorCount == 0 ? [] : ["ScreenCaptureKit stream stopped with error"])
                 + (stopErrorCount == 0 ? [] : ["stream stop or output cleanup failed"])
                 + (targetProcessStable ? [] : ["target process became unstable"])
-                + (voiceProcessingReadbackValid ? [] : ["VPIO engine/voice-processing device readback was not verified"]))
+                + (voiceProcessingReadbackValid ? [] : ["VPIO engine/voice-processing device readback was not verified"])
+        )
         do {
             let data = try JSONEncoder.sorted.encode(report)
+            // Diagnostic JSON is emitted as UTF-8; decoding keeps the report output nonoptional.
+            // swiftlint:disable:next optional_data_string_conversion
             return Self.success(String(decoding: data, as: UTF8.self))
         } catch { return Self.failure("numeric Trial A report serialization failed") }
     }
@@ -720,7 +795,8 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
               output.id == outputDeviceID,
               MeetingCapturePathDecider.outputRouteDeclineReason(
                   MeetingCaptureEngine.currentOutputRouteSnapshot()) == nil,
-              let volume = Self.readOutputVolume(output.id), volume > 0, volume <= 0.6 else {
+              let volume = readOutputVolume(output.id), volume > 0, volume <= 0.6
+        else {
             return false
         }
         return true
@@ -743,7 +819,8 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
               snapshot.bypassVoiceProcessing.status == noErr,
               snapshot.bypassVoiceProcessing.value == 0,
               snapshot.voiceProcessingAGCEnabled.status == noErr,
-              snapshot.voiceProcessingAGCEnabled.value == 1 else {
+              snapshot.voiceProcessingAGCEnabled.value == 1
+        else {
             return false
         }
         return true
@@ -752,29 +829,37 @@ nonisolated enum MeetingExternalReferenceTrialAAutorun {
     private static func success(_ reportJSON: String) -> Outcome {
         guard let data = reportJSON.data(using: .utf8),
               let report = try? JSONSerialization.jsonObject(with: data),
-              let line = Self.jsonLine(["exitStatus": 0, "report": report, "status": "success"]) else {
-            return Self.failure("numeric Trial A report serialization failed")
+              let line = jsonLine(["exitStatus": 0, "report": report, "status": "success"])
+        else {
+            return self.failure("numeric Trial A report serialization failed")
         }
         return Outcome(exitStatus: 0, line: line)
     }
+
     private static func failure(_ reason: String) -> Outcome {
         let line = Self.jsonLine(["exitStatus": 1, "reason": reason, "status": "failure"])
             ?? "{\"exitStatus\":1,\"status\":\"failure\"}"
         return Outcome(exitStatus: 1, line: line)
     }
+
     private static func jsonLine(_ object: [String: Any]) -> String? {
         guard JSONSerialization.isValidJSONObject(object),
-              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else {
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        else {
             return nil
         }
+        // Diagnostic JSON is emitted as UTF-8; decoding keeps the report output nonoptional.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }
+
     private static func withTimeout<T: Sendable>(seconds: Double, operation: @escaping @Sendable () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask { try await operation() }
             group.addTask { try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)); throw RunError.timeout }
             defer { group.cancelAll() }
-            return try await group.next()!
+            guard let result = try await group.next() else { throw RunError.timeout }
+            return result
         }
     }
 }
@@ -791,9 +876,9 @@ private final class TrialAStreamOutput: NSObject, SCStreamOutput, @unchecked Sen
 private final class TrialAStreamDelegate: NSObject, SCStreamDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var stoppedWithErrorCount = 0
-    var errorCount: Int { lock.lock(); defer { lock.unlock() }; return stoppedWithErrorCount }
+    var errorCount: Int { self.lock.lock(); defer { lock.unlock() }; return self.stoppedWithErrorCount }
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        lock.lock(); stoppedWithErrorCount += 1; lock.unlock()
+        self.lock.lock(); self.stoppedWithErrorCount += 1; self.lock.unlock()
     }
 }
 

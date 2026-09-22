@@ -68,7 +68,7 @@ final actor ClockPairRecorder {
             count: n,
             slopePPM: (slope - 1) * 1_000_000,
             slopeCI95PPM: 1.96 * slopeStdErr * 1_000_000,
-            residualStdMs: residualVariance.squareRoot() * 1_000,
+            residualStdMs: residualVariance.squareRoot() * 1000,
             ptsSpanSeconds: ys.last ?? 0
         )
     }

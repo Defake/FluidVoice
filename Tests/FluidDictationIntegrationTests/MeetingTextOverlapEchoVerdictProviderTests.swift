@@ -6,6 +6,8 @@ import XCTest
 /// verdict provider. Only online-call microphone units get verdicts, and only against temporally
 /// overlapping application units measured by the existing `MeetingEchoDetector`.
 @MainActor
+// Match the production component name so its regression suite is easy to find.
+// swiftlint:disable:next type_name
 final class MeetingTextOverlapEchoVerdictProviderTests: XCTestCase {
     // MARK: - Fixtures
 
@@ -141,13 +143,13 @@ final class MeetingTextOverlapEchoVerdictProviderTests: XCTestCase {
             ]),
             analysisSampleRate: 16_000
         ).build()
-        return EchoFixture(
+        return try EchoFixture(
             plan: plan,
             manifest: manifest,
             micTrackID: micTrack.id,
             appTrackID: appTrack.id,
-            micEpoch: try XCTUnwrap(manifest.track(micTrack.id)?.epochs.first),
-            appEpochs: try XCTUnwrap(manifest.track(appTrack.id)?.epochs)
+            micEpoch: XCTUnwrap(manifest.track(micTrack.id)?.epochs.first),
+            appEpochs: XCTUnwrap(manifest.track(appTrack.id)?.epochs)
         )
     }
 
@@ -201,17 +203,29 @@ final class MeetingTextOverlapEchoVerdictProviderTests: XCTestCase {
         for (index, word) in words.enumerated() {
             let start = 0.2 + Double(index) * 0.25
             units.append(self.unit(
-                "app-word-\(index)", trackID: fixture.appTrackID, epoch: fixture.appEpochs[0],
-                text: word, analysisStart: start, analysisEnd: start + 0.2
+                "app-word-\(index)",
+                trackID: fixture.appTrackID,
+                epoch: fixture.appEpochs[0],
+                text: word,
+                analysisStart: start,
+                analysisEnd: start + 0.2
             ))
             units.append(self.unit(
-                "mic-word-\(index)", trackID: fixture.micTrackID, epoch: fixture.micEpoch,
-                text: word, analysisStart: start + 0.05, analysisEnd: start + 0.25
+                "mic-word-\(index)",
+                trackID: fixture.micTrackID,
+                epoch: fixture.micEpoch,
+                text: word,
+                analysisStart: start + 0.05,
+                analysisEnd: start + 0.25
             ))
         }
         units.append(self.unit(
-            "mic-local", trackID: fixture.micTrackID, epoch: fixture.micEpoch,
-            text: "lunch", analysisStart: 1.3, analysisEnd: 1.5
+            "mic-local",
+            trackID: fixture.micTrackID,
+            epoch: fixture.micEpoch,
+            text: "lunch",
+            analysisStart: 1.3,
+            analysisEnd: 1.5
         ))
         let evidence = MeetingFinalTranscriptEvidence(
             backendID: .parakeetNemotron,
@@ -240,7 +254,14 @@ final class MeetingTextOverlapEchoVerdictProviderTests: XCTestCase {
             attemptID: fixture.plan.attemptID,
             units: [
                 // Same words, ten seconds later: text match alone must not suppress.
-                self.unit("app-far", trackID: fixture.appTrackID, epoch: farEpoch, text: echoText, analysisStart: farEpoch.analysisInterval.start + 0.2, analysisEnd: farEpoch.analysisInterval.start + 1.8),
+                self.unit(
+                    "app-far",
+                    trackID: fixture.appTrackID,
+                    epoch: farEpoch,
+                    text: echoText,
+                    analysisStart: farEpoch.analysisInterval.start + 0.2,
+                    analysisEnd: farEpoch.analysisInterval.start + 1.8
+                ),
                 self.unit("mic-0", trackID: fixture.micTrackID, epoch: fixture.micEpoch, text: echoText, analysisStart: 0.4, analysisEnd: 1.9),
             ]
         )
@@ -258,12 +279,20 @@ final class MeetingTextOverlapEchoVerdictProviderTests: XCTestCase {
             let micStart = 0.05 + Double(index) * 0.15
             let appStart = 1.1 + Double(index) * 0.15
             units.append(self.unit(
-                "mic-earlier-\(index)", trackID: fixture.micTrackID, epoch: fixture.micEpoch,
-                text: word, analysisStart: micStart, analysisEnd: micStart + 0.1
+                "mic-earlier-\(index)",
+                trackID: fixture.micTrackID,
+                epoch: fixture.micEpoch,
+                text: word,
+                analysisStart: micStart,
+                analysisEnd: micStart + 0.1
             ))
             units.append(self.unit(
-                "app-later-\(index)", trackID: fixture.appTrackID, epoch: fixture.appEpochs[0],
-                text: word, analysisStart: appStart, analysisEnd: appStart + 0.1
+                "app-later-\(index)",
+                trackID: fixture.appTrackID,
+                epoch: fixture.appEpochs[0],
+                text: word,
+                analysisStart: appStart,
+                analysisEnd: appStart + 0.1
             ))
         }
         let evidence = MeetingFinalTranscriptEvidence(

@@ -1,5 +1,5 @@
-@testable import FluidVoice_Debug
 import CoreMedia
+@testable import FluidVoice_Debug
 import Foundation
 import XCTest
 
@@ -176,8 +176,8 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
 
     func testEmptyLaterChunkKeepsEarlierTextAndRecordsOnlyTheMissingRange() async {
         let ranges = [
-            SpeakerTranscriptGap(startSeconds: 0, endSeconds: 1_200),
-            SpeakerTranscriptGap(startSeconds: 1_200, endSeconds: 1_205),
+            SpeakerTranscriptGap(startSeconds: 0, endSeconds: 1200),
+            SpeakerTranscriptGap(startSeconds: 1200, endSeconds: 1205),
         ]
 
         let result = await SpeakerLabeledTranscriptionPolicy.transcribeChunks(ranges) { range in
@@ -284,7 +284,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
         XCTAssertTrue(SpeakerLabeledTranscriptionPolicy.shouldKeepSpeakerLabels(
             hasRecognizedText: true,
             gaps: gaps,
-            diarizedDurationSeconds: 3_000
+            diarizedDurationSeconds: 3000
         ))
     }
 
@@ -323,7 +323,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
         XCTAssertFalse(SpeakerLabeledTranscriptionPolicy.shouldKeepSpeakerLabels(
             hasRecognizedText: true,
             gaps: gaps,
-            diarizedDurationSeconds: 1_000
+            diarizedDurationSeconds: 1000
         ))
     }
 
@@ -362,7 +362,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
         XCTAssertEqual(coverage.skippedDurationSeconds, 5.75, accuracy: 0.0001)
         XCTAssertEqual(coverage.maxGapDurationSeconds, 4.25, accuracy: 0.0001)
         XCTAssertEqual(coverage.diarizedDurationSeconds, 200, accuracy: 0.0001)
-        XCTAssertEqual(coverage.skippedRatio, 0.02875, accuracy: 0.000001)
+        XCTAssertEqual(coverage.skippedRatio, 0.02_875, accuracy: 0.000_001)
     }
 
     func testFallbackDiagnosticNamesMissingRecognizedTextInsteadOfOmittedAudio() {
@@ -425,7 +425,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
             let duration: TimeInterval = 5
             let processingTime: TimeInterval = 1
             let fileName = "old.wav"
-            let timestamp = Date(timeIntervalSince1970: 1_000)
+            let timestamp = Date(timeIntervalSince1970: 1000)
         }
 
         let decoded = try JSONDecoder().decode(
@@ -458,7 +458,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
     func testOlderHistoryEntryWithoutSpeakerLabelingDetailsStillDecodes() throws {
         struct LegacyEntry: Encodable {
             let id = UUID()
-            let timestamp = Date(timeIntervalSince1970: 1_000)
+            let timestamp = Date(timeIntervalSince1970: 1000)
             let fileName = "old.wav"
             let duration: TimeInterval = 5
             let processingTime: TimeInterval = 1
@@ -493,7 +493,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
             SpeakerRecognizedTurn(
                 speaker: "Speaker 3",
                 startSeconds: 501,
-                endSeconds: 1_001,
+                endSeconds: 1001,
                 transcription: SpeakerTurnTranscription(text: "Last", confidence: 1, gaps: [])
             ),
         ]
@@ -525,7 +525,7 @@ final class SpeakerLabeledTranscriptionPolicyTests: XCTestCase {
             SpeakerRecognizedTurn(
                 speaker: "Speaker 3",
                 startSeconds: 506,
-                endSeconds: 1_006,
+                endSeconds: 1006,
                 transcription: SpeakerTurnTranscription(text: "Last", confidence: 1, gaps: [])
             ),
         ]
@@ -571,6 +571,7 @@ final class FluidAudioProviderWordTimingTests: XCTestCase {
 #endif
 
 // MARK: - Transcript exporter tests (kept on MeetingSessionModelTests so the standard
+
 // meeting-suite -only-testing invocation exercises them without an extra class filter).
 extension MeetingSessionModelTests {
     private static let allowedExportKeys: Set<String> = [
@@ -1768,6 +1769,8 @@ final class MeetingSessionModelTests: XCTestCase {
     private func micTurn(
         _ cluster: UUID, _ start: Double, _ end: Double,
         overlapsRemote: Bool = true, echoScored: Bool = true, isEcho: Bool = false
+    // Mirror the test fixture fields in one named return value.
+    // swiftlint:disable:next large_tuple
     ) -> (clusterID: UUID, start: Double, end: Double, overlapsRemote: Bool, echoScored: Bool, isEcho: Bool) {
         (cluster, start, end, overlapsRemote, echoScored, isEcho)
     }
@@ -2573,7 +2576,9 @@ private actor FakeMeetingSessionStore: MeetingSessionStoring {
 
     func deleteAudioFiles(for id: MeetingSessionID) throws {
         guard var session = self.sessions[id] else { return }
-        for index in session.audioTracks.indices { session.audioTracks[index].chunks = [] }
+        for index in session.audioTracks.indices {
+            session.audioTracks[index].chunks = []
+        }
         self.sessions[id] = session
     }
 

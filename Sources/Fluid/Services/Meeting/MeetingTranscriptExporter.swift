@@ -23,7 +23,7 @@ nonisolated enum MeetingTranscriptExporter {
         speakerNames: [SessionSpeakerID: String]
     ) -> String {
         guard let state = segment.attributionState else {
-            if let name = Self.resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) {
+            if let name = resolvedSpeakerName(segment.speakerID, in: session, speakerNames: speakerNames) {
                 return name
             }
             return "Unknown speaker"

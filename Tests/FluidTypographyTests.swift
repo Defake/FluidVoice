@@ -13,7 +13,11 @@ struct FluidTypographyTests {
                 precondition(Font.fluidSystem(size: 23, weight: .semibold, design: design) == Font.custom("AvenirNext-Regular", fixedSize: 23).weight(.semibold))
             } else {
                 precondition(FluidTypography.name(for: design) == nil)
-                precondition(Font.fluidSystem(size: 23, weight: .semibold, design: design) == Font.system(size: 23, weight: .semibold, design: FluidTypography.systemDesign(for: design)))
+                precondition(Font.fluidSystem(size: 23, weight: .semibold, design: design) == Font.system(
+                    size: 23,
+                    weight: .semibold,
+                    design: FluidTypography.systemDesign(for: design)
+                ))
                 precondition(Font.fluidSystem(.caption, design: design) == Font.system(.caption, design: FluidTypography.systemDesign(for: design)))
             }
         }

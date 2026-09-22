@@ -35,8 +35,16 @@ struct FluidIntelligenceDemoView: View {
             Example(title: "Corrections", spoken: practice[0].spoken, expected: practice[0].expected),
             Example(title: "Lists", spoken: practice[1].spoken, expected: practice[1].expected),
             Example(title: "Paragraphs", spoken: practice[2].spoken, expected: practice[2].expected),
-            Example(title: "Emails", spoken: "Hi Maya, thanks for the update. Could you send the revised plan by Friday? Thanks, Alex.", expected: "Hi Maya,\n\nThanks for the update. Could you send the revised plan by Friday?\n\nThanks,\nAlex"),
-            Example(title: "Repetitions", spoken: "I think we should, we should review the plan tomorrow, um, before the meeting.", expected: "I think we should review the plan tomorrow before the meeting."),
+            Example(
+                title: "Emails",
+                spoken: "Hi Maya, thanks for the update. Could you send the revised plan by Friday? Thanks, Alex.",
+                expected: "Hi Maya,\n\nThanks for the update. Could you send the revised plan by Friday?\n\nThanks,\nAlex"
+            ),
+            Example(
+                title: "Repetitions",
+                spoken: "I think we should, we should review the plan tomorrow, um, before the meeting.",
+                expected: "I think we should review the plan tomorrow before the meeting."
+            ),
         ]
     }()
 
@@ -94,7 +102,8 @@ struct FluidIntelligenceDemoView: View {
                             }
                         }
                         .fluidGlassAction(prominent: true)
-                        .disabled(self.runningSample || self.stoppingVoice || self.overlay.isProcessing || self.sandbox.isProcessing || self.asr.isStarting || !self.asr.isAsrReady || self.asr.micStatus != .authorized)
+                        .disabled(self.runningSample || self.stoppingVoice || self.overlay.isProcessing || self.sandbox.isProcessing || self.asr.isStarting || !self.asr.isAsrReady || self.asr
+                            .micStatus != .authorized)
                     } else {
                         Button("Set up Fluid Intelligence", action: self.onSetup).fluidGlassAction(prominent: true)
                     }

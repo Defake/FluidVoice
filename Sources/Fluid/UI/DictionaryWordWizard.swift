@@ -645,7 +645,11 @@ private struct DictionaryCompletionBloom: View, Animatable {
             let centre = CGPoint(x: size.width / 2, y: size.height / 2)
             let radius = min(size.width, size.height) * (0.27 + phase * 0.19)
             let opacity = sin(phase * .pi)
-            context.stroke(Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)), with: .color(self.color.opacity(opacity * 0.5)), lineWidth: 2 * (1 - phase) + 0.5)
+            context.stroke(
+                Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)),
+                with: .color(self.color.opacity(opacity * 0.5)),
+                lineWidth: 2 * (1 - phase) + 0.5
+            )
             for index in 0..<16 {
                 let angle = Double(index) / 16 * .pi * 2
                 let length = 3 + (1 - phase) * 7

@@ -1,3 +1,5 @@
+// Existing end-to-end fixture suite is kept together to share its setup and helpers.
+// swiftlint:disable file_length
 import AppKit
 import CoreMedia
 @testable import FluidVoice_Debug
@@ -6,6 +8,8 @@ import SwiftUI
 import XCTest
 
 @MainActor
+// Existing recovery suite shares setup across crash and corruption scenarios.
+// swiftlint:disable:next type_body_length
 final class MeetingRecoveryTests: XCTestCase {
     func testNotesSetupDraftDoesNotPersistDetectionChanges() {
         let native = SettingsStore.shared.meetingAutoDetectEnabled
@@ -143,7 +147,9 @@ final class MeetingRecoveryTests: XCTestCase {
                 for width in [CGFloat(520), 1000] {
                     try self.renderMeetingUI(
                         self.meetingUICanvas(draft: draft, readiness: readiness, fixture: fixture, actions: actions),
-                        name: name, width: width, scheme: scheme
+                        name: name,
+                        width: width,
+                        scheme: scheme
                     )
                 }
             }
@@ -186,7 +192,9 @@ final class MeetingRecoveryTests: XCTestCase {
                     warning: base.palette.warning,
                     success: base.palette.success
                 ),
-                typography: base.typography, metrics: base.metrics, materials: base.materials
+                typography: base.typography,
+                metrics: base.metrics,
+                materials: base.materials
             )
             for section in [MeetingDocumentSection.transcript, .summary] {
                 for horizontal in [true, false] {
@@ -206,8 +214,11 @@ final class MeetingRecoveryTests: XCTestCase {
                     }
                     let context = "\(horizontal ? "hstack" : "vstack")-\(section)-\(scheme)"
                     let bitmap = try self.renderMeetingUI(
-                        ancestor.appTheme(probeTheme), name: "tabs-baseline-\(context)",
-                        width: 500, height: 140, scheme: scheme
+                        ancestor.appTheme(probeTheme),
+                        name: "tabs-baseline-\(context)",
+                        width: 500,
+                        height: 140,
+                        scheme: scheme
                     )
                     let scale = CGFloat(bitmap.pixelsWide) / 500
                     // Color-managed capture can shift RGB values; classify hue, not exact pixels.
@@ -235,7 +246,9 @@ final class MeetingRecoveryTests: XCTestCase {
                         let bitmap = try self.renderMeetingUI(
                             highlight,
                             name: "hover-\(enabled)-\(hovered)-\(reducedMotion)",
-                            width: 160, height: 80, scheme: scheme
+                            width: 160,
+                            height: 80,
+                            scheme: scheme
                         )
                         let bounds = self.meetingUIPixelBounds(in: bitmap) { color, _ in color.alphaComponent > 0.01 }
                         if enabled, hovered {
@@ -309,10 +322,15 @@ final class MeetingRecoveryTests: XCTestCase {
                 for width in [CGFloat(520), 1000] {
                     try self.renderMeetingUI(
                         self.meetingUICanvas(
-                            draft: fixture.draft, readiness: fixture.readiness, fixture: fixture,
-                            actions: actions, state: .result(result)
+                            draft: fixture.draft,
+                            readiness: fixture.readiness,
+                            fixture: fixture,
+                            actions: actions,
+                            state: .result(result)
                         ),
-                        name: name, width: width, scheme: scheme
+                        name: name,
+                        width: width,
+                        scheme: scheme
                     )
                 }
             }
@@ -338,10 +356,16 @@ final class MeetingRecoveryTests: XCTestCase {
         for scheme in [ColorScheme.dark, .light] {
             try self.renderMeetingUI(
                 self.meetingUICanvas(
-                    draft: fixture.draft, readiness: fixture.readiness, fixture: fixture,
-                    actions: actions, state: state
+                    draft: fixture.draft,
+                    readiness: fixture.readiness,
+                    fixture: fixture,
+                    actions: actions,
+                    state: state
                 ),
-                name: "recording-short-window", width: 520, height: 500, scheme: scheme
+                name: "recording-short-window",
+                width: 520,
+                height: 500,
+                scheme: scheme
             )
         }
         XCTAssertEqual(actions.count, 0, "Rendering recording controls must not start or stop real audio capture")
@@ -417,11 +441,16 @@ final class MeetingRecoveryTests: XCTestCase {
             microphones: [microphone],
             readiness: MeetingSetupReadiness(
                 isCheckingSources: false,
-                meetingAudioStatus: "Ready", meetingAudioReady: true,
-                microphoneStatus: "Ready", microphoneReady: true,
-                modelStatus: "Speaker model installed", modelReady: true,
-                storageStatus: "120 GB available", storageReady: true,
-                activityStatus: "Ready", activityReady: true,
+                meetingAudioStatus: "Ready",
+                meetingAudioReady: true,
+                microphoneStatus: "Ready",
+                microphoneReady: true,
+                modelStatus: "Speaker model installed",
+                modelReady: true,
+                storageStatus: "120 GB available",
+                storageReady: true,
+                activityStatus: "Ready",
+                activityReady: true,
                 showMicrophoneSettingsAction: false,
                 showScreenRecordingSettingsAction: false,
                 blockingMessage: nil
@@ -475,7 +504,8 @@ final class MeetingRecoveryTests: XCTestCase {
         application.sourceDisplayName = "Zoom Workplace"
         let startedAt = Date(timeIntervalSince1970: 1_789_996_800)
         var session = self.makeSession(
-            state: .completed, startedAt: startedAt,
+            state: .completed,
+            startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(32 * 60 + 18),
             audioTracks: [microphone, application]
         )
@@ -491,16 +521,50 @@ final class MeetingRecoveryTests: XCTestCase {
         session.speakers = [local, amelia, rafael]
 
         let turns: [(MeetingSessionSpeaker?, String)] = [
-            (local, "Let's start with what someone needs in their first thirty seconds. They should know which meeting we are capturing, see that their microphone is ready, and find the recording control without having to read a settings page."),
-            (local, "Once a conversation has finished, the transcript should read like a document. Keep the title and date nearby, but let the words take up most of the space. We can move less common actions into the menu."),
-            (amelia, "I agree. In the interviews, people went back to a meeting because they remembered a decision, not because they wanted to inspect a recording. The first screen should help them recognize the conversation and pick up where they left off."),
-            (rafael, "The longer examples matter here. A one-line transcript looks fine in almost any layout. We need to see what happens with several speakers, names that wrap, and a paragraph that takes more than two lines on a small laptop."),
-            (amelia, "For speaker corrections, I would keep the name close to the passage. If I notice that the wrong person has been assigned, I should be able to fix it there and continue reading without losing my place."),
-            (nil, "Could we also make it clear when the recording contains an overlap that the model cannot confidently assign? An honest unknown label is more useful than attributing the statement to the wrong person."),
-            (local, "Yes. We should preserve uncertain attribution and avoid making the interface look more confident than the transcript is. The correction remains a deliberate action, and the original recording stays available until the retention policy removes it."),
-            (rafael, "For the launch review, I will test the smallest supported window and both appearances. I will also check a meeting that has no readable transcript, so the recovery action is still obvious when someone needs it."),
-            (amelia, "I'll collect three longer conversations for the design review. We should compare the same content each time, including one where the speaker names are much longer than the labels in our initial mockup."),
-            (local, "The next step is to review those examples together on Thursday. We can then decide whether the meeting list, transcript width, and primary actions feel consistent with the rest of the app."),
+            (
+                local,
+                "Let's start with what someone needs in their first thirty seconds. They should know which meeting we are capturing, see that their microphone is ready, and find the recording control without having to read a settings page."
+            ),
+            (
+                local,
+                "Once a conversation has finished, the transcript should read like a document. Keep the title and date nearby, but let the words take up most of the space. We can move less common actions into the menu."
+            ),
+            (
+                amelia,
+                // Keep the exact fixture text or diagnostic output together for comparison.
+                // swiftlint:disable:next line_length
+                "I agree. In the interviews, people went back to a meeting because they remembered a decision, not because they wanted to inspect a recording. The first screen should help them recognize the conversation and pick up where they left off."
+            ),
+            (
+                rafael,
+                "The longer examples matter here. A one-line transcript looks fine in almost any layout. We need to see what happens with several speakers, names that wrap, and a paragraph that takes more than two lines on a small laptop."
+            ),
+            (
+                amelia,
+                "For speaker corrections, I would keep the name close to the passage. If I notice that the wrong person has been assigned, I should be able to fix it there and continue reading without losing my place."
+            ),
+            (
+                nil,
+                "Could we also make it clear when the recording contains an overlap that the model cannot confidently assign? An honest unknown label is more useful than attributing the statement to the wrong person."
+            ),
+            (
+                local,
+                // Keep the exact fixture text or diagnostic output together for comparison.
+                // swiftlint:disable:next line_length
+                "Yes. We should preserve uncertain attribution and avoid making the interface look more confident than the transcript is. The correction remains a deliberate action, and the original recording stays available until the retention policy removes it."
+            ),
+            (
+                rafael,
+                "For the launch review, I will test the smallest supported window and both appearances. I will also check a meeting that has no readable transcript, so the recovery action is still obvious when someone needs it."
+            ),
+            (
+                amelia,
+                "I'll collect three longer conversations for the design review. We should compare the same content each time, including one where the speaker names are much longer than the labels in our initial mockup."
+            ),
+            (
+                local,
+                "The next step is to review those examples together on Thursday. We can then decide whether the meeting list, transcript width, and primary actions feel consistent with the rest of the app."
+            ),
         ]
         session.transcriptSegments = turns.enumerated().map { index, turn in
             let trackID = turn.0?.isLocalUser == true ? microphone.id : application.id
@@ -551,7 +615,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let host = NSHostingView(rootView: canvas)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.borderless], backing: .buffered, defer: false
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
         )
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
@@ -1076,7 +1142,7 @@ final class MeetingRecoveryTests: XCTestCase {
         try await store.create(session)
 
         let url = dir.appendingPathComponent(session.id.uuidString).appendingPathComponent("session.json")
-        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         json.removeValue(forKey: "recoveryResolvedAt")
         try JSONSerialization.data(withJSONObject: json).write(to: url)
 
@@ -1536,13 +1602,21 @@ final class MeetingRecoveryTests: XCTestCase {
         let store = MeetingSessionStore(rootDirectory: dir)
         let past = Date(timeIntervalSinceNow: -40 * 24 * 60 * 60)
         let old = self.makeSession(
-            state: .interrupted, startedAt: past, endedAt: past,
+            state: .interrupted,
+            startedAt: past,
+            endedAt: past,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])],
             processingAttempts: [MeetingProcessingAttempt(
-                id: UUID(), startedAt: past, completedAt: nil, stage: .pending,
+                id: UUID(),
+                startedAt: past,
+                completedAt: nil,
+                stage: .pending,
                 pipelineVersion: MeetingProcessingPipeline.pipelineVersion,
-                asrProvider: nil, asrModel: nil, diarizationModel: nil,
-                lastCompletedTrackID: nil, errorCode: nil
+                asrProvider: nil,
+                asrModel: nil,
+                diarizationModel: nil,
+                lastCompletedTrackID: nil,
+                errorCode: nil
             )]
         )
         try await store.create(old)
@@ -1668,8 +1742,10 @@ final class MeetingRecoveryTests: XCTestCase {
         var continuation: CheckedContinuation<Void, Never>?
         capture.onPreflight = { await withCheckedContinuation { continuation = $0 } }
         let coordinator = MeetingSessionCoordinator(
-            store: MeetingSessionStore(rootDirectory: dir), capture: capture,
-            processing: StubProcessingController(), audioArbiter: StubArbiter()
+            store: MeetingSessionStore(rootDirectory: dir),
+            capture: capture,
+            processing: StubProcessingController(),
+            audioArbiter: StubArbiter()
         )
         let start = Task { try await coordinator.startRecording(configuration: self.makeConfiguration()) }
         while capture.preflightCount == 0 {
@@ -1805,7 +1881,9 @@ final class MeetingRecoveryTests: XCTestCase {
         let fingerprints: [MeetingAudioTrackID: [MeetingProcessingCheckpoint.ChunkFingerprint]] = [trackID: [fingerprint]]
 
         let checkpoint = self.makeCheckpoint(
-            sessionID: session.id, completedTrackID: trackID, trackFingerprints: fingerprints,
+            sessionID: session.id,
+            completedTrackID: trackID,
+            trackFingerprints: fingerprints,
             asrModel: "parakeet-tdt-v2"
         )
 
@@ -2919,24 +2997,34 @@ final class MeetingRecoveryTests: XCTestCase {
         let future = Date()
 
         let completedPast = self.makeSession(
-            state: .completed, startedAt: past, endedAt: past,
+            state: .completed,
+            startedAt: past,
+            endedAt: past,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         let completedFuture = self.makeSession(
-            state: .completed, startedAt: future, endedAt: future,
+            state: .completed,
+            startedAt: future,
+            endedAt: future,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         let interruptedUnresolvedPast = self.makeSession(
-            state: .interrupted, startedAt: past, endedAt: past,
+            state: .interrupted,
+            startedAt: past,
+            endedAt: past,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         let failedResolvedPast = self.makeSession(
-            state: .failed, startedAt: past, endedAt: past,
+            state: .failed,
+            startedAt: past,
+            endedAt: past,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])],
             recoveryResolvedAt: Date()
         )
         let failedUnresolvedPast = self.makeSession(
-            state: .failed, startedAt: past, endedAt: past,
+            state: .failed,
+            startedAt: past,
+            endedAt: past,
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         for session in [completedPast, completedFuture, interruptedUnresolvedPast, failedResolvedPast, failedUnresolvedPast] {
@@ -2987,7 +3075,9 @@ final class MeetingRecoveryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir2) }
         let store2 = MeetingSessionStore(rootDirectory: dir2)
         let justCompleted = self.makeSession(
-            state: .completed, startedAt: Date(), endedAt: Date(),
+            state: .completed,
+            startedAt: Date(),
+            endedAt: Date(),
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         try await store2.create(justCompleted)
@@ -3009,7 +3099,9 @@ final class MeetingRecoveryTests: XCTestCase {
             defer { try? FileManager.default.removeItem(at: dir) }
             let store = MeetingSessionStore(rootDirectory: dir)
             let session = self.makeSession(
-                state: .completed, startedAt: endedAt, endedAt: endedAt,
+                state: .completed,
+                startedAt: endedAt,
+                endedAt: endedAt,
                 audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
             )
             try await store.create(session)
@@ -3034,7 +3126,8 @@ final class MeetingRecoveryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = MeetingSessionStore(rootDirectory: dir)
         let session = self.makeSession(
-            state: .interrupted, endedAt: Date(),
+            state: .interrupted,
+            endedAt: Date(),
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         try await store.create(session)
@@ -3067,7 +3160,8 @@ final class MeetingRecoveryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = MeetingSessionStore(rootDirectory: dir)
         let session = self.makeSession(
-            state: .interrupted, endedAt: Date(),
+            state: .interrupted,
+            endedAt: Date(),
             audioTracks: [self.makeMicrophoneTrack(chunks: [self.makeFinalizedChunk()])]
         )
         try await store.create(session)

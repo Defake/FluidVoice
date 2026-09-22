@@ -35,7 +35,7 @@ struct MeetingRollingCaptionLayout {
     let layoutManager: NSLayoutManager
 
     static func inputSuffix(_ text: String) -> String {
-        String(text.suffix(Self.maximumInputCharacters))
+        String(text.suffix(self.maximumInputCharacters))
     }
 
     static func make(_ text: String, width: CGFloat = contentSize.width, height: CGFloat = contentSize.height, foregroundColor: NSColor = .white) -> MeetingRollingCaptionLayout {
@@ -82,7 +82,14 @@ struct MeetingRollingCaptionLayout {
             }
             let selected = NSUnionRange(lines[first].glyphRange, lines[lines.count - 1].glyphRange)
             let translation = CGPoint(x: -selectedInk.minX, y: height - selectedInk.maxY)
-            return Self(attributedText: attributed, textStorage: storage, selectedGlyphRange: selected, translation: translation, inkBounds: selectedInk.offsetBy(dx: translation.x, dy: translation.y), layoutManager: manager)
+            return Self(
+                attributedText: attributed,
+                textStorage: storage,
+                selectedGlyphRange: selected,
+                translation: translation,
+                inkBounds: selectedInk.offsetBy(dx: translation.x, dy: translation.y),
+                layoutManager: manager
+            )
         }
         // A glyph taller/wider than the entire viewport cannot be shown as a complete line.
         return Self(attributedText: attributed, textStorage: storage, selectedGlyphRange: NSRange(location: 0, length: 0), translation: .zero, inkBounds: .zero, layoutManager: manager)
@@ -90,8 +97,8 @@ struct MeetingRollingCaptionLayout {
 }
 
 final class MeetingRollingCaptionNSView: NSView {
-    var text = "" { didSet { if oldValue != text { invalidateCaption() } } }
-    var foregroundColor = NSColor.white { didSet { if !oldValue.isEqual(foregroundColor) { invalidateCaption() } } }
+    var text = "" { didSet { if oldValue != self.text { self.invalidateCaption() } } }
+    var foregroundColor = NSColor.white { didSet { if !oldValue.isEqual(self.foregroundColor) { self.invalidateCaption() } } }
     private var cachedText = ""
     private var cachedSize: CGSize = .zero
     private var cachedColor: NSColor = .clear
@@ -119,16 +126,16 @@ final class MeetingRollingCaptionNSView: NSView {
 
     private var captionLayout: MeetingRollingCaptionLayout {
         if let cachedLayout, cachedText == text, cachedSize == bounds.size, cachedColor.isEqual(foregroundColor) { return cachedLayout }
-        let value = MeetingRollingCaptionLayout.make(text, width: max(1, bounds.width), height: max(1, bounds.height), foregroundColor: foregroundColor)
-        cachedText = text
-        cachedSize = bounds.size
-        cachedColor = foregroundColor
+        let value = MeetingRollingCaptionLayout.make(self.text, width: max(1, bounds.width), height: max(1, bounds.height), foregroundColor: self.foregroundColor)
+        self.cachedText = self.text
+        self.cachedSize = bounds.size
+        self.cachedColor = self.foregroundColor
         cachedLayout = value
         return value
     }
 
     private func invalidateCaption() {
-        cachedLayout = nil
+        self.cachedLayout = nil
         needsDisplay = true
     }
 }

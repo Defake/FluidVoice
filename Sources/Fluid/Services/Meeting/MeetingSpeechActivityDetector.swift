@@ -1,5 +1,5 @@
-import Foundation
 import CoreML
+import Foundation
 
 /// Synchronous, single-owner offline seam. Implementations retain only one recurrent state.
 nonisolated protocol MeetingSpeechActivityFrameModel {
@@ -19,33 +19,39 @@ nonisolated struct MeetingLocalSileroActivityModel: MeetingSpeechActivityFrameMo
     init(modelURL: URL) throws {
         let configuration = MLModelConfiguration()
         configuration.computeUnits = .cpuOnly
-        model = try MLModel(contentsOf: modelURL, configuration: configuration)
+        self.model = try MLModel(contentsOf: modelURL, configuration: configuration)
         func matches(_ descriptions: [String: MLFeatureDescription], _ shapes: [String: [Int]]) -> Bool {
             Set(descriptions.keys) == Set(shapes.keys) && shapes.allSatisfy { key, shape in
                 guard let constraint = descriptions[key]?.multiArrayConstraint else { return false }
                 return constraint.dataType == .float32 && constraint.shape.map(\.intValue) == shape
             }
         }
-        guard matches(model.modelDescription.inputDescriptionsByName,
-                      ["audio_input": [1, 4160], "hidden_state": [1, 128], "cell_state": [1, 128]]),
-              matches(model.modelDescription.outputDescriptionsByName,
-                      ["vad_output": [1, 1, 1], "new_hidden_state": [1, 128], "new_cell_state": [1, 128]])
+        guard matches(
+            self.model.modelDescription.inputDescriptionsByName,
+            ["audio_input": [1, 4160], "hidden_state": [1, 128], "cell_state": [1, 128]]
+        ),
+            matches(
+                self.model.modelDescription.outputDescriptionsByName,
+                ["vad_output": [1, 1, 1], "new_hidden_state": [1, 128], "new_cell_state": [1, 128]]
+            )
         else { throw Failure.schema }
     }
 
     mutating func probability(samples: [Float], reset: Bool) throws -> Float {
         guard samples.count == 4096, samples.allSatisfy(\.isFinite) else { throw Failure.input }
         if reset {
-            context = [Float](repeating: 0, count: 64)
-            hidden = [Float](repeating: 0, count: 128); cell = hidden
+            self.context = [Float](repeating: 0, count: 64)
+            self.hidden = [Float](repeating: 0, count: 128); self.cell = self.hidden
         }
         func array(_ values: [Float]) throws -> MLMultiArray {
             let array = try MLMultiArray(shape: [1, NSNumber(value: values.count)], dataType: .float32)
-            for i in values.indices { array[i] = NSNumber(value: values[i]) }
+            for i in values.indices {
+                array[i] = NSNumber(value: values[i])
+            }
             return array
         }
         let features = try MLDictionaryFeatureProvider(dictionary: [
-            "audio_input": array(context + samples), "hidden_state": array(hidden), "cell_state": array(cell)
+            "audio_input": array(context + samples), "hidden_state": array(self.hidden), "cell_state": array(self.cell),
         ])
         let output = try model.prediction(from: features)
         func values(_ name: String, count: Int) throws -> [Float] {
@@ -59,7 +65,7 @@ nonisolated struct MeetingLocalSileroActivityModel: MeetingSpeechActivityFrameMo
         guard (0...1).contains(p) else { throw Failure.output }
         let nextHidden = try values("new_hidden_state", count: 128)
         let nextCell = try values("new_cell_state", count: 128)
-        hidden = nextHidden; cell = nextCell; context = Array(samples.suffix(64))
+        self.hidden = nextHidden; self.cell = nextCell; self.context = Array(samples.suffix(64))
         return p
     }
 }
@@ -73,8 +79,9 @@ nonisolated struct MeetingSpeechActivityDetector<Model: MeetingSpeechActivityFra
         let probability: Float?
         let unknown: Unknown?
         /// Window-level activity only; not a voiced-duration annotation or near-end decision.
-        var active: Bool? { probability.map { $0 >= 0.85 } }
+        var active: Bool? { self.probability.map { $0 >= 0.85 } }
     }
+
     private var model: Model
     private var lastEnd: Double?
     private var scope: String?
@@ -85,42 +92,51 @@ nonisolated struct MeetingSpeechActivityDetector<Model: MeetingSpeechActivityFra
     init(model: Model, clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime }) {
         self.model = model; self.clock = clock
     }
+
     /// Caller supplies exactly 4096 real 16kHz samples and validity flags. No tail padding.
     /// A first frame after reset is model warmup and intentionally unmeasured in the sidecar.
     /// One prediction cannot be preempted; budget/cancellation are checked before AND after it.
-    mutating func process(samples: [Float], valid: [Bool], start: Double, session: UUID,
-                          epoch: UInt64, route: String, cancelled: () -> Bool = { false }) -> Frame {
-        if sessionID != session { failures = 0; needsReset = true }
-        sessionID = session
+    mutating func process(
+        samples: [Float],
+        valid: [Bool],
+        start: Double,
+        session: UUID,
+        epoch: UInt64,
+        route: String,
+        cancelled: () -> Bool = { false }
+    ) -> Frame {
+        if self.sessionID != session { self.failures = 0; self.needsReset = true }
+        self.sessionID = session
         func unknown(_ reason: Frame.Unknown) -> Frame {
             Frame(start: start.isFinite ? start : 0, epoch: epoch, probability: nil, unknown: reason)
         }
         guard start.isFinite, start >= 0, !route.isEmpty,
               samples.count == 4096, valid.count == samples.count,
-              samples.allSatisfy(\.isFinite) else {
-            needsReset = true; if failures < 3 { failures = 0 }; return unknown(.invalidInput)
+              samples.allSatisfy(\.isFinite)
+        else {
+            self.needsReset = true; if self.failures < 3 { self.failures = 0 }; return unknown(.invalidInput)
         }
         let nextScope = "\(session):\(epoch):\(route)"
-        if scope != nextScope || lastEnd.map({ abs($0 - start) > 1.0 / 32_000 }) != false { needsReset = true }
-        scope = nextScope; lastEnd = start + 0.256
-        guard !cancelled() else { needsReset = true; if failures < 3 { failures = 0 }; return unknown(.cancelled) }
-        guard failures < 3 else { needsReset = true; return unknown(.disabled) }
-        guard valid.allSatisfy({ $0 }) else { needsReset = true; failures = 0; return unknown(.unscoredCoverage) }
-        let reset = needsReset, began = clock()
+        if self.scope != nextScope || self.lastEnd.map({ abs($0 - start) > 1.0 / 32_000 }) != false { self.needsReset = true }
+        self.scope = nextScope; self.lastEnd = start + 0.256
+        guard !cancelled() else { self.needsReset = true; if self.failures < 3 { self.failures = 0 }; return unknown(.cancelled) }
+        guard self.failures < 3 else { self.needsReset = true; return unknown(.disabled) }
+        guard valid.allSatisfy({ $0 }) else { self.needsReset = true; self.failures = 0; return unknown(.unscoredCoverage) }
+        let reset = self.needsReset, began = self.clock()
         do {
             let probability = try model.probability(samples: samples, reset: reset)
-            guard !cancelled() else { needsReset = true; failures = 0; return unknown(.cancelled) }
-            guard clock() - began <= 0.1 else {
-                failures += 1; needsReset = true; return unknown(.overBudget)
+            guard !cancelled() else { self.needsReset = true; self.failures = 0; return unknown(.cancelled) }
+            guard self.clock() - began <= 0.1 else {
+                self.failures += 1; self.needsReset = true; return unknown(.overBudget)
             }
             guard probability.isFinite, (0...1).contains(probability) else {
-                failures += 1; needsReset = true; return unknown(.modelFailure)
+                self.failures += 1; self.needsReset = true; return unknown(.modelFailure)
             }
-            failures = 0; needsReset = false
+            self.failures = 0; self.needsReset = false
             if reset { return unknown(.contextWarmup) }
             return Frame(start: start, epoch: epoch, probability: probability, unknown: nil)
         } catch {
-            failures += 1; needsReset = true; return unknown(.modelFailure)
+            self.failures += 1; self.needsReset = true; return unknown(.modelFailure)
         }
     }
 }
@@ -133,6 +149,7 @@ nonisolated enum MeetingSpeechPlaybackShadowPolicy {
         case missingSpeechEvidence, mixedOrLeakedActivity, activityWithoutReliablePlaybackMatch
         case duplicateWithoutDetectedActivity, negativeActivityIsNotAbsence
     }
+
     static func reason(activity: Bool?, reliableDuplicate: Bool) -> Reason {
         guard let activity else { return .missingSpeechEvidence }
         if activity { return reliableDuplicate ? .mixedOrLeakedActivity : .activityWithoutReliablePlaybackMatch }
@@ -142,8 +159,11 @@ nonisolated enum MeetingSpeechPlaybackShadowPolicy {
     /// Join by interval overlap, not a single enclosing 2s window: 256ms frames often straddle
     /// that grid. All overlapping evidence must cover the frame in the same epoch. Mixed
     /// windows stay explicit and never borrow a sibling's supported state.
-    static func temporalContext(start: Double, epoch: UInt64,
-                                windows: [MeetingPlaybackDuplicateDetector.Result]) -> TemporalContext {
+    static func temporalContext(
+        start: Double,
+        epoch: UInt64,
+        windows: [MeetingPlaybackDuplicateDetector.Result]
+    ) -> TemporalContext {
         guard start.isFinite, start >= 0 else { return .unavailable }
         let end = start + 0.256
         let overlapping = windows.filter { $0.end > start && $0.start < end }.sorted { $0.start < $1.start }

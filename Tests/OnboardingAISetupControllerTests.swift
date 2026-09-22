@@ -232,6 +232,8 @@ struct OnboardingAISetupControllerTests {
         missing.enable { _ in throw Harness.Failure.simulated }
         await self.waitUntil { missing.errorMessage != nil }
         precondition(missing.phase == .offered && unavailable.commits == 0)
-        print("PASS: recommendation prefetch, fresh/cached activation, prefetch cancellation/retry, duplicate actions, cancellation during download/load, stale progress, failure/retry and commit rejection")
+        print(
+            "PASS: recommendation prefetch, fresh/cached activation, prefetch cancellation/retry, duplicate actions, cancellation during download/load, stale progress, failure/retry and commit rejection"
+        )
     }
 }

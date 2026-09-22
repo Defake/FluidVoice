@@ -120,7 +120,7 @@ nonisolated struct MeetingEpochAudioMaterializer: MeetingEpochAudioMaterializing
             guard let span = spansByID[spanID] else {
                 throw MeetingEpochMaterializationError.unknownSpan(spanID: spanID)
             }
-            sourceSlices.append(try self.readSpanAudio(span, sessionDirectory: sessionDirectory))
+            try sourceSlices.append(self.readSpanAudio(span, sessionDirectory: sessionDirectory))
         }
 
         var samples: [Float] = []
@@ -130,7 +130,8 @@ nonisolated struct MeetingEpochAudioMaterializer: MeetingEpochAudioMaterializing
         while runStart < sourceSlices.count {
             var runEnd = runStart + 1
             while runEnd < sourceSlices.count,
-                  sourceSlices[runEnd].conversionKey == sourceSlices[runStart].conversionKey {
+                  sourceSlices[runEnd].conversionKey == sourceSlices[runStart].conversionKey
+            {
                 runEnd += 1
             }
             let run = Array(sourceSlices[runStart..<runEnd])
@@ -190,15 +191,16 @@ nonisolated struct MeetingEpochAudioMaterializer: MeetingEpochAudioMaterializing
     private func convert(_ run: [SourceSlice]) throws -> ConvertedRun {
         guard let first = run.first,
               let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: first.sampleRate,
-                channels: 1,
-                interleaved: false
+                  commonFormat: .pcmFormatFloat32,
+                  sampleRate: first.sampleRate,
+                  channels: 1,
+                  interleaved: false
               ),
               let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(run.reduce(0) { $0 + $1.samples.count })
-              ) else {
+                  pcmFormat: format,
+                  frameCapacity: AVAudioFrameCount(run.reduce(0) { $0 + $1.samples.count })
+              )
+        else {
             throw MeetingEpochMaterializationError.emptySlice(spanID: run.first?.spanID ?? "unknown")
         }
         let values = run.flatMap(\.samples)
@@ -207,10 +209,12 @@ nonisolated struct MeetingEpochAudioMaterializer: MeetingEpochAudioMaterializing
             throw MeetingEpochMaterializationError.emptySlice(spanID: first.spanID)
         }
         values.withUnsafeBufferPointer { source in
+            // Buffer size and channel topology are validated before this synchronous C call.
+            // swiftlint:disable:next force_unwrapping
             destination.update(from: source.baseAddress!, count: source.count)
         }
         do {
-            return ConvertedRun(samples: try AudioBufferConverter.monoSamples(
+            return try ConvertedRun(samples: AudioBufferConverter.monoSamples(
                 from: buffer,
                 targetSampleRate: self.sampleRate
             ))
@@ -338,14 +342,18 @@ nonisolated struct MeetingEpochAudioMaterializer: MeetingEpochAudioMaterializing
             let channelCount = Int(format.channelCount)
             for frame in 0..<mono.count {
                 var value: Float = 0
-                for channel in 0..<channelCount { value += source[frame * channelCount + channel] }
+                for channel in 0..<channelCount {
+                    value += source[frame * channelCount + channel]
+                }
                 mono[frame] = value / Float(channelCount)
             }
         } else {
             let channelCount = Int(format.channelCount)
             for frame in 0..<mono.count {
                 var value: Float = 0
-                for channel in 0..<channelCount { value += channels[channel][frame] }
+                for channel in 0..<channelCount {
+                    value += channels[channel][frame]
+                }
                 mono[frame] = value / Float(channelCount)
             }
         }

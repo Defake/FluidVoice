@@ -1,7 +1,7 @@
 #if DEBUG
-@testable import FluidVoice_Debug
 import AudioToolbox
 import AVFoundation
+@testable import FluidVoice_Debug
 import XCTest
 
 final class MeetingVoiceProcessingProbeTests: XCTestCase {
@@ -17,15 +17,17 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
         XCTAssertEqual(
             MeetingVPIOAcousticTrialB.stimulusSampleZeroHostSeconds(
                 renderActivityStartHostSeconds: 10.2,
-                leadingSilenceFrameCount: 9_600,
+                leadingSilenceFrameCount: 9600,
                 sampleRate: 48_000
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             )!,
             10.0,
             accuracy: 1e-12
         )
         XCTAssertNil(MeetingVPIOAcousticTrialB.stimulusSampleZeroHostSeconds(
             renderActivityStartHostSeconds: .infinity,
-            leadingSilenceFrameCount: 9_600,
+            leadingSilenceFrameCount: 9600,
             sampleRate: 48_000
         ))
     }
@@ -35,10 +37,16 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
         let empty = collector.window(startHostSeconds: 0, frameCount: 4, sampleRate: 48_000)
         XCTAssertLessThan(empty.window.coverage, 1)
 
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)!
         func sampleBuffer() throws -> CMSampleBuffer {
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             let pcm = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)!
             pcm.frameLength = 4
+            // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+            // swiftlint:disable:next force_unwrapping
             pcm.floatChannelData![0].update(repeating: 0.1, count: 4)
             return try XCTUnwrap(meetingMicrophoneSynthesizeSampleBuffer(
                 from: pcm, presentationTime: CMTime.zero
@@ -46,7 +54,7 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
         }
         let first = try sampleBuffer()
         collector.ingest(first, synthesized: true, resynced: false)
-        collector.ingest(try sampleBuffer(), synthesized: false, resynced: true)
+        try collector.ingest(sampleBuffer(), synthesized: false, resynced: true)
         let window = collector.window(startHostSeconds: 0, frameCount: 4, sampleRate: 48_000)
         XCTAssertGreaterThan(window.window.overlapFrameCount, 0)
         XCTAssertGreaterThan(window.window.synthesizedFrameCount, 0)
@@ -76,7 +84,7 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
             reference: reference, captured: captured, sampleRate: sampleRate, silencePrefixFrames: 0
         )
         XCTAssertTrue(measurement.delay.resolved, "reasons=\(measurement.delay.reasons)")
-        XCTAssertEqual(measurement.delay.signedSeconds!, Double(delay) / sampleRate, accuracy: 2 / sampleRate)
+        XCTAssertEqual(try XCTUnwrap(measurement.delay.signedSeconds), Double(delay) / sampleRate, accuracy: 2 / sampleRate)
         XCTAssertGreaterThanOrEqual(measurement.bands.count, 4)
     }
 
@@ -102,9 +110,9 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
     }
 
     func testVPIOMetricsMarksSilenceLowExcitationAndMismatchedControlUnknown() {
-        let silence = Array(repeating: Float.zero, count: 5_000)
+        let silence = Array(repeating: Float.zero, count: 5000)
         let silentMeasurement = MeetingVPIOAcousticMetrics.measure(
-            reference: silence, captured: silence, sampleRate: 16_000, silencePrefixFrames: 1_024
+            reference: silence, captured: silence, sampleRate: 16_000, silencePrefixFrames: 1024
         )
         XCTAssertFalse(silentMeasurement.valid)
         XCTAssertTrue(silentMeasurement.reasons.contains(.referenceBelowExcitationFloor))
@@ -126,12 +134,18 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
         let stimulus = try XCTUnwrap(MeetingVPIOAcousticStimulus.make(sampleRate: 16_000))
         let report = MeetingVPIOAcousticTrialBReport(
             schemaVersion: MeetingVPIOAcousticTrialBReport.currentSchemaVersion,
-            stimulus: stimulus.descriptor, renderVolume: 0.5, preRollSeconds: 0.3,
-            postRollSeconds: 0.6, settleSeconds: 0.35, runs: [],
+            stimulus: stimulus.descriptor,
+            renderVolume: 0.5,
+            preRollSeconds: 0.3,
+            postRollSeconds: 0.6,
+            settleSeconds: 0.35,
+            runs: [],
             caveats: MeetingVPIOAcousticTrialBReport.interpretationCaveats
         )
         let data = try JSONEncoder().encode(report)
         XCTAssertEqual(try JSONDecoder().decode(MeetingVPIOAcousticTrialBReport.self, from: data), report)
+        // JSONEncoder fixture bytes are UTF-8; retain nonoptional decoding for assertions.
+        // swiftlint:disable:next optional_data_string_conversion
         let json = String(decoding: data, as: UTF8.self)
         XCTAssertFalse(json.contains("samples"))
         XCTAssertFalse(json.contains("transcript"))
@@ -170,6 +184,8 @@ final class MeetingVoiceProcessingProbeTests: XCTestCase {
             sampleRate: 48_000,
             channels: 1,
             interleaved: false
+        // Fixed test fixture: missing required audio storage or evidence is a setup failure.
+        // swiftlint:disable:next force_unwrapping
         )!
         let successfulRead = MeetingAudioUnitUInt32Readback(
             propertyID: kAUVoiceIOProperty_VoiceProcessingEnableAGC,

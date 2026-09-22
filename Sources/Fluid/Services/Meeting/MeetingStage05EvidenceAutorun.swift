@@ -78,7 +78,8 @@ nonisolated enum MeetingStage05StimulusHandshake {
         if let playing = controlledPlaying.first {
             guard playing.windowID == ready.windowID else { return .failure(.ambiguous) }
             guard let remaining = Self.playingRemainingSeconds(playing.title),
-                  remaining >= Double(Self.minimumRemainingSeconds) else {
+                  remaining >= Double(Self.minimumRemainingSeconds)
+            else {
                 return .failure(.remainingInsufficient)
             }
             return .success(playing)
@@ -126,6 +127,8 @@ nonisolated struct MeetingStage05LiveAdapterSummary: Codable, Equatable, Sendabl
     let synchronizerDroppedFrameCount: Int
     let synchronizerDuplicateOrLateFrameCount: Int
     let synchronizerNonFiniteSampleCount: Int
+    // Keep the descriptive diagnostic contract name consistent with its persisted field.
+    // swiftlint:disable:next identifier_name
     let synchronizerSynthesizedMicrophoneFrameCount: Int
     let synchronizerBoundedResourceFailure: Bool
     let referenceClockDriftPresent: Bool
@@ -146,18 +149,18 @@ nonisolated struct MeetingStage05LiveAdapterSummary: Codable, Equatable, Sendabl
         synchronization: MeetingSynchronizationResult,
         seam: MeetingStage05MockAECSeamResult
     ) -> Self {
-        let renderSamples = boundedSum(synchronization.frames.map { $0.renderSamples.count })
-        let renderValid = boundedSum(synchronization.frames.map {
+        let renderSamples = self.boundedSum(synchronization.frames.map { $0.renderSamples.count })
+        let renderValid = self.boundedSum(synchronization.frames.map {
             $0.renderValidMask.lazy.filter { $0 }.count
         })
-        let captureSamples = boundedSum(synchronization.frames.map { $0.captureSamples.count })
-        let captureValid = boundedSum(synchronization.frames.map {
+        let captureSamples = self.boundedSum(synchronization.frames.map { $0.captureSamples.count })
+        let captureValid = self.boundedSum(synchronization.frames.map {
             $0.captureValidMask.lazy.filter { $0 }.count
         })
         let drift = synchronization.diagnostics.referenceClockDriftPPM.flatMap {
             $0.isFinite ? $0 : nil
         }
-        let orderingValid = eventsAreRenderBeforeCapture(seam)
+        let orderingValid = self.eventsAreRenderBeforeCapture(seam)
         let render = drain.renderDiagnostics
         let capture = drain.microphoneDiagnostics
         let cleanCallbacks = [
@@ -219,7 +222,8 @@ nonisolated struct MeetingStage05LiveAdapterSummary: Codable, Equatable, Sendabl
             mockFrozenFrameCount: seam.frozenFrameCount,
             mockBoundaryCount: seam.boundaryCount,
             renderBeforeCaptureValid: orderingValid,
-            eligibleForAECTrial: eligible)
+            eligibleForAECTrial: eligible
+        )
     }
 
     var structurallyValid: Bool {
@@ -260,11 +264,13 @@ nonisolated struct MeetingStage05LiveAdapterSummary: Codable, Equatable, Sendabl
             || self.mockBoundaryCount > self.synchronizerOutputFrameCount
             || mockClassifiedOverflow
             || (self.mockAuthorized
-                && mockClassifiedCount != self.synchronizerOutputFrameCount) {
+                && mockClassifiedCount != self.synchronizerOutputFrameCount)
+        {
             reasons.append("relationships")
         }
         if !self.referenceClockDriftPPM.isFinite
-            || (!self.referenceClockDriftPresent && self.referenceClockDriftPPM != 0) {
+            || (!self.referenceClockDriftPresent && self.referenceClockDriftPPM != 0)
+        {
             reasons.append("drift")
         }
         if self.eligibleForAECTrial != self.derivedEligibility() {
@@ -368,16 +374,16 @@ nonisolated enum MeetingStage05EvidenceAutorun {
     }
 
     static func operatorMediaRequested(environment: [String: String]) -> Bool {
-        environment[Self.operatorMediaConsentEnvironmentKey] == Self.operatorMediaConsentToken
+        environment[self.operatorMediaConsentEnvironmentKey] == self.operatorMediaConsentToken
     }
 
     static func autorunEnabled(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
         self.requested(environment: environment)
-            && environment[Self.autorunEnvironmentKey] == "1"
+            && environment[self.autorunEnvironmentKey] == "1"
     }
 
     static func consentConfirmed(environment: [String: String]) -> Bool {
-        environment[Self.consentEnvironmentKey] == Self.consentToken
+        environment[self.consentEnvironmentKey] == self.consentToken
     }
 
     static func encodedOutcome(
@@ -392,9 +398,13 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         encoder.outputFormatting = [.sortedKeys]
         guard validStatus, adapter?.validationReasons().isEmpty ?? true,
               let data = try? encoder.encode(MeetingStage05AutorunOutcome(
-                  exitStatus: exitStatus, status: status, reason: reason, adapter: adapter)) else {
+                  exitStatus: exitStatus, status: status, reason: reason, adapter: adapter
+              ))
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"outcome\"}"
         }
+        // Diagnostic JSON is emitted as UTF-8; decoding keeps the report output nonoptional.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -439,11 +449,13 @@ nonisolated enum MeetingStage05EvidenceAutorun {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"consent\"}"
         }
         guard CGPreflightScreenCaptureAccess(),
-              AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
+              AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"permission\"}"
         }
-        guard let rootString = environment[Self.rootEnvironmentKey],
-              rootString.hasPrefix("/"), !rootString.isEmpty else {
+        guard let rootString = environment[rootEnvironmentKey],
+              rootString.hasPrefix("/"), !rootString.isEmpty
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"root\"}"
         }
         let operatorMedia = Self.operatorMediaRequested(environment: environment)
@@ -452,11 +464,13 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         guard let fixtureString = environment[Self.fixturePathEnvironmentKey],
               fixtureString.hasPrefix("/"),
               let fixtureURL = Self.absoluteRegularFile(URL(fileURLWithPath: fixtureString)),
-              (try? SHA256Hex.file(fixtureURL)) == expectedFixtureSHA256 else {
+              (try? SHA256Hex.file(fixtureURL)) == expectedFixtureSHA256
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"fixture\"}"
         }
         guard let target = environment[Self.targetBundleIDEnvironmentKey],
-              target == Self.requiredTargetBundleID else {
+              target == Self.requiredTargetBundleID
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"target\"}"
         }
         guard let input = AudioDevice.getDefaultInputDevice(), input.id != kAudioObjectUnknown, input.isAlive,
@@ -466,7 +480,8 @@ nonisolated enum MeetingStage05EvidenceAutorun {
               output.isBuiltIn, !AudioDevice.outputDataSourceIsHeadphones(output.id),
               let initialVolume = Self.readOutputVolume(output.id), initialVolume > 0, initialVolume <= 0.25,
               MeetingCapturePathDecider.outputRouteDeclineReason(
-                  MeetingCaptureEngine.currentOutputRouteSnapshot()) == nil else {
+                  MeetingCaptureEngine.currentOutputRouteSnapshot()) == nil
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"route\"}"
         }
 
@@ -487,21 +502,25 @@ nonisolated enum MeetingStage05EvidenceAutorun {
                     owningProcessID: owner.processID,
                     frameWidth: window.frame.width,
                     frameHeight: window.frame.height,
-                    targetBundleIdentifier: target)
+                    targetBundleIdentifier: target
+                )
             }
             guard eligibleWindows.count == 1,
                   let source = eligibleWindows.first,
-                  let owner = source.owningApplication else {
+                  let owner = source.owningApplication
+            else {
                 return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"stimulusReady\",\"eligibleWindowCount\":\(eligibleWindows.count)}"
             }
             readyWindow = .init(
                 windowID: source.windowID,
                 owningBundleIdentifier: owner.bundleIdentifier,
                 owningProcessID: owner.processID,
-                title: source.title)
+                title: source.title
+            )
         } else {
             guard let selected = MeetingStage05StimulusHandshake.selectReadyWindow(
-                from: windows, targetBundleIdentifier: target) else {
+                from: windows, targetBundleIdentifier: target
+            ) else {
                 return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"stimulusReady\"}"
             }
             readyWindow = selected
@@ -533,19 +552,20 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         }
         let selectedContent = selectedSnapshot.content
         guard let sourceWindow = selectedContent.windows.first(where: {
-                  $0.windowID == selectedWindow.windowID && $0.title == selectedWindow.title
-              }),
-              let sourceOwner = sourceWindow.owningApplication,
-              sourceOwner.bundleIdentifier == target,
-              sourceOwner.processID == selectedWindow.owningProcessID,
-              selectedContent.applications.contains(where: {
-                  $0.bundleIdentifier == target && $0.processID == sourceOwner.processID
-              }),
-              NSRunningApplication(processIdentifier: sourceOwner.processID)?.isTerminated == false,
-              let displayID = MeetingExternalReferenceTrialADisplaySelector.selectDisplayID(
-                  windowFrame: sourceWindow.frame,
-                  displays: selectedContent.displays.map { .init(displayID: $0.displayID, frame: $0.frame) }
-              ), selectedContent.displays.contains(where: { $0.displayID == displayID }) else {
+            $0.windowID == selectedWindow.windowID && $0.title == selectedWindow.title
+        }),
+            let sourceOwner = sourceWindow.owningApplication,
+            sourceOwner.bundleIdentifier == target,
+            sourceOwner.processID == selectedWindow.owningProcessID,
+            selectedContent.applications.contains(where: {
+                $0.bundleIdentifier == target && $0.processID == sourceOwner.processID
+            }),
+            NSRunningApplication(processIdentifier: sourceOwner.processID)?.isTerminated == false,
+            let displayID = MeetingExternalReferenceTrialADisplaySelector.selectDisplayID(
+                windowFrame: sourceWindow.frame,
+                displays: selectedContent.displays.map { .init(displayID: $0.displayID, frame: $0.frame) }
+            ), selectedContent.displays.contains(where: { $0.displayID == displayID })
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"display\"}"
         }
 
@@ -564,17 +584,21 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         // can therefore never strand a partial artifact in a validated evidence root.
         cleanup.set(root: root)
         guard let executableURL = Bundle.main.executableURL.flatMap(Self.absoluteRegularFile),
-              let executableSHA256 = try? SHA256Hex.file(executableURL) else {
+              let executableSHA256 = try? SHA256Hex.file(executableURL)
+        else {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"build\"}"
         }
         let collector: MeetingStage05PCMCollector
         do {
-            collector = try MeetingStage05PCMCollector(root: root, inputUID: input.uid,
-                                                       outputUID: output.uid,
-                                                       fixtureSHA256: expectedFixtureSHA256,
-                                                       executableSHA256: executableSHA256,
-                                                       initialOutputVolume: initialVolume,
-                                                       targetProcessID: sourceOwner.processID)
+            collector = try MeetingStage05PCMCollector(
+                root: root,
+                inputUID: input.uid,
+                outputUID: output.uid,
+                fixtureSHA256: expectedFixtureSHA256,
+                executableSHA256: executableSHA256,
+                initialOutputVolume: initialVolume,
+                targetProcessID: sourceOwner.processID
+            )
         } catch {
             return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"workspace\"}"
         }
@@ -595,29 +619,42 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         let renderQueue = DispatchQueue(label: "fluidvoice.stage05.render")
         let captureQueue = DispatchQueue(label: "fluidvoice.stage05.capture")
         do {
-            try stream.addStreamOutput(outputHandler, type: .audio,
-                                       sampleHandlerQueue: renderQueue)
-            try stream.addStreamOutput(outputHandler, type: .microphone,
-                                       sampleHandlerQueue: captureQueue)
+            try stream.addStreamOutput(
+                outputHandler,
+                type: .audio,
+                sampleHandlerQueue: renderQueue
+            )
+            try stream.addStreamOutput(
+                outputHandler,
+                type: .microphone,
+                sampleHandlerQueue: captureQueue
+            )
             try await Self.withTimeout(seconds: 2) { try await stream.startCapture() }
             let captureDeadline = ProcessInfo.processInfo.systemUptime + Self.captureSeconds
             while ProcessInfo.processInfo.systemUptime < captureDeadline {
                 let remaining = max(0, captureDeadline - ProcessInfo.processInfo.systemUptime)
                 try await Task.sleep(nanoseconds: UInt64(min(0.1, remaining) * 1_000_000_000))
-                guard Self.routeStillValid(inputUID: input.uid, outputUID: output.uid,
-                                           initialVolume: initialVolume,
-                                           targetProcessID: sourceOwner.processID) else { throw RouteChanged.error }
+                guard Self.routeStillValid(
+                    inputUID: input.uid,
+                    outputUID: output.uid,
+                    initialVolume: initialVolume,
+                    targetProcessID: sourceOwner.processID
+                ) else { throw RouteChanged.error }
             }
             try await Self.withTimeout(seconds: 2) { try await stream.stopCapture() }
             renderQueue.sync {} // Drain callbacks before sealing the WAV headers and manifest.
             captureQueue.sync {}
-            guard Self.routeStillValid(inputUID: input.uid, outputUID: output.uid,
-                                       initialVolume: initialVolume,
-                                       targetProcessID: sourceOwner.processID),
-                  let finalOutput = AudioDevice.getDefaultOutputDevice(),
-                  finalOutput.uid == output.uid,
-                  Self.readOutputVolume(finalOutput.id) != nil,
-                  streamDelegate.errorCount == 0 else {
+            guard Self.routeStillValid(
+                inputUID: input.uid,
+                outputUID: output.uid,
+                initialVolume: initialVolume,
+                targetProcessID: sourceOwner.processID
+            ),
+                let finalOutput = AudioDevice.getDefaultOutputDevice(),
+                finalOutput.uid == output.uid,
+                Self.readOutputVolume(finalOutput.id) != nil,
+                streamDelegate.errorCount == 0
+            else {
                 collector.abort()
                 return "{\"exitStatus\":1,\"status\":\"failure\",\"reason\":\"routeChanged\"}"
             }
@@ -630,25 +667,32 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         // synchronize exactly once, then exercise the identity/mock AEC seam exactly once.
         let (adapterDrain, synchronization) = adapter.synchronize(configuration: .init(
             referenceScope: .selectedWindow,
-            referenceCompleteness: .measuredComplete))
+            referenceCompleteness: .measuredComplete
+        ))
         let seam = MeetingStage05MockAECSeam().process(synchronization)
         let adapterSummary = MeetingStage05LiveAdapterSummary.make(
-            drain: adapterDrain, synchronization: synchronization, seam: seam)
+            drain: adapterDrain, synchronization: synchronization, seam: seam
+        )
         guard adapterSummary.structurallyValid else {
             collector.abort()
             return Self.encodedOutcome(
-                exitStatus: 1, status: "failure", reason: "adapterGate",
-                adapter: adapterSummary.validationReasons().isEmpty ? adapterSummary : nil)
+                exitStatus: 1,
+                status: "failure",
+                reason: "adapterGate",
+                adapter: adapterSummary.validationReasons().isEmpty ? adapterSummary : nil
+            )
         }
         do {
             guard let finalOutput = AudioDevice.getDefaultOutputDevice(),
                   finalOutput.uid == output.uid,
-                  let finalVolume = Self.readOutputVolume(finalOutput.id) else {
+                  let finalVolume = Self.readOutputVolume(finalOutput.id)
+            else {
                 throw RouteChanged.error
             }
             try collector.finish(consentConfirmed: true, finalOutputVolume: finalVolume)
             return Self.encodedOutcome(
-                exitStatus: 0, status: "success", adapter: adapterSummary)
+                exitStatus: 0, status: "success", adapter: adapterSummary
+            )
         } catch let failure as MeetingStage05FinalizeFailure {
             // Only completed render/capture timing finalization retains the numeric-only
             // timing.json; all other failure categories retain nothing.
@@ -658,20 +702,29 @@ nonisolated enum MeetingStage05EvidenceAutorun {
                 collector.abort()
             }
             return Self.encodedOutcome(
-                exitStatus: 1, status: "failure", reason: "finalize\(failure.rawValue)",
-                adapter: adapterSummary)
+                exitStatus: 1,
+                status: "failure",
+                reason: "finalize\(failure.rawValue)",
+                adapter: adapterSummary
+            )
         } catch {
             collector.abort()
             return Self.encodedOutcome(
-                exitStatus: 1, status: "failure", reason: "finalizeUnknown",
-                adapter: adapterSummary)
+                exitStatus: 1,
+                status: "failure",
+                reason: "finalizeUnknown",
+                adapter: adapterSummary
+            )
         }
     }
 
     private static func readOutputVolume(_ deviceID: AudioObjectID) -> Float32? {
         for selector in [kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyVolumeScalar] {
-            var address = AudioObjectPropertyAddress(mSelector: selector,
-                mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioDevicePropertyScopeOutput,
+                mElement: kAudioObjectPropertyElementMain
+            )
             var value: Float32 = 0; var size = UInt32(MemoryLayout<Float32>.size)
             if AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr,
                value.isFinite, (0...1).contains(value) { return value }
@@ -682,8 +735,12 @@ nonisolated enum MeetingStage05EvidenceAutorun {
     private static func windowCandidates(from content: SCShareableContent) -> [MeetingExternalReferenceTrialAWindowCandidate] {
         content.windows.compactMap { window in
             guard let owner = window.owningApplication else { return nil }
-            return .init(windowID: window.windowID, owningBundleIdentifier: owner.bundleIdentifier,
-                         owningProcessID: owner.processID, title: window.title)
+            return .init(
+                windowID: window.windowID,
+                owningBundleIdentifier: owner.bundleIdentifier,
+                owningProcessID: owner.processID,
+                title: window.title
+            )
         }
     }
 
@@ -733,12 +790,15 @@ nonisolated enum MeetingStage05EvidenceAutorun {
                 continue
             }
             let decision = MeetingStage05StimulusHandshake.decision(
-                for: ready, current: Self.windowCandidates(from: content),
+                for: ready,
+                current: Self.windowCandidates(from: content),
                 targetBundleIdentifier: targetBundleID,
-                now: ProcessInfo.processInfo.systemUptime, deadline: deadline)
+                now: ProcessInfo.processInfo.systemUptime,
+                deadline: deadline
+            )
             switch decision {
-            case .success(let playing): return PlayingSnapshot(candidate: playing, content: content)
-            case .failure(let failure): throw failure
+            case let .success(playing): return PlayingSnapshot(candidate: playing, content: content)
+            case let .failure(failure): throw failure
             case .waiting:
                 let remaining = deadline - ProcessInfo.processInfo.systemUptime
                 guard remaining > 0 else { throw MeetingStage05StimulusHandshake.Failure.timeout }
@@ -758,8 +818,13 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         case .timeout: return "stimulusTimeout"
         }
     }
-    private static func routeStillValid(inputUID: String, outputUID: String, initialVolume: Float32,
-                                        targetProcessID: Int32) -> Bool {
+
+    private static func routeStillValid(
+        inputUID: String,
+        outputUID: String,
+        initialVolume: Float32,
+        targetProcessID: Int32
+    ) -> Bool {
         guard NSRunningApplication(processIdentifier: targetProcessID)?.isTerminated == false else {
             return false
         }
@@ -785,6 +850,7 @@ nonisolated enum MeetingStage05EvidenceAutorun {
         }
         return url
     }
+
     static func remainingStimulusSeconds(_ title: String?) -> Double? {
         guard let value = MeetingStage05StimulusHandshake.playingRemainingSeconds(title),
               value >= Double(MeetingStage05StimulusHandshake.minimumRemainingSeconds) else { return nil }
@@ -793,7 +859,7 @@ nonisolated enum MeetingStage05EvidenceAutorun {
 
     private final class CompletionGate: @unchecked Sendable {
         private let lock = NSLock(); private var done = false
-        func claim() -> Bool { lock.lock(); defer { lock.unlock() }; guard !done else { return false }; done = true; return true }
+        func claim() -> Bool { self.lock.lock(); defer { lock.unlock() }; guard !self.done else { return false }; self.done = true; return true }
     }
 
     private final class CleanupBox: @unchecked Sendable {
@@ -816,7 +882,7 @@ nonisolated enum MeetingStage05EvidenceAutorun {
             self.lock.unlock()
         }
 
-        func run() { lock.lock(); let action = self.action; self.action = nil; lock.unlock(); action?() }
+        func run() { self.lock.lock(); let action = self.action; self.action = nil; self.lock.unlock(); action?() }
     }
 
     enum TimeoutError: Error { case timeout }
@@ -831,8 +897,7 @@ nonisolated enum MeetingStage05EvidenceAutorun {
             // These are deliberately unstructured. A structured task group waits for a child
             // that ignores cancellation, defeating the timeout for ScreenCaptureKit operations.
             Task {
-                do { race.resolve(.success(try await operation())) }
-                catch { race.resolve(.failure(error)) }
+                do { try race.resolve(.success(await operation())) } catch { race.resolve(.failure(error)) }
             }
             DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + seconds) {
                 race.resolve(.failure(TimeoutError.timeout))
@@ -875,8 +940,11 @@ final class MeetingStage05StreamOutput: NSObject, SCStreamOutput, @unchecked Sen
         self.monotonicNow = monotonicNow
     }
 
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
-                of outputType: SCStreamOutputType) {
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
         self.handle(sampleBuffer, outputType: outputType)
     }
 
@@ -902,8 +970,8 @@ final class MeetingStage05StreamOutput: NSObject, SCStreamOutput, @unchecked Sen
 
 private final class MeetingStage05StreamDelegate: NSObject, SCStreamDelegate, @unchecked Sendable {
     private let lock = NSLock(); private var errors = 0
-    var errorCount: Int { lock.lock(); defer { lock.unlock() }; return errors }
-    func stream(_ stream: SCStream, didStopWithError error: Error) { lock.lock(); errors += 1; lock.unlock() }
+    var errorCount: Int { self.lock.lock(); defer { lock.unlock() }; return self.errors }
+    func stream(_ stream: SCStream, didStopWithError error: Error) { self.lock.lock(); self.errors += 1; self.lock.unlock() }
 }
 
 nonisolated struct MeetingStage05NativePCMFormat: Equatable, Sendable {
@@ -986,11 +1054,14 @@ nonisolated struct MeetingStage05TimingFailureRecord: Codable, Equatable, Sendab
         captureTiming: [MeetingSignalDomainGateManifest.TimingBlock],
         sampleRateHz: Double
     ) -> Self {
-        Self(schema: Self.schema, failure: failure.rawValue,
-             track: failure == .renderTiming ? "render" : "capture",
-             sampleRateHz: sampleRateHz,
-             render: Self.derive(renderTiming, sampleRateHz: sampleRateHz),
-             capture: Self.derive(captureTiming, sampleRateHz: sampleRateHz))
+        Self(
+            schema: self.schema,
+            failure: failure.rawValue,
+            track: failure == .renderTiming ? "render" : "capture",
+            sampleRateHz: sampleRateHz,
+            render: self.derive(renderTiming, sampleRateHz: sampleRateHz),
+            capture: self.derive(captureTiming, sampleRateHz: sampleRateHz)
+        )
     }
 
     private static func derive(
@@ -1008,30 +1079,36 @@ nonisolated struct MeetingStage05TimingFailureRecord: Codable, Equatable, Sendab
         }
         // A format change aborts the run before timing finalization, so a retained record
         // can only ever observe zero format transitions.
-        return Track(blocks: blocks, gapCount: gaps, overlapCount: overlaps,
-                     backwardCount: backward, formatChangeCount: 0)
+        return Track(
+            blocks: blocks,
+            gapCount: gaps,
+            overlapCount: overlaps,
+            backwardCount: backward,
+            formatChangeCount: 0
+        )
     }
 
     func validationReasons() -> [String] {
         var reasons: [String] = []
-        if schema != Self.schema { reasons.append("schema") }
+        if self.schema != Self.schema { reasons.append("schema") }
         let timingFailures: Set<String> = [
             MeetingStage05FinalizeFailure.renderTiming.rawValue,
             MeetingStage05FinalizeFailure.captureTiming.rawValue,
         ]
-        if !timingFailures.contains(failure) { reasons.append("failure") }
-        let expectedTrack = failure == MeetingStage05FinalizeFailure.renderTiming.rawValue
+        if !timingFailures.contains(self.failure) { reasons.append("failure") }
+        let expectedTrack = self.failure == MeetingStage05FinalizeFailure.renderTiming.rawValue
             ? "render" : "capture"
-        if track != expectedTrack { reasons.append("track") }
-        if !sampleRateHz.isFinite || sampleRateHz != 48_000 { reasons.append("sampleRateHz") }
-        for side in [render, capture] {
-            if side.blocks.isEmpty || side.blocks.count > 2_000 { reasons.append("blockCount") }
+        if self.track != expectedTrack { reasons.append("track") }
+        if !self.sampleRateHz.isFinite || self.sampleRateHz != 48_000 { reasons.append("sampleRateHz") }
+        for side in [self.render, self.capture] {
+            if side.blocks.isEmpty || side.blocks.count > 2000 { reasons.append("blockCount") }
             var totalFrames = 0
             for block in side.blocks {
                 if !block.presentationSeconds.isFinite || block.presentationSeconds < 0
                     || !block.durationSeconds.isFinite || block.durationSeconds <= 0
                     || block.frameCount <= 0
-                    || (block.arrivalSeconds.map { !$0.isFinite || $0 < 0 } ?? false) {
+                    || (block.arrivalSeconds.map { !$0.isFinite || $0 < 0 } ?? false)
+                {
                     reasons.append("block")
                     break
                 }
@@ -1042,8 +1119,9 @@ nonisolated struct MeetingStage05TimingFailureRecord: Codable, Equatable, Sendab
             if totalFrames > 960_000 { reasons.append("frameCount") }
             if side.gapCount < 0 || side.overlapCount < 0 || side.backwardCount < 0
                 || side.formatChangeCount < 0 { reasons.append("counts") }
-            if sampleRateHz.isFinite, sampleRateHz > 0,
-               side != Self.derive(side.blocks, sampleRateHz: sampleRateHz) {
+            if self.sampleRateHz.isFinite, self.sampleRateHz > 0,
+               side != Self.derive(side.blocks, sampleRateHz: self.sampleRateHz)
+            {
                 reasons.append("derivedCounts")
             }
         }
@@ -1068,7 +1146,7 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
     private var captureTiming: [MeetingSignalDomainGateManifest.TimingBlock] = []
     private var nativeSampleRateHz: Double?
     private var appendFailure: MeetingStage05FinalizeFailure?
-    private let maxBlocks = 2_000
+    private let maxBlocks = 2000
     private let maxFrames = 960_000
 
     init(
@@ -1105,7 +1183,7 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
     }
 
     static func prepareRoot(_ root: URL) throws {
-        guard Self.isSafeRoot(root) else { throw Error.workspace }
+        guard self.isSafeRoot(root) else { throw Error.workspace }
         let manager = FileManager.default
         if manager.fileExists(atPath: root.path) {
             guard (try? manager.destinationOfSymbolicLink(atPath: root.path)) == nil,
@@ -1113,13 +1191,17 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
             let mode = (try? manager.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber)?.intValue ?? 0
             guard mode & 0o777 == 0o700 else { throw Error.workspace }
         } else {
-            try manager.createDirectory(at: root, withIntermediateDirectories: true,
-                                        attributes: [.posixPermissions: 0o700])
+            try manager.createDirectory(
+                at: root,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
         }
         let rootAttributes = try manager.attributesOfItem(atPath: root.path)
         guard rootAttributes[.type] as? FileAttributeType == .typeDirectory,
               (rootAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700,
-              (try manager.contentsOfDirectory(atPath: root.path)).isEmpty else {
+              try (manager.contentsOfDirectory(atPath: root.path)).isEmpty
+        else {
             throw Error.workspace
         }
     }
@@ -1144,87 +1226,108 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
         output: Output,
         arrivalSeconds: Double? = nil
     ) {
-        lock.lock(); defer { lock.unlock() }
-        guard !aborted else { return }
+        self.lock.lock(); defer { lock.unlock() }
+        guard !self.aborted else { return }
         let callbackArrival = arrivalSeconds ?? ProcessInfo.processInfo.systemUptime
         guard let frame = Self.extract(sampleBuffer, arrivalSeconds: callbackArrival), frame.frameCount > 0,
               frame.sampleRateHz > 0, frame.channels == 1,
-              frame.frameCount <= maxFrames else { failAppend(.appendInvalidFrame); return }
+              frame.frameCount <= maxFrames else { self.failAppend(.appendInvalidFrame); return }
         if let existing = render.format ?? capture.format, existing != frame.format {
-            failAppend(.appendFormatChanged); return
+            self.failAppend(.appendFormatChanged); return
         }
         if let nativeSampleRateHz, abs(nativeSampleRateHz - frame.sampleRateHz) > 1e-6 {
-            failAppend(.appendSampleRateChanged); return
+            self.failAppend(.appendSampleRateChanged); return
         }
         nativeSampleRateHz = frame.sampleRateHz
         switch output {
-        case .render: if render.frameCount + frame.frameCount > maxFrames { failAppend(.appendFrameLimit); return }
-        case .capture: if capture.frameCount + frame.frameCount > maxFrames { failAppend(.appendFrameLimit); return }
+        case .render: if self.render.frameCount + frame.frameCount > self.maxFrames { self.failAppend(.appendFrameLimit); return }
+        case .capture: if self.capture.frameCount + frame.frameCount > self.maxFrames { self.failAppend(.appendFrameLimit); return }
         }
         let timing = MeetingSignalDomainGateManifest.TimingBlock(
-            presentationSeconds: frame.presentationSeconds, durationSeconds: frame.durationSeconds,
-            frameCount: frame.frameCount, arrivalSeconds: frame.arrivalSeconds)
+            presentationSeconds: frame.presentationSeconds,
+            durationSeconds: frame.durationSeconds,
+            frameCount: frame.frameCount,
+            arrivalSeconds: frame.arrivalSeconds
+        )
         do {
             switch output {
             case .render:
-                guard renderTiming.count < maxBlocks else { failAppend(.appendBlockLimit); return }
-                try render.append(frame.data, format: frame.format, sampleRateHz: frame.sampleRateHz, frameCount: frame.frameCount)
-                renderTiming.append(timing)
+                guard self.renderTiming.count < self.maxBlocks else { self.failAppend(.appendBlockLimit); return }
+                try self.render.append(frame.data, format: frame.format, sampleRateHz: frame.sampleRateHz, frameCount: frame.frameCount)
+                self.renderTiming.append(timing)
             case .capture:
-                guard captureTiming.count < maxBlocks else { failAppend(.appendBlockLimit); return }
-                try capture.append(frame.data, format: frame.format, sampleRateHz: frame.sampleRateHz, frameCount: frame.frameCount)
-                captureTiming.append(timing)
+                guard self.captureTiming.count < self.maxBlocks else { self.failAppend(.appendBlockLimit); return }
+                try self.capture.append(frame.data, format: frame.format, sampleRateHz: frame.sampleRateHz, frameCount: frame.frameCount)
+                self.captureTiming.append(timing)
             }
-        } catch { failAppend(.appendWrite) }
+        } catch { self.failAppend(.appendWrite) }
     }
 
     private func failAppend(_ failure: MeetingStage05FinalizeFailure) {
-        if appendFailure == nil { appendFailure = failure }
-        aborted = true
+        if self.appendFailure == nil { self.appendFailure = failure }
+        self.aborted = true
     }
 
     func finish(consentConfirmed: Bool, finalOutputVolume: Float32) throws {
-        lock.lock(); defer { lock.unlock() }
-        if aborted { throw appendFailure ?? MeetingStage05FinalizeFailure.appendInvalidFrame }
-        guard consentConfirmed, !renderTiming.isEmpty, !captureTiming.isEmpty else {
+        self.lock.lock(); defer { lock.unlock() }
+        if self.aborted { throw self.appendFailure ?? MeetingStage05FinalizeFailure.appendInvalidFrame }
+        guard consentConfirmed, !self.renderTiming.isEmpty, !self.captureTiming.isEmpty else {
             throw MeetingStage05FinalizeFailure.missingStream
         }
-        guard Self.timingIsComplete(renderTiming, frameCount: render.frameCount,
-                                    sampleRateHz: render.sampleRateHz) else {
+        guard Self.timingIsComplete(
+            self.renderTiming,
+            frameCount: self.render.frameCount,
+            sampleRateHz: self.render.sampleRateHz
+        ) else {
             throw MeetingStage05FinalizeFailure.renderTiming
         }
-        guard Self.timingIsComplete(captureTiming, frameCount: capture.frameCount,
-                                    sampleRateHz: capture.sampleRateHz) else {
+        guard Self.timingIsComplete(
+            self.captureTiming,
+            frameCount: self.capture.frameCount,
+            sampleRateHz: self.capture.sampleRateHz
+        ) else {
             throw MeetingStage05FinalizeFailure.captureTiming
         }
-        guard render.peak > 0 else { throw MeetingStage05FinalizeFailure.renderSilent }
-        guard render.peak <= 0.15 else { throw MeetingStage05FinalizeFailure.renderOutOfBounds }
-        guard capture.peak.isFinite else { throw MeetingStage05FinalizeFailure.captureNonfinite }
-        guard capture.peak <= 1 else { throw MeetingStage05FinalizeFailure.captureClipping }
-        do { try render.finish() } catch { throw MeetingStage05FinalizeFailure.renderSeal }
-        do { try capture.finish() } catch { throw MeetingStage05FinalizeFailure.captureSeal }
+        guard self.render.peak > 0 else { throw MeetingStage05FinalizeFailure.renderSilent }
+        guard self.render.peak <= 0.15 else { throw MeetingStage05FinalizeFailure.renderOutOfBounds }
+        guard self.capture.peak.isFinite else { throw MeetingStage05FinalizeFailure.captureNonfinite }
+        guard self.capture.peak <= 1 else { throw MeetingStage05FinalizeFailure.captureClipping }
+        do { try self.render.finish() } catch { throw MeetingStage05FinalizeFailure.renderSeal }
+        do { try self.capture.finish() } catch { throw MeetingStage05FinalizeFailure.captureSeal }
         let renderArtifact: MeetingSignalDomainGateManifest.Artifact
         let captureArtifact: MeetingSignalDomainGateManifest.Artifact
         do {
-            renderArtifact = try Self.artifact(role: "render", url: render.url, writer: render)
-            captureArtifact = try Self.artifact(role: "capture", url: capture.url, writer: capture)
+            renderArtifact = try Self.artifact(role: "render", url: self.render.url, writer: self.render)
+            captureArtifact = try Self.artifact(role: "capture", url: self.capture.url, writer: self.capture)
         } catch { throw MeetingStage05FinalizeFailure.artifact }
         let session = MeetingSignalDomainGateManifest.Session(
-            ordinal: 0, render: renderArtifact, capture: captureArtifact,
-            renderTiming: renderTiming, captureTiming: captureTiming)
+            ordinal: 0,
+            render: renderArtifact,
+            capture: captureArtifact,
+            renderTiming: self.renderTiming,
+            captureTiming: self.captureTiming
+        )
         let provenance = MeetingStage05Provenance(
-            renderSHA256: renderArtifact.sha256, captureSHA256: captureArtifact.sha256,
-            fixtureSHA256: fixtureSHA256, captureExecutableSHA256: executableSHA256,
-            inputUIDSHA256: SHA256Hex.string(inputUID), outputUIDSHA256: SHA256Hex.string(outputUID),
-            runOrdinal: 0, targetProcessID: targetProcessID,
-            initialOutputVolume: initialOutputVolume, finalOutputVolume: finalOutputVolume,
-            renderPeak: render.peak, capturePeak: capture.peak,
-            renderBlockCount: renderTiming.count, captureBlockCount: captureTiming.count,
-            renderFrameCount: render.frameCount, captureFrameCount: capture.frameCount)
+            renderSHA256: renderArtifact.sha256,
+            captureSHA256: captureArtifact.sha256,
+            fixtureSHA256: self.fixtureSHA256,
+            captureExecutableSHA256: self.executableSHA256,
+            inputUIDSHA256: SHA256Hex.string(self.inputUID),
+            outputUIDSHA256: SHA256Hex.string(self.outputUID),
+            runOrdinal: 0,
+            targetProcessID: self.targetProcessID,
+            initialOutputVolume: self.initialOutputVolume,
+            finalOutputVolume: finalOutputVolume,
+            renderPeak: self.render.peak,
+            capturePeak: self.capture.peak,
+            renderBlockCount: self.renderTiming.count,
+            captureBlockCount: self.captureTiming.count,
+            renderFrameCount: self.render.frameCount,
+            captureFrameCount: self.capture.frameCount
+        )
         let provenanceData: Data
-        do { provenanceData = try JSONEncoder.sorted.encode(provenance) }
-        catch { throw MeetingStage05FinalizeFailure.provenance }
-        let provenanceURL = root.appendingPathComponent("provenance.json")
+        do { provenanceData = try JSONEncoder.sorted.encode(provenance) } catch { throw MeetingStage05FinalizeFailure.provenance }
+        let provenanceURL = self.root.appendingPathComponent("provenance.json")
         let provenanceDescriptor = Darwin.open(provenanceURL.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
         guard provenanceDescriptor >= 0 else { throw MeetingStage05FinalizeFailure.provenance }
         let provenanceHandle = FileHandle(fileDescriptor: provenanceDescriptor, closeOnDealloc: true)
@@ -1233,18 +1336,22 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
             try provenanceHandle.synchronize(); try provenanceHandle.close()
         } catch { throw MeetingStage05FinalizeFailure.provenance }
         let provenanceHash: String
-        do { provenanceHash = try SHA256Hex.file(provenanceURL) }
-        catch { throw MeetingStage05FinalizeFailure.provenance }
+        do { provenanceHash = try SHA256Hex.file(provenanceURL) } catch { throw MeetingStage05FinalizeFailure.provenance }
         let manifest = MeetingSignalDomainGateManifest(
-            topology: .pairedScreenCaptureKit, route: .builtInSpeakerMicrophone,
-            referenceScope: .selectedWindow, referenceCompletenessMeasured: true,
-            consentConfirmed: consentConfirmed, artifacts: [], sessions: [session],
-            provenanceRelativePath: "provenance.json", provenanceSha256: provenanceHash)
+            topology: .pairedScreenCaptureKit,
+            route: .builtInSpeakerMicrophone,
+            referenceScope: .selectedWindow,
+            referenceCompletenessMeasured: true,
+            consentConfirmed: consentConfirmed,
+            artifacts: [],
+            sessions: [session],
+            provenanceRelativePath: "provenance.json",
+            provenanceSha256: provenanceHash
+        )
         guard manifest.validationReasons().isEmpty else { throw MeetingStage05FinalizeFailure.manifest }
         let data: Data
-        do { data = try JSONEncoder.sorted.encode(manifest) }
-        catch { throw MeetingStage05FinalizeFailure.manifest }
-        let manifestURL = root.appendingPathComponent("manifest.json")
+        do { data = try JSONEncoder.sorted.encode(manifest) } catch { throw MeetingStage05FinalizeFailure.manifest }
+        let manifestURL = self.root.appendingPathComponent("manifest.json")
         let descriptor = Darwin.open(manifestURL.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
         guard descriptor >= 0 else { throw MeetingStage05FinalizeFailure.manifest }
         let manifestHandle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -1255,13 +1362,13 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
     }
 
     func abort() {
-        lock.lock(); aborted = true
-        render.discard(); capture.discard()
+        self.lock.lock(); self.aborted = true
+        self.render.discard(); self.capture.discard()
         let manager = FileManager.default
-        try? manager.removeItem(at: root.appendingPathComponent("manifest.json"))
-        try? manager.removeItem(at: root.appendingPathComponent("provenance.json"))
-        try? manager.removeItem(at: root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename))
-        lock.unlock()
+        try? manager.removeItem(at: self.root.appendingPathComponent("manifest.json"))
+        try? manager.removeItem(at: self.root.appendingPathComponent("provenance.json"))
+        try? manager.removeItem(at: self.root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename))
+        self.lock.unlock()
     }
 
     /// Retains only the numeric timing-failure record for a completed render/capture timing
@@ -1269,29 +1376,33 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
     /// and unlinked first, so successful WAV evidence and a timing-only failure record are
     /// mutually exclusive. Every other failure category retains nothing.
     func retainTimingFailureRecord(_ failure: MeetingStage05FinalizeFailure) {
-        lock.lock(); defer { lock.unlock() }
-        aborted = true
-        render.discard(); capture.discard()
+        self.lock.lock(); defer { lock.unlock() }
+        self.aborted = true
+        self.render.discard(); self.capture.discard()
         let manager = FileManager.default
-        try? manager.removeItem(at: root.appendingPathComponent("manifest.json"))
-        try? manager.removeItem(at: root.appendingPathComponent("provenance.json"))
+        try? manager.removeItem(at: self.root.appendingPathComponent("manifest.json"))
+        try? manager.removeItem(at: self.root.appendingPathComponent("provenance.json"))
         guard failure == .renderTiming || failure == .captureTiming else {
-            try? manager.removeItem(at: root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename))
+            try? manager.removeItem(at: self.root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename))
             return
         }
         let record = MeetingStage05TimingFailureRecord.make(
-            failure: failure, renderTiming: renderTiming, captureTiming: captureTiming,
-            sampleRateHz: nativeSampleRateHz ?? 48_000)
+            failure: failure,
+            renderTiming: self.renderTiming,
+            captureTiming: self.captureTiming,
+            sampleRateHz: self.nativeSampleRateHz ?? 48_000
+        )
         guard record.validationReasons().isEmpty,
-              let data = try? JSONEncoder.sorted.encode(record) else {
-            Self.emergencyCleanup(at: root)
+              let data = try? JSONEncoder.sorted.encode(record)
+        else {
+            Self.emergencyCleanup(at: self.root)
             return
         }
-        let url = root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename)
+        let url = self.root.appendingPathComponent(MeetingStage05TimingFailureRecord.filename)
         let descriptor = Darwin.open(url.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
         guard descriptor >= 0 else {
             // A pre-existing record means the root is in an inconsistent state; retain nothing.
-            Self.emergencyCleanup(at: root)
+            Self.emergencyCleanup(at: self.root)
             return
         }
         let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -1301,19 +1412,24 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
             try handle.close()
         } catch {
             try? handle.close()
-            Self.emergencyCleanup(at: root)
+            Self.emergencyCleanup(at: self.root)
         }
     }
 
     /// Emergency path intentionally avoids the collector lock. The watchdog has a hard deadline;
     /// it unlinks only these fixed private filenames and then terminates the process.
     nonisolated func emergencyCleanup() {
-        Self.emergencyCleanup(at: root)
+        Self.emergencyCleanup(at: self.root)
     }
 
     nonisolated static func emergencyCleanup(at root: URL) {
-        for name in ["render.wav", "capture.wav", "manifest.json", "provenance.json",
-                     MeetingStage05TimingFailureRecord.filename] {
+        for name in [
+            "render.wav",
+            "capture.wav",
+            "manifest.json",
+            "provenance.json",
+            MeetingStage05TimingFailureRecord.filename,
+        ] {
             root.appendingPathComponent(name).path.withCString { _ = Darwin.unlink($0) }
         }
     }
@@ -1321,19 +1437,30 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
     private static func artifact(role: String, url: URL, writer: WAVWriter) throws -> MeetingSignalDomainGateManifest.Artifact {
         let hash = try SHA256Hex.file(url)
         guard let codec = writer.codec else { throw MeetingStage05PCMCollector.Error.invalidCapture }
-        return .init(role: role, relativePath: role + ".wav", sha256: hash, codec: codec,
-                     lossless: true, sampleRateHz: writer.sampleRateHz, channelCount: 1,
-                     durationSeconds: Double(writer.frameCount) / writer.sampleRateHz)
+        return .init(
+            role: role,
+            relativePath: role + ".wav",
+            sha256: hash,
+            codec: codec,
+            lossless: true,
+            sampleRateHz: writer.sampleRateHz,
+            channelCount: 1,
+            durationSeconds: Double(writer.frameCount) / writer.sampleRateHz
+        )
     }
 
-    private static func timingIsComplete(_ blocks: [MeetingSignalDomainGateManifest.TimingBlock],
-                                         frameCount: Int, sampleRateHz: Double) -> Bool {
+    private static func timingIsComplete(
+        _ blocks: [MeetingSignalDomainGateManifest.TimingBlock],
+        frameCount: Int,
+        sampleRateHz: Double
+    ) -> Bool {
         guard blocks.count >= 3, blocks.allSatisfy({ $0.arrivalSeconds != nil }),
               blocks.reduce(0, { $0 + $1.frameCount }) == frameCount else { return false }
         let tolerance = 1 / sampleRateHz
         for pair in zip(blocks.dropFirst(), blocks) {
             let difference = pair.0.presentationSeconds - (pair.1.presentationSeconds + pair.1.durationSeconds)
-            if abs(difference) > tolerance || pair.0.arrivalSeconds! < pair.1.arrivalSeconds! { return false }
+            guard let laterArrival = pair.0.arrivalSeconds, let earlierArrival = pair.1.arrivalSeconds,
+                  abs(difference) <= tolerance, laterArrival >= earlierArrival else { return false }
         }
         guard let first = blocks.first, let last = blocks.last else { return false }
         let span = last.presentationSeconds + last.durationSeconds - first.presentationSeconds
@@ -1351,6 +1478,7 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
         let format: String
         let arrivalSeconds: Double
     }
+
     private static func extract(_ sampleBuffer: CMSampleBuffer, arrivalSeconds: Double) -> Frame? {
         guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer),
               let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
@@ -1364,18 +1492,29 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
         let byteCount = count * nativeFormat.bytesPerFrame
         var requiredSize = 0
         guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: &requiredSize, bufferListOut: nil,
-            bufferListSize: 0, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil,
-            flags: 0, blockBufferOut: nil) == noErr, requiredSize > 0 else { return nil }
+            sampleBuffer,
+            bufferListSizeNeededOut: &requiredSize,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: nil
+        ) == noErr, requiredSize > 0 else { return nil }
         let raw = UnsafeMutableRawPointer.allocate(byteCount: requiredSize, alignment: MemoryLayout<AudioBufferList>.alignment)
         defer { raw.deallocate() }
         let list = raw.bindMemory(to: AudioBufferList.self, capacity: 1)
         var retained: CMBlockBuffer?
         guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sampleBuffer, bufferListSizeNeededOut: nil, bufferListOut: list,
-            bufferListSize: requiredSize, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil,
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: list,
+            bufferListSize: requiredSize,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
             flags: UInt32(kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment),
-            blockBufferOut: &retained) == noErr else { return nil }
+            blockBufferOut: &retained
+        ) == noErr else { return nil }
         let buffers = UnsafeMutableAudioBufferListPointer(list)
         guard buffers.count == 1, buffers[0].mNumberChannels == 1,
               buffers[0].mDataByteSize == UInt32(byteCount), let pointer = buffers[0].mData else { return nil }
@@ -1383,9 +1522,16 @@ final class MeetingStage05PCMCollector: @unchecked Sendable {
         if nativeFormat.codec == "pcm_f32le" {
             guard MeetingStage05NativePCMFormat.containsOnlyFiniteFloat32(data) else { return nil }
         }
-        return .init(data: data, presentationSeconds: pts, durationSeconds: duration,
-                     frameCount: count, sampleRateHz: asbd.mSampleRate, channels: 1,
-                     format: nativeFormat.codec, arrivalSeconds: arrivalSeconds)
+        return .init(
+            data: data,
+            presentationSeconds: pts,
+            durationSeconds: duration,
+            frameCount: count,
+            sampleRateHz: asbd.mSampleRate,
+            channels: 1,
+            format: nativeFormat.codec,
+            arrivalSeconds: arrivalSeconds
+        )
     }
 
     enum Error: Swift.Error { case workspace, invalidCapture }
@@ -1398,7 +1544,7 @@ private final class WAVWriter {
     private(set) var frameCount = 0
     private(set) var codec: String?
     private(set) var peak: Float = 0
-    var format: String? { codec }
+    var format: String? { self.codec }
     init(url: URL) throws {
         self.url = url
         let descriptor = Darwin.open(url.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
@@ -1406,6 +1552,7 @@ private final class WAVWriter {
         self.handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         try self.handle.write(contentsOf: Data(repeating: 0, count: 44))
     }
+
     func append(_ data: Data, format: String, sampleRateHz: Double, frameCount: Int) throws {
         let bytesPerSample = 4
         guard format == "pcm_f32le" else { throw MeetingStage05PCMCollector.Error.invalidCapture }
@@ -1415,17 +1562,22 @@ private final class WAVWriter {
         guard values.allSatisfy(\.isFinite) else { throw MeetingStage05PCMCollector.Error.invalidCapture }
         self.peak = max(self.peak, values.map { abs($0) }.max() ?? 0)
         self.codec = format; self.sampleRateHz = sampleRateHz; self.frameCount += frameCount
-        try handle.seekToEnd(); try handle.write(contentsOf: data)
+        try self.handle.seekToEnd(); try self.handle.write(contentsOf: data)
     }
+
     func finish() throws {
         guard let codec else { throw MeetingStage05PCMCollector.Error.invalidCapture }
         let (formatTag, bits): (UInt16, UInt16) = (3, 32)
         let bytesPerSample = Int(bits / 8)
         guard codec == "pcm_f32le" else { throw MeetingStage05PCMCollector.Error.invalidCapture }
-        var header = Data(); header.append(contentsOf: Array("RIFF".utf8)); header.appendLE(UInt32(36 + frameCount * bytesPerSample)); header.append(contentsOf: Array("WAVEfmt ".utf8)); header.appendLE(UInt32(16)); header.appendLE(formatTag); header.appendLE(UInt16(1)); header.appendLE(UInt32(sampleRateHz.rounded())); header.appendLE(UInt32(sampleRateHz.rounded() * Double(bytesPerSample))); header.appendLE(UInt16(bytesPerSample)); header.appendLE(bits); header.append(contentsOf: Array("data".utf8)); header.appendLE(UInt32(frameCount * bytesPerSample))
-        try handle.seek(toOffset: 0); try handle.write(contentsOf: header); try handle.synchronize(); try handle.close()
+        var header = Data(); header.append(contentsOf: Array("RIFF".utf8)); header.appendLE(UInt32(36 + self.frameCount * bytesPerSample)); header.append(contentsOf: Array("WAVEfmt ".utf8)); header
+            .appendLE(UInt32(16)); header.appendLE(formatTag); header.appendLE(UInt16(1)); header.appendLE(UInt32(self.sampleRateHz.rounded())); header
+            .appendLE(UInt32(self.sampleRateHz.rounded() * Double(bytesPerSample))); header.appendLE(UInt16(bytesPerSample)); header.appendLE(bits); header
+            .append(contentsOf: Array("data".utf8)); header.appendLE(UInt32(self.frameCount * bytesPerSample))
+        try self.handle.seek(toOffset: 0); try self.handle.write(contentsOf: header); try self.handle.synchronize(); try self.handle.close()
     }
-    func discard() { try? handle.close(); try? FileManager.default.removeItem(at: url) }
+
+    func discard() { try? self.handle.close(); try? FileManager.default.removeItem(at: self.url) }
 }
 
 private struct MeetingStage05Provenance: Codable {
