@@ -63,6 +63,8 @@ struct CustomDictionaryView: View {
     @State private var isTrainedReplacementGlowExpanded = false
     @State private var replacementConfirmation: ReplacementConfirmation?
     @State private var composerMode: DictionaryComposerMode = .train
+    @State private var manualSourceWord = ""
+    @State private var manualReturnStep: DictionaryWordWizardStep = .spelling
     @State private var manualTriggerDraft = ""
     @State private var manualReplacement = ""
     @State private var isYourDictionaryPresented = false
@@ -591,7 +593,7 @@ struct CustomDictionaryView: View {
         ThemedCard(style: .standard, hoverEffect: false) {
             if self.wizardStep == .manual {
                 VStack(alignment: .leading, spacing: self.theme.metrics.spacing.lg) {
-                    Button { self.wizardStep = .recording } label: {
+                    Button { self.wizardStep = self.manualReturnStep } label: {
                         Label("Back", systemImage: "chevron.left")
                     }.fluidGlassAction()
                     Text("Add a correction").font(self.theme.typography.sectionTitle)
@@ -635,7 +637,12 @@ struct CustomDictionaryView: View {
                     onBack: { self.wizardStep = .spelling },
                     onNewWord: { self.resetTraining(); self.wizardStep = .spelling },
                     onManual: {
-                        self.manualReplacement = self.normalizedTrainingReplacement
+                        self.manualReturnStep = self.wizardStep
+                        if self.manualSourceWord != self.normalizedTrainingReplacement || self.manualReplacement.isEmpty {
+                            self.manualSourceWord = self.normalizedTrainingReplacement
+                            self.manualReplacement = self.normalizedTrainingReplacement
+                            self.manualTriggerDraft = self.trainingVariants.joined(separator: ", ")
+                        }
                         self.wizardStep = .manual
                     },
                     onPracticeMore: {
@@ -767,13 +774,13 @@ struct CustomDictionaryView: View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: self.theme.metrics.spacing.md) {
-                    self.manualTriggerField
                     self.manualReplacementField
+                    self.manualTriggerField
                 }
 
                 VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-                    self.manualTriggerField
                     self.manualReplacementField
+                    self.manualTriggerField
                 }
             }
 
@@ -829,12 +836,12 @@ struct CustomDictionaryView: View {
 
     private var manualReplacementField: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-            Text("What it should type")
+            Text("Correct word")
                 .font(self.theme.typography.captionStrong)
             TextField("FluidVoice", text: self.$manualReplacement)
                 .dictionaryInputChrome()
                 .onSubmit { self.addManualReplacementIfValid() }
-            Text("This is what appears in your transcription.")
+            Text("The spelling you want in your transcription.")
                 .font(self.theme.typography.caption)
                 .foregroundStyle(self.theme.palette.secondaryText)
         }
@@ -2928,6 +2935,7 @@ private struct DictionaryInputChrome: ViewModifier {
         content
             .textFieldStyle(.plain)
             .focused(self.$isFocused)
+            .dictionaryDictationInput(focused: self.isFocused)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(minHeight: self.minHeight)

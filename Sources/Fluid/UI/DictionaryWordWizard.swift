@@ -120,6 +120,7 @@ struct DictionaryWordWizard: View {
             }
             .font(self.theme.typography.body)
             .focused(self.$wordFocused)
+            .dictionaryDictationInput(focused: self.wordFocused)
             .accessibilityLabel("Word to learn")
             .onSubmit { if !self.word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { self.onContinue() } }
             self.primary("Continue", action: self.onContinue)
@@ -149,19 +150,13 @@ struct DictionaryWordWizard: View {
     }
 
     private var manualAlternative: some View {
-        VStack(spacing: self.theme.metrics.spacing.lg) {
-            Divider().padding(.vertical, self.theme.metrics.spacing.md)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: self.theme.metrics.spacing.lg) {
-                    self.manualExplanation.frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
-                    self.manualButton.disabled(self.busy)
-                }
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-                    self.manualExplanation
-                    self.manualButton.disabled(self.busy)
-                }
-            }
+        HStack(spacing: self.theme.metrics.spacing.md) {
+            Text("Prefer typing?")
+                .font(self.theme.typography.body)
+                .foregroundStyle(self.theme.palette.secondaryText)
+            self.manualButton.disabled(self.busy)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var captureStage: some View {
@@ -355,25 +350,6 @@ struct DictionaryWordWizard: View {
         Button("Redo recordings") { self.confirmingRedo = true }
             .fluidGlassAction()
             .disabled(self.busy)
-    }
-
-    private var manualExplanation: some View {
-        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
-            Text("Or, fix a specific spelling")
-                .font(self.theme.typography.sectionTitle)
-            Text("Tell us what FluidVoice types and what you want instead.")
-                .font(self.theme.typography.body)
-                .foregroundStyle(self.theme.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: self.theme.metrics.spacing.md) {
-                Text("chat GPT").foregroundStyle(self.theme.palette.secondaryText)
-                Image(systemName: "arrow.right").foregroundStyle(self.theme.palette.secondaryText)
-                Text("ChatGPT").foregroundStyle(self.theme.palette.accent)
-            }
-            .font(self.theme.typography.body)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Example: chat space GPT becomes ChatGPT")
-        }
     }
 
     private var manualButton: some View {
