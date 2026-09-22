@@ -158,6 +158,17 @@ final class MeetingDetectionPromptController: ObservableObject {
         self.onDismiss?(request.episodeID)
     }
 
+    /// Turns meeting detection off entirely; FluidMeet settings › Automation turns it back on.
+    func dontShowAgainTapped() {
+        guard let request, !self.isStarting else { return }
+        SettingsStore.shared.meetingAutoDetectEnabled = false
+        DebugLogger.shared.log("prompt-dont-show-again", source: "MeetingAutoDetector")
+        self.hide()
+        // Consumes the episode without counting as a dismissal; the "fewer interruptions"
+        // advisor must not suggest turning off what the user just turned off.
+        self.onTimeout?(request.episodeID)
+    }
+
     func pauseAutoDismiss() {
         guard self.request != nil, !self.isAutoDismissPaused, let startedAt = self.autoDismissLegStartedAt else { return }
         self.remainingAutoDismissSeconds = Self.remainingAutoDismissSeconds(
@@ -194,10 +205,11 @@ final class MeetingDetectionPromptController: ObservableObject {
         self.cancelSuppressionRetry()
         self.request = request
         let resolved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: request.bundleIdentifier)
-        self.appIcon = resolved.map { NSWorkspace.shared.icon(forFile: $0.path) }
-        self.appDisplayName = resolved.flatMap {
+        self.appIcon = NSImage(named: "AppIcon") ?? NSApp.applicationIconImage
+        let appName = resolved.flatMap {
             FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "")
         } ?? "Meeting"
+        self.appDisplayName = request.serviceName.map { "\($0) · in \(appName)" } ?? appName
 
         let panel = self.panelOrCreate()
         self.placeAtDefaultPosition(panel)
@@ -213,7 +225,7 @@ final class MeetingDetectionPromptController: ObservableObject {
         }
         DebugLogger.shared.log("prompt-shown bundle=\(request.bundleIdentifier)", source: "MeetingAutoDetector")
         AccessibilityNotification.Announcement(
-            "Meeting detected in \(self.appDisplayName). Nothing is recording yet."
+            "Record this meeting? \(self.appDisplayName). Nothing is recording yet."
         ).post()
 
         self.clearAutoDismiss()
@@ -524,10 +536,10 @@ private struct MeetingDetectionPromptContent: View {
                         )
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Meeting detected")
+                    Text("Record this meeting?")
                         .font(self.theme.typography.bodyStrong)
                         .foregroundStyle(self.theme.palette.primaryText)
-                    Text("\(self.controller.appDisplayName) appears to be in a call")
+                    Text(self.controller.appDisplayName)
                         .font(self.theme.typography.caption)
                         .foregroundStyle(self.theme.palette.secondaryText)
                         .lineLimit(1)
@@ -545,29 +557,30 @@ private struct MeetingDetectionPromptContent: View {
                     Label("Starting…", systemImage: "waveform")
                         .font(self.theme.typography.caption)
                         .foregroundStyle(self.theme.palette.secondaryText)
-                } else {
-                    Label(
-                        self.controller.request?.cta == .setup ? "Recording hasn’t started — setup required" : "Not recording yet",
-                        systemImage: "mic.slash.fill"
-                    )
-                        .font(self.theme.typography.caption)
-                        .foregroundStyle(self.theme.palette.secondaryText)
                 }
 
                 Spacer(minLength: 8)
 
-                Button("Not now") {
+                Menu {
+                    Button("Don’t show again") {
+                        self.controller.dontShowAgainTapped()
+                    }
+                } label: {
+                    Text("Not now")
+                } primaryAction: {
                     self.controller.dismissTapped()
                 }
+                .menuStyle(.button)
                 .fluidButton(.compact, size: .small)
                 .disabled(self.controller.isStarting)
+                .help("Click to dismiss. Hold for more options.")
 
                 Button {
                     self.controller.startTapped()
                 } label: {
                     Label(
-                        self.controller.request?.cta == .setup ? "Open recording setup" : "Record & transcribe",
-                        systemImage: self.controller.request?.cta == .setup ? "gearshape" : "waveform"
+                        self.controller.request?.cta == .setup ? "Set up" : "Record",
+                        systemImage: self.controller.request?.cta == .setup ? "gearshape" : "record.circle"
                     )
                 }
                 .fluidButton(.accent, size: .small)
@@ -597,7 +610,7 @@ private struct MeetingDetectionPromptContent: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Meeting detected in \(self.controller.appDisplayName). Nothing is recording yet. Record and transcribe, or dismiss.")
+        .accessibilityLabel("Record this meeting? \(self.controller.appDisplayName). Nothing is recording yet. Record, or dismiss.")
     }
 }
 
