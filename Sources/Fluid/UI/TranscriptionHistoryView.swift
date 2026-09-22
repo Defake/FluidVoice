@@ -475,7 +475,7 @@ struct TranscriptionHistoryView: View {
                 FluidManagementGroup(title: "Processing") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16, alignment: .leading)], alignment: .leading, spacing: 16) {
                         if self.settings.showHistoryPerformanceMetrics {
-                            if let duration = entry.parakeetProcessingDurationMilliseconds {
+                            if let duration = entry.parakeetProcessingDurationMilliseconds ?? entry.transcriptionDurationMilliseconds {
                                 self.metadataItem(
                                     icon: "waveform",
                                     label: "Transcription",

@@ -606,6 +606,7 @@ final class ASRService: ObservableObject {
     private(set) var lastDictionaryTrainingResult: ASRTranscriptionResult?
     private(set) var lastStopOutcome: ASRStopOutcome = .empty
     private var lastFinalTranscriptionDurationMs: Int?
+    private var lastFinalParakeetProcessingMs: Int?
     private(set) var dictionaryTrainingAudioGeneration = 0
 
     @Published private(set) var isStarting: Bool = false // Guard against re-entrant start() calls
@@ -2023,6 +2024,13 @@ final class ASRService: ObservableObject {
         return duration
     }
 
+    /// FluidAudio's own Parakeet time for the last final pass; nil for every other engine.
+    func consumeLastFinalParakeetProcessingMs() -> Int? {
+        let duration = self.lastFinalParakeetProcessingMs
+        self.lastFinalParakeetProcessingMs = nil
+        return duration
+    }
+
     func dictionaryTrainingAudioChunk(at offset: Int, count: Int) -> [Float] {
         self.audioBuffer.getRange(startingAt: offset, count: count)
     }
@@ -3286,6 +3294,7 @@ final class ASRService: ObservableObject {
         DebugLogger.shared.info("🛑 STOP() called - beginning shutdown sequence", source: "ASRService")
         self.lastStopOutcome = .empty
         self.lastFinalTranscriptionDurationMs = nil
+        self.lastFinalParakeetProcessingMs = nil
         if forDictionaryTraining || self.isDictionaryTrainingCaptureActive {
             self.lastDictionaryTrainingResult = nil
         }
@@ -3594,7 +3603,8 @@ final class ASRService: ObservableObject {
             let finalElapsedMs = self.elapsedMilliseconds(since: finalStartedAt)
             traceStop("final_asr_end")
             if !useDictionaryTrainingPath {
-                self.lastFinalTranscriptionDurationMs = result.parakeetProcessingDurationMilliseconds
+                self.lastFinalTranscriptionDurationMs = finalElapsedMs
+                self.lastFinalParakeetProcessingMs = result.parakeetProcessingDurationMilliseconds
             }
             let finalAudioSeconds = Double(pcm.count) / 16_000.0
             let finalRTF = finalAudioSeconds > 0 ? (Double(finalElapsedMs) / 1000.0) / finalAudioSeconds : 0
