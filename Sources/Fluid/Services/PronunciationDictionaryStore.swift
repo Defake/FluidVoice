@@ -169,7 +169,7 @@ actor PronunciationDictionaryStore {
             label: label,
             modelKey: modelKey,
             hiddenSize: first.values.count,
-            enrollments: Array(combinedEnrollments.suffix(10)),
+            enrollments: Self.retainedEnrollments(combinedEnrollments),
             automaticMatchingEnabled: automaticMatchingEnabled || existingIndex.map { profiles[$0].automaticMatchingEnabled == true } == true,
             matchThreshold: existingIndex.flatMap { profiles[$0].matchThreshold }
         )
@@ -188,6 +188,42 @@ actor PronunciationDictionaryStore {
         for id in writtenInspectionIDs where !retained.contains(id) {
             try? FileManager.default.removeItem(at: self.inspectionURL(id))
         }
+    }
+
+    /// Keep trained references when automatically learned examples reach the history limit.
+    static func retainedEnrollments(_ captures: [PronunciationEnrollmentCapture]) -> [PronunciationEnrollmentCapture] {
+        let protected = Set(captures.indices.filter { captures[$0].originalAudioID == nil }.suffix(3))
+        let remaining = captures.indices.filter { !protected.contains($0) }.suffix(10 - protected.count)
+        let selected = protected.union(remaining)
+        // Manual references first so the matcher can keep its existing calibration.
+        return selected.sorted { lhs, rhs in
+            let leftManual = captures[lhs].originalAudioID == nil
+            let rightManual = captures[rhs].originalAudioID == nil
+            return leftManual == rightManual ? lhs < rhs : leftManual
+        }.map { captures[$0] }
+    }
+
+    /// Validated focal audio for legacy and new automatically learned references.
+    func originalAudioSamples(for capture: PronunciationEnrollmentCapture, entryID: UUID) throws -> [Float] {
+        guard let id = capture.originalAudioID else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+        let url = self.audioURL(id)
+        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+        guard size <= 2_000_000 else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+        let record = try JSONDecoder().decode(OriginalAudioRecord.self, from: Data(contentsOf: url))
+        guard record.version == 1, record.sampleRate == 16_000, record.encoding == "float32-little-endian",
+              record.entryID == entryID, record.evidenceID == id, record.modelKey == capture.modelKey,
+              record.pcmFloat32.count % MemoryLayout<Float>.size == 0,
+              record.pcmFloat32.count <= 238_080 * MemoryLayout<Float>.size
+        else {
+            throw PronunciationDictionaryStoreError.inconsistentEnrollment
+        }
+        let samples = record.pcmFloat32.withUnsafeBytes { bytes in
+            stride(from: 0, to: bytes.count, by: MemoryLayout<Float>.size).map { bytes.loadUnaligned(fromByteOffset: $0, as: Float.self) }
+        }
+        let range = record.focalSampleRange
+        guard !range.isEmpty, range.lowerBound >= 0, range.upperBound <= samples.count,
+              samples.allSatisfy(\.isFinite) else { throw PronunciationDictionaryStoreError.inconsistentEnrollment }
+        return Array(samples[range])
     }
 
     /// Reads only the selected example. Legacy profiles explicitly have no evidence.

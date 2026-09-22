@@ -1,3 +1,5 @@
+// Existing end-to-end fixture suite is kept together to share its setup and helpers.
+// swiftlint:disable file_length
 import AppKit
 @testable import FluidVoice_Debug
 import Foundation
@@ -9,7 +11,6 @@ import XCTest
 
 @MainActor
 final class DictationE2ETests: XCTestCase {
-
     // Pronunciation features are opt-in in the app; these tests exercise the enabled paths.
     private var priorSharedFeaturesFlag: Any?
 
@@ -23,6 +24,7 @@ final class DictationE2ETests: XCTestCase {
         UserDefaults.standard.set(self.priorSharedFeaturesFlag, forKey: "DictionarySharedFeatureMatcherEnabled")
         super.tearDown()
     }
+
     private let enableTranscriptionSoundsKey = "EnableTranscriptionSounds"
     private let transcriptionStartSoundKey = "TranscriptionStartSound"
     private let dictationPromptProfilesKey = "DictationPromptProfiles"
@@ -1161,8 +1163,26 @@ extension DictationE2ETests {
         XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: hits, profiles: [profile], labels: [id: "FluidVoice"]), "FluidVoice and FluidVoice")
         // Deleted dictionary entries and low-confidence hits leave speech untouched.
         XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: hits, profiles: [profile], labels: [:]), result.text)
-        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 0, score: 0.1, frameRange: 162..<170)], profiles: [profile], labels: [id: "FluidVoice"]), result.text)
-        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 99, score: 1, frameRange: 162..<170)], profiles: [profile], labels: [id: "FluidVoice"]), result.text)
+        XCTAssertEqual(
+            FluidAudioProvider
+                .applyPronunciationMatches(
+                    result: result,
+                    matches: [PronunciationWindowMatch(prototypeIndex: 0, score: 0.1, frameRange: 162..<170)],
+                    profiles: [profile],
+                    labels: [id: "FluidVoice"]
+                ),
+            result.text
+        )
+        XCTAssertEqual(
+            FluidAudioProvider
+                .applyPronunciationMatches(
+                    result: result,
+                    matches: [PronunciationWindowMatch(prototypeIndex: 99, score: 1, frameRange: 162..<170)],
+                    profiles: [profile],
+                    labels: [id: "FluidVoice"]
+                ),
+            result.text
+        )
     }
 
     func testPronunciationStreamingTwoMinuteRealAudio() async throws {
@@ -3340,7 +3360,14 @@ extension DictationE2ETests {
         let revision = await store.revision(for: entryID)
         var inserted: [Bool] = []
         for id in [evidenceID, evidenceID, UUID()] {
-            try inserted.append(await store.learnOriginalAudio(entryID: entryID, label: "FluidVoice", evidenceID: id, evidence: evidence, capture: capture, expectedRevision: revision))
+            try inserted.append(await store.learnOriginalAudio(
+                entryID: entryID,
+                label: "FluidVoice",
+                evidenceID: id,
+                evidence: evidence,
+                capture: capture,
+                expectedRevision: revision
+            ))
         }
         XCTAssertEqual(inserted, [true, false, false], "Rollback must know whether this call actually inserted evidence")
         do {
@@ -3350,7 +3377,14 @@ extension DictationE2ETests {
         let conflictingEntry = UUID()
         let conflictingRevision = await store.revision(for: conflictingEntry)
         do {
-            try await store.learnOriginalAudio(entryID: conflictingEntry, label: "AnotherWord", evidenceID: evidenceID, evidence: evidence, capture: capture, expectedRevision: conflictingRevision)
+            try await store.learnOriginalAudio(
+                entryID: conflictingEntry,
+                label: "AnotherWord",
+                evidenceID: evidenceID,
+                evidence: evidence,
+                capture: capture,
+                expectedRevision: conflictingRevision
+            )
             XCTFail("An event UUID cannot overwrite another word's audio")
         } catch { XCTAssertEqual(error as? PronunciationDictionaryStoreError, .inconsistentEnrollment) }
         let loaded = await PronunciationDictionaryStore(fileURL: url).allProfiles()
@@ -3379,9 +3413,24 @@ extension DictationE2ETests {
         let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
         let id = UUID()
         let revision = await store.revision(for: id)
-        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "test", sourceWordRange: 0..<1, sourceSampleRange: 0..<1, focalSampleRange: 0..<1, samples: [0])
+        let evidence = DictionaryLearningAudioEvidence(
+            recordingID: UUID(),
+            modelKey: "parakeet-v3",
+            observedText: "test",
+            sourceWordRange: 0..<1,
+            sourceSampleRange: 0..<1,
+            focalSampleRange: 0..<1,
+            samples: [0]
+        )
         do {
-            try await store.learnOriginalAudio(entryID: id, label: "Test", evidenceID: UUID(), evidence: evidence, capture: PronunciationEnrollmentCapture(values: [.nan], sourceFrameCount: 1, modelKey: "parakeet-v3"), expectedRevision: revision)
+            try await store.learnOriginalAudio(
+                entryID: id,
+                label: "Test",
+                evidenceID: UUID(),
+                evidence: evidence,
+                capture: PronunciationEnrollmentCapture(values: [.nan], sourceFrameCount: 1, modelKey: "parakeet-v3"),
+                expectedRevision: revision
+            )
             XCTFail("Non-finite embeddings must never be activated")
         } catch {
             XCTAssertEqual(error as? PronunciationDictionaryStoreError, .inconsistentEnrollment)
@@ -3391,7 +3440,14 @@ extension DictationE2ETests {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
         try await store.replaceAllProfiles([])
         do {
-            try await store.learnOriginalAudio(entryID: id, label: "Test", evidenceID: UUID(), evidence: evidence, capture: PronunciationEnrollmentCapture(values: [1], sourceFrameCount: 1, modelKey: "parakeet-v3"), expectedRevision: revision)
+            try await store.learnOriginalAudio(
+                entryID: id,
+                label: "Test",
+                evidenceID: UUID(),
+                evidence: evidence,
+                capture: PronunciationEnrollmentCapture(values: [1], sourceFrameCount: 1, modelKey: "parakeet-v3"),
+                expectedRevision: revision
+            )
             XCTFail("Import must invalidate pending original-audio learning")
         } catch { XCTAssertEqual(error as? PronunciationDictionaryStoreError, .staleEvidence) }
     }
@@ -3419,7 +3475,10 @@ extension DictationE2ETests {
         XCTAssertFalse(incompatible.isEligibleForMatching)
         let other = PronunciationDictionaryProfile(dictionaryEntryID: otherID, label: "Other", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [sample])
         let competitor = PronunciationWindowMatch(prototypeIndex: 1, score: 0.88, frameRange: 0..<6)
-        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match, competitor], profiles: [profile, other], labels: [id: "FluidVoice", otherID: "Other"]), result.text)
+        XCTAssertEqual(
+            FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match, competitor], profiles: [profile, other], labels: [id: "FluidVoice", otherID: "Other"]),
+            result.text
+        )
     }
     #endif
 }
@@ -3449,7 +3508,15 @@ extension DictationE2ETests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
         let entry = SettingsStore.CustomDictionaryEntry(triggers: ["flued"], replacement: "Fluid")
-        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "flued", sourceWordRange: 0..<1, sourceSampleRange: 0..<1280, focalSampleRange: 0..<1280, samples: Array(repeating: 0, count: 1280))
+        let evidence = DictionaryLearningAudioEvidence(
+            recordingID: UUID(),
+            modelKey: "parakeet-v3",
+            observedText: "flued",
+            sourceWordRange: 0..<1,
+            sourceSampleRange: 0..<1280,
+            focalSampleRange: 0..<1280,
+            samples: Array(repeating: 0, count: 1280)
+        )
         let started = self.expectation(description: "Background extraction started")
         let cancelled = self.expectation(description: "Dictation cancelled background work")
         let extractor = DictionaryLearningTestExtractor(started: started, cancelled: cancelled)
@@ -3482,14 +3549,25 @@ extension DictationE2ETests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
         let entry = SettingsStore.CustomDictionaryEntry(triggers: ["flued"], replacement: "Fluid")
-        let evidence = DictionaryLearningAudioEvidence(recordingID: UUID(), modelKey: "parakeet-v3", observedText: "flued", sourceWordRange: 0..<1, sourceSampleRange: 0..<1, focalSampleRange: 0..<1, samples: [0])
-        let service = DictionaryAudioLearningService(store: store,
-        lifetime: 0.05,
-        extract: { _ in
-            XCTFail("Busy dictation must not run the background encoder")
-            throw CancellationError()
-        }, canProcess: { false },
-        isCurrent: { _ in true })
+        let evidence = DictionaryLearningAudioEvidence(
+            recordingID: UUID(),
+            modelKey: "parakeet-v3",
+            observedText: "flued",
+            sourceWordRange: 0..<1,
+            sourceSampleRange: 0..<1,
+            focalSampleRange: 0..<1,
+            samples: [0]
+        )
+        let service = DictionaryAudioLearningService(
+            store: store,
+            lifetime: 0.05,
+            extract: { _ in
+                XCTFail("Busy dictation must not run the background encoder")
+                throw CancellationError()
+            },
+            canProcess: { false },
+            isCurrent: { _ in true }
+        )
         for _ in 0..<6 {
             service.learn(entry: entry, evidenceID: UUID(), evidence: evidence)
         }
@@ -3520,7 +3598,12 @@ extension DictationE2ETests {
         let alignment = DictionaryLearningAlignment(modelKey: "parakeet-v3", words: words.map { ASRWordTiming(text: $0.text, start: $0.startTime, end: $0.endTime) })
         let recording = try XCTUnwrap(DictionaryLearningRecording(alignment: alignment, samples: samples))
         let delivered = words.map(\.text).joined(separator: " ")
-        let evidence = try DictionaryLearningAlignmentResolver.resolve(recording: recording, deliveredTextBeforeEdit: delivered, selectedUTF16Range: (delivered as NSString).range(of: selected.text), observedText: selected.text)
+        let evidence = try DictionaryLearningAlignmentResolver.resolve(
+            recording: recording,
+            deliveredTextBeforeEdit: delivered,
+            selectedUTF16Range: (delivered as NSString).range(of: selected.text),
+            observedText: selected.text
+        )
         let entry = SettingsStore.CustomDictionaryEntry(triggers: [selected.text], replacement: "LearnedTarget")
         let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
         let service = DictionaryAudioLearningService(store: store, canProcess: { true }, isCurrent: { $0 == entry })
@@ -3583,7 +3666,12 @@ extension DictationE2ETests {
                     TokenTiming(token: "▁" + parts[0], tokenId: 1, startTime: 0, endTime: 0.24, confidence: 1),
                     TokenTiming(token: "▁" + parts[1], tokenId: 2, startTime: 0.24, endTime: 0.48, confidence: 1),
                 ])
-                let acoustic = FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 0, score: score, frameRange: 0..<6)], profiles: [profile], labels: [id: "FluidVoice"])
+                let acoustic = FluidAudioProvider.applyPronunciationMatches(
+                    result: result,
+                    matches: [PronunciationWindowMatch(prototypeIndex: 0, score: score, frameRange: 0..<6)],
+                    profiles: [profile],
+                    labels: [id: "FluidVoice"]
+                )
                 XCTAssertEqual(ASRService.applyCustomDictionary(acoustic), expected)
                 if text == "fluid boys" { XCTAssertEqual(acoustic, text, "Text fallback must recover an acoustic miss") }
                 if text == "fluent voice" { XCTAssertEqual(ASRService.applyCustomDictionary(text), text, "Audio must recover a text-rule miss") }
@@ -3593,12 +3681,24 @@ extension DictationE2ETests {
 
     func testDictionaryLearningReconciliationCostAtScale() {
         let wordCount = 1200
-        let result = ASRResult(text: Array(repeating: "spoken", count: wordCount).joined(separator: " "), confidence: 1, duration: 600, processingTime: 0, tokenTimings: (0..<wordCount).map { index in
-            TokenTiming(token: "▁spoken", tokenId: 1, startTime: Double(index) * 0.48, endTime: Double(index + 1) * 0.48, confidence: 1)
-        })
+        let result = ASRResult(
+            text: Array(repeating: "spoken", count: wordCount).joined(separator: " "),
+            confidence: 1,
+            duration: 600,
+            processingTime: 0,
+            tokenTimings: (0..<wordCount).map { index in
+                TokenTiming(token: "▁spoken", tokenId: 1, startTime: Double(index) * 0.48, endTime: Double(index + 1) * 0.48, confidence: 1)
+            }
+        )
         for count in [1, 10, 1000] {
             let profiles = (0..<count).map { index in
-                PronunciationDictionaryProfile(dictionaryEntryID: UUID(), label: "Target\(index)", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "spoken")])
+                PronunciationDictionaryProfile(
+                    dictionaryEntryID: UUID(),
+                    label: "Target\(index)",
+                    modelKey: "parakeet-v3",
+                    hiddenSize: 2,
+                    enrollments: [PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "spoken")]
+                )
             }
             let labels = Dictionary(uniqueKeysWithValues: profiles.map { ($0.dictionaryEntryID, $0.label) })
             let matches = (0..<count).map { PronunciationWindowMatch(prototypeIndex: $0, score: 0.95, frameRange: ($0 * 6)..<(($0 + 1) * 6)) }
@@ -3666,7 +3766,12 @@ extension DictationE2ETests {
             ])
             let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3", originalAudioID: UUID(), observedText: "fluid")
             let profile = PronunciationDictionaryProfile(dictionaryEntryID: entry.id, label: entry.replacement, modelKey: capture.modelKey, hiddenSize: 2, enrollments: [capture])
-            let audioOnly = FluidAudioProvider.applyPronunciationMatches(result: result, matches: [PronunciationWindowMatch(prototypeIndex: 0, score: 0.95, frameRange: 0..<6)], profiles: [profile], labels: [entry.id: entry.replacement])
+            let audioOnly = FluidAudioProvider.applyPronunciationMatches(
+                result: result,
+                matches: [PronunciationWindowMatch(prototypeIndex: 0, score: 0.95, frameRange: 0..<6)],
+                profiles: [profile],
+                labels: [entry.id: entry.replacement]
+            )
             let textOnly = ASRService.applyCustomDictionary(result.text)
             let combined = ASRService.applyCustomDictionary(audioOnly)
             XCTAssertEqual(audioOnly, "Fluid Voice plus fluid")
@@ -3688,12 +3793,20 @@ extension DictationE2ETests {
                 TokenTiming(token: "▁" + spoken, tokenId: 1, startTime: 0, endTime: 0.48, confidence: 1),
                 TokenTiming(token: "▁project", tokenId: 2, startTime: 0.6, endTime: 0.9, confidence: 1),
             ])
-            XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [.init(prototypeIndex: 0, score: 0.8835, frameRange: 0..<6)], profiles: [profile], labels: [id: "Jensen"]), result.text)
+            XCTAssertEqual(
+                FluidAudioProvider
+                    .applyPronunciationMatches(result: result, matches: [.init(prototypeIndex: 0, score: 0.8835, frameRange: 0..<6)], profiles: [profile], labels: [id: "Jensen"]),
+                result.text
+            )
         }
         XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen's", heardText: "Jensen's", profile: profile), "Jensen's")
         XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen", heardText: "Jensen", profile: profile), "Jensen")
         profile.enrollments[0].observedText = "Jensen's"
-        XCTAssertEqual(DictionaryPronunciationDecision.labelPreservingPossessive("Jensen", heardText: "Jensen's", profile: profile), "Jensen", "An explicitly taught removal keeps its intended meaning")
+        XCTAssertEqual(
+            DictionaryPronunciationDecision.labelPreservingPossessive("Jensen", heardText: "Jensen's", profile: profile),
+            "Jensen",
+            "An explicitly taught removal keeps its intended meaning"
+        )
     }
 
     func testApprovedCorrectionLearnsOriginalRealAudioThroughExistingSession() async throws {
@@ -3731,9 +3844,22 @@ extension DictationE2ETests {
         let oldRange = (delivered as NSString).range(of: word.text)
         let intended = "PersonalName"
         let edited = (delivered as NSString).replacingCharacters(in: oldRange, with: intended)
-        var candidate = try XCTUnwrap(AutomaticDictionaryCorrectionDetector.candidate(before: delivered, after: edited, insertedRange: NSRange(location: 0, length: (delivered as NSString).length), allowsInsertionAtEnd: true))
-        let recording = try XCTUnwrap(DictionaryLearningRecording(alignment: .init(modelKey: "parakeet-v3", words: words.map { .init(text: $0.text, start: $0.startTime, end: $0.endTime) }), samples: samples))
-        candidate.audioEvidence = try DictionaryLearningAlignmentResolver.resolve(recording: recording, deliveredTextBeforeEdit: delivered, selectedUTF16Range: XCTUnwrap(candidate.sourceUTF16Range), observedText: candidate.heardText)
+        var candidate = try XCTUnwrap(AutomaticDictionaryCorrectionDetector.candidate(
+            before: delivered,
+            after: edited,
+            insertedRange: NSRange(location: 0, length: (delivered as NSString).length),
+            allowsInsertionAtEnd: true
+        ))
+        let recording = try XCTUnwrap(DictionaryLearningRecording(
+            alignment: .init(modelKey: "parakeet-v3", words: words.map { .init(text: $0.text, start: $0.startTime, end: $0.endTime) }),
+            samples: samples
+        ))
+        candidate.audioEvidence = try DictionaryLearningAlignmentResolver.resolve(
+            recording: recording,
+            deliveredTextBeforeEdit: delivered,
+            selectedUTF16Range: XCTUnwrap(candidate.sourceUTF16Range),
+            observedText: candidate.heardText
+        )
         let worker = DictionaryAudioLearningService(store: store, canProcess: { true })
         let session = AutomaticDictionaryTrainingSession(candidate: candidate, asr: AppServices.shared.asr, audioLearning: worker)
         let before = await store.allProfiles()
@@ -3777,7 +3903,13 @@ extension DictationE2ETests {
     func testWizardPronunciationOptInRequiresThreeSamplesAndPreservesLegacyPolicy() throws {
         let entry = SettingsStore.CustomDictionaryEntry(triggers: ["fluid"], replacement: "Fluid Voice")
         let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3")
-        var profile = PronunciationDictionaryProfile(dictionaryEntryID: entry.id, label: entry.replacement, modelKey: capture.modelKey, hiddenSize: 2, enrollments: [capture, capture])
+        var profile = PronunciationDictionaryProfile(
+            dictionaryEntryID: entry.id,
+            label: entry.replacement,
+            modelKey: capture.modelKey,
+            hiddenSize: 2,
+            enrollments: [capture, capture]
+        )
         profile.automaticMatchingEnabled = true
         XCTAssertTrue(FluidAudioProvider.matchingProfiles([profile], entries: [entry], includeManual: false, includeOriginal: false).isEmpty)
         profile.enrollments.append(capture)
@@ -3792,7 +3924,13 @@ extension DictationE2ETests {
     func testDictionaryAutomaticProfileSelectionPreservesMeaningAndManualOptIn() {
         let entry = SettingsStore.CustomDictionaryEntry(triggers: ["fluid"], replacement: "Fluid Voice")
         let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3")
-        let manual = PronunciationDictionaryProfile(dictionaryEntryID: entry.id, label: entry.replacement, modelKey: capture.modelKey, hiddenSize: 2, enrollments: [capture, capture, capture])
+        let manual = PronunciationDictionaryProfile(
+            dictionaryEntryID: entry.id,
+            label: entry.replacement,
+            modelKey: capture.modelKey,
+            hiddenSize: 2,
+            enrollments: [capture, capture, capture]
+        )
         XCTAssertTrue(FluidAudioProvider.matchingProfiles([manual], entries: [entry], includeManual: false).isEmpty)
         XCTAssertEqual(FluidAudioProvider.matchingProfiles([manual], entries: [entry], includeManual: true).count, 1)
         var original = manual
@@ -3865,7 +4003,13 @@ extension DictationE2ETests {
         let id = UUID(), otherID = UUID()
         let sample = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 6, modelKey: "parakeet-v3")
         var profile = PronunciationDictionaryProfile(dictionaryEntryID: id, label: "Target", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [sample, sample, sample])
-        let result = ASRResult(text: "misheard", confidence: 0.8, duration: 0.48, processingTime: 0.1, tokenTimings: [TokenTiming(token: "misheard", tokenId: 1, startTime: 0, endTime: 0.48, confidence: 0.8)])
+        let result = ASRResult(
+            text: "misheard",
+            confidence: 0.8,
+            duration: 0.48,
+            processingTime: 0.1,
+            tokenTimings: [TokenTiming(token: "misheard", tokenId: 1, startTime: 0, endTime: 0.48, confidence: 0.8)]
+        )
         let match = PronunciationWindowMatch(prototypeIndex: 0, score: 0.49, frameRange: 0..<6)
         XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [match], profiles: [profile], labels: [id: "Target"]), "misheard")
         profile.matchThreshold = 0.45
@@ -3875,7 +4019,10 @@ extension DictationE2ETests {
         let other = PronunciationDictionaryProfile(dictionaryEntryID: otherID, label: "Other", modelKey: "parakeet-v3", hiddenSize: 2, enrollments: [sample, sample, sample])
         profile.matchThreshold = 0.45
         let otherMatch = PronunciationWindowMatch(prototypeIndex: 1, score: 0.65, frameRange: 0..<6)
-        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: [otherMatch], profiles: [profile, other], labels: [id: "Target", otherID: "Other"]), "misheard")
+        XCTAssertEqual(
+            FluidAudioProvider.applyPronunciationMatches(result: result, matches: [otherMatch], profiles: [profile, other], labels: [id: "Target", otherID: "Other"]),
+            "misheard"
+        )
     }
 }
 #endif
@@ -3899,14 +4046,27 @@ extension DictationE2ETests {
         XCTAssertEqual(matches[0].first?.score, 1)
         XCTAssertTrue(matches[1].isEmpty && matches[2].isEmpty)
         let averaged = try XCTUnwrap(PronunciationEmbeddingMatcher.prototype(from: references.map(\.embedding)))
-        XCTAssertTrue(PronunciationEmbeddingMatcher.allMatches(prototypes: [averaged], in: features, windowFrameCounts: [[6]])[0].isEmpty, "The old averaged center misses this valid individual example")
-        let result = ASRResult(text: "misheard", confidence: 0.8, duration: 0.48, processingTime: 0.1, tokenTimings: [TokenTiming(token: "misheard", tokenId: 1, startTime: 0, endTime: 0.48, confidence: 0.8)])
+        XCTAssertTrue(
+            PronunciationEmbeddingMatcher.allMatches(prototypes: [averaged], in: features, windowFrameCounts: [[6]])[0].isEmpty,
+            "The old averaged center misses this valid individual example"
+        )
+        let result = ASRResult(
+            text: "misheard",
+            confidence: 0.8,
+            duration: 0.48,
+            processingTime: 0.1,
+            tokenTimings: [TokenTiming(token: "misheard", tokenId: 1, startTime: 0, endTime: 0.48, confidence: 0.8)]
+        )
         let hits = matches.enumerated().flatMap { index, hits in
             hits.map { PronunciationWindowMatch(prototypeIndex: index, score: $0.score, frameRange: $0.frameRange) }
         }
         XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: hits, profiles: references.map(\.profile), labels: [id: "Target"]), "Target")
         let sameWord = hits + [PronunciationWindowMatch(prototypeIndex: 1, score: 0.99, frameRange: 0..<6)]
-        XCTAssertEqual(FluidAudioProvider.applyPronunciationMatches(result: result, matches: sameWord, profiles: references.map(\.profile), labels: [id: "Target"]), "Target", "A second recording of the same word is not a competing word")
+        XCTAssertEqual(
+            FluidAudioProvider.applyPronunciationMatches(result: result, matches: sameWord, profiles: references.map(\.profile), labels: [id: "Target"]),
+            "Target",
+            "A second recording of the same word is not a competing word"
+        )
         let otherID = UUID()
         let competitor = PronunciationDictionaryProfile(dictionaryEntryID: otherID, label: "Other", modelKey: profile.modelKey, hiddenSize: 2, enrollments: samples)
         let competingHits = hits + [PronunciationWindowMatch(prototypeIndex: 3, score: 0.99, frameRange: 0..<6)]
@@ -3928,7 +4088,7 @@ extension DictationE2ETests {
         XCTAssertEqual(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 1281..<2561)?.values, [0, 1, 1, 1])
         XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: -1..<100))
         XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 0..<0))
-        XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 9000..<10000))
+        XCTAssertNil(FluidAudioProvider.sharedPronunciationFrames(features, sampleRange: 9000..<10_000))
     }
 
     func testSharedFeatureDictionaryCorpusReplay() async throws {
@@ -3939,10 +4099,21 @@ extension DictationE2ETests {
         struct Job: Decodable { let id: String; let word: String; let path: String; let positive: Bool }
         let root = URL(fileURLWithPath: path)
         let jobs = try JSONDecoder().decode([Job].self, from: Data(contentsOf: root.appendingPathComponent("jobs.json")))
-        let keys = ["DictionarySharedFeatureMatcherEnabled", "DictionaryTemporalMatcherEnabled", "DictionaryNegativeLearningEnabled", "DictionaryNegativeComparisonEnabled", "DictionaryPronunciationDebugCapture", "DictionaryEdgeMatchingEnabled"]
+        let keys = [
+            "DictionarySharedFeatureMatcherEnabled",
+            "DictionaryTemporalMatcherEnabled",
+            "DictionaryNegativeLearningEnabled",
+            "DictionaryNegativeComparisonEnabled",
+            "DictionaryPronunciationDebugCapture",
+            "DictionaryEdgeMatchingEnabled",
+        ]
         let previous = keys.map { UserDefaults.standard.object(forKey: $0) }
-        defer { for (key, value) in zip(keys, previous) { UserDefaults.standard.set(value, forKey: key) } }
-        for key in keys { UserDefaults.standard.set(false, forKey: key) }
+        defer { for (key, value) in zip(keys, previous) {
+            UserDefaults.standard.set(value, forKey: key)
+        } }
+        for key in keys {
+            UserDefaults.standard.set(false, forKey: key)
+        }
         UserDefaults.standard.set(true, forKey: keys[0])
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("shared-dictionary-\(UUID())")
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -3954,7 +4125,10 @@ extension DictationE2ETests {
             var enrollments = profile.enrollments
             for i in enrollments.indices {
                 let id = try XCTUnwrap(enrollments[i].inspectionID)
-                enrollments[i].pendingInspection = try PropertyListDecoder().decode(DictionaryAudioInspection.self, from: Data(contentsOf: root.appendingPathComponent(id.uuidString + ".plist")))
+                enrollments[i].pendingInspection = try PropertyListDecoder().decode(
+                    DictionaryAudioInspection.self,
+                    from: Data(contentsOf: root.appendingPathComponent(id.uuidString + ".plist"))
+                )
             }
             try await store.upsert(dictionaryEntryID: profile.dictionaryEntryID, label: word, modelKey: profile.modelKey, enrollments: enrollments)
             entries.append(.init(id: profile.dictionaryEntryID, triggers: [], replacement: word))
@@ -3962,13 +4136,27 @@ extension DictationE2ETests {
         let savedProfiles = await store.allProfiles()
         let existingProfile = try XCTUnwrap(savedProfiles.first)
         do {
-            try await store.upsert(dictionaryEntryID: existingProfile.dictionaryEntryID, label: "MustNotSave", modelKey: existingProfile.modelKey, enrollments: existingProfile.enrollments, canPersist: { false })
+            try await store.upsert(
+                dictionaryEntryID: existingProfile.dictionaryEntryID,
+                label: "MustNotSave",
+                modelKey: existingProfile.modelKey,
+                enrollments: existingProfile.enrollments,
+                canPersist: { false }
+            )
             XCTFail("Disabled pending save must fail")
-        } catch is CancellationError { }
+        } catch is CancellationError {}
         let profilesAfterRejectedSave = await store.allProfiles()
         XCTAssertEqual(profilesAfterRejectedSave.map(\.label), savedProfiles.map(\.label), "Rejecting a pending save preserves existing voice profiles")
-        let provider = FluidAudioProvider(modelOverride: .parakeetTDTv2, configureWordBoosting: false, enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: true, customDictionaryEntries: entries), pronunciationStore: store)
+        let provider = FluidAudioProvider(
+            modelOverride: .parakeetTDTv2,
+            configureWordBoosting: false,
+            enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: true, customDictionaryEntries: entries),
+            pronunciationStore: store
+        )
+        DictionaryMatcherExperiment.setEnabled(false)
         try await provider.prepare()
+        XCTAssertNil(provider.pronunciationReferencePreparationTask, "Off must not schedule reference encoding")
+        XCTAssertFalse(provider.pronunciationReferencesReady)
         let savedEntries = SettingsStore.shared.customDictionaryEntries
         defer { SettingsStore.shared.customDictionaryEntries = savedEntries }
         SettingsStore.shared.customDictionaryEntries = [.init(triggers: ["test replacement key"], replacement: "ReplacementValue")]
@@ -3977,11 +4165,18 @@ extension DictationE2ETests {
             XCTAssertEqual(ASRService.applyCustomDictionary("test replacement key"), "ReplacementValue", "Text rules work across pronunciation toggles")
         }
         // Master off must defeat saved profiles and every legacy audio switch.
-        for key in keys { UserDefaults.standard.set(true, forKey: key) }
+        for key in keys {
+            UserDefaults.standard.set(true, forKey: key)
+        }
         UserDefaults.standard.set(false, forKey: keys[0])
         let probe = try XCTUnwrap(jobs.first { $0.positive })
         let pcm = try Data(contentsOf: URL(fileURLWithPath: probe.path)).withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-        let plain = FluidAudioProvider(modelOverride: .parakeetTDTv2, configureWordBoosting: false, enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: false, customDictionaryEntries: []), pronunciationStore: store)
+        let plain = FluidAudioProvider(
+            modelOverride: .parakeetTDTv2,
+            configureWordBoosting: false,
+            enhancementOptions: .init(experimentalUnifiedFinalEnabled: false, pronunciationMatchingEnabled: false, customDictionaryEntries: []),
+            pronunciationStore: store
+        )
         try await plain.prepare()
         let baseline = try await plain.transcribeFinal(pcm)
         let disabled = try await provider.transcribeFinal(pcm)
@@ -3990,9 +4185,27 @@ extension DictationE2ETests {
         do {
             _ = try await provider.transcribeDictionaryTraining(pcm, capturePronunciation: true)
             XCTFail("Off must reject voice enrollment")
-        } catch is CancellationError { }
-        for key in keys { UserDefaults.standard.set(false, forKey: key) }
-        UserDefaults.standard.set(true, forKey: keys[0])
+        } catch is CancellationError {}
+        for key in keys {
+            UserDefaults.standard.set(false, forKey: key)
+        }
+        DictionaryMatcherExperiment.setEnabled(true)
+        provider.resetStreamingPreviewCache()
+        XCTAssertFalse(provider.pronunciationReferencesReady, "Start with an unwarmed provider")
+        let cold = try await provider.transcribeFinal(pcm)
+        XCTAssertEqual(cold.text, baseline.text, "Cold cache misses skip acoustic matching instead of encoding references during final matching")
+        provider.resetStreamingPreviewCache()
+        _ = try await provider.transcribeStreaming(Array(pcm.prefix(32_000)))
+        let warmGeneration = DictionaryMatcherExperiment.generation
+        if let preparation = provider.pronunciationReferencePreparationTask {
+            let finished = expectation(description: "Production pronunciation reference preparation completes")
+            let waiter = Task { await preparation.value; finished.fulfill() }
+            await fulfillment(of: [finished], timeout: 30)
+            waiter.cancel()
+        }
+        XCTAssertEqual(DictionaryMatcherExperiment.generation, warmGeneration, "Readiness must belong to this master-switch generation")
+        XCTAssertTrue(provider.pronunciationReferencesReady, "Accuracy replay requires all production references prepared")
+        provider.resetStreamingPreviewCache()
         var falsePositives: [String] = [], falseNegatives: [String] = []
         var longFalsePositives: [String] = [], longFalseNegatives: [String] = []
         for job in jobs {
@@ -4000,8 +4213,8 @@ extension DictationE2ETests {
             provider.resetStreamingPreviewCache()
             let result = try await provider.transcribeFinal(samples)
             let accepted = result.text.contains(job.word)
-            if accepted && !job.positive { falsePositives.append(job.id) }
-            if !accepted && job.positive { falseNegatives.append(job.id) }
+            if accepted, !job.positive { falsePositives.append(job.id) }
+            if !accepted, job.positive { falseNegatives.append(job.id) }
             print("SHARED_CORPUS id=\(job.id) positive=\(job.positive) accepted=\(accepted)")
             if job.id == "page" { XCTAssertFalse(accepted, "Page must remain unchanged") }
             do {
@@ -4016,11 +4229,10 @@ extension DictationE2ETests {
                 let finalized = try await provider.transcribeFinal(long)
                 print("SHARED_LONG id=\(job.id) stopMs=\((ProcessInfo.processInfo.systemUptime - stop) * 1000)")
                 let longAccepted = finalized.text.contains(job.word)
-                if longAccepted && !job.positive { longFalsePositives.append(job.id) }
-                if !longAccepted && job.positive { longFalseNegatives.append(job.id) }
+                if longAccepted, !job.positive { longFalsePositives.append(job.id) }
+                if !longAccepted, job.positive { longFalseNegatives.append(job.id) }
                 print("SHARED_LONG_DECISION id=\(job.id) positive=\(job.positive) accepted=\(longAccepted)")
                 if job.id == "page" { XCTAssertFalse(longAccepted, "Page must remain rejected in longer recordings") }
-
             }
         }
         print("SHARED_CORPUS fp=\(falsePositives) fn=\(falseNegatives)")

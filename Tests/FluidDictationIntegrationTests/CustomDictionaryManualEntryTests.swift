@@ -9,7 +9,6 @@ import FluidAudio
 
 @MainActor
 final class CustomDictionaryManualEntryTests: XCTestCase {
-
     // Pronunciation features are opt-in in the app; these tests exercise the enabled paths.
     private var priorSharedFeaturesFlag: Any?
 
@@ -23,6 +22,91 @@ final class CustomDictionaryManualEntryTests: XCTestCase {
         UserDefaults.standard.set(self.priorSharedFeaturesFlag, forKey: "DictionarySharedFeatureMatcherEnabled")
         super.tearDown()
     }
+
+    #if arch(arm64)
+    func testLegacyEdgePreparationOnlyUsesReadyCachedReferences() {
+        let ids = (0..<3).map { _ in UUID() }
+        let enrollments = ids.map { id in
+            PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 2, modelKey: "parakeet-v2", inspectionID: id)
+        }
+        let profile = PronunciationDictionaryProfile(dictionaryEntryID: UUID(), label: "Word", modelKey: "parakeet-v2", hiddenSize: 2, enrollments: enrollments)
+        XCTAssertTrue(FluidAudioProvider.preparedEdgeProfiles([profile], cache: [:]).isEmpty)
+        let embedding = PronunciationEmbedding(values: [1, 0], sourceFrameCount: 2)
+        let incomplete = Dictionary(uniqueKeysWithValues: ids.prefix(2).map { ($0, embedding) })
+        XCTAssertTrue(FluidAudioProvider.preparedEdgeProfiles([profile], cache: incomplete).isEmpty)
+        let cache = Dictionary(uniqueKeysWithValues: ids.map { ($0, embedding) })
+        let ready = FluidAudioProvider.preparedEdgeProfiles([profile], cache: cache)
+        XCTAssertEqual(ready.count, 1)
+        XCTAssertTrue(ready[0].enrollments.allSatisfy { $0.edgeEmbedding == [1, 0] })
+        XCTAssertEqual(FluidAudioProvider.preparedEdgeProfiles(ready, cache: [:]), ready, "New persisted edges need no cache or migration")
+        DictionaryMatcherExperiment.setEnabled(false)
+        XCTAssertTrue(FluidAudioProvider.preparedEdgeProfiles(ready, cache: cache).isEmpty)
+    }
+
+    func testTemporalCacheKeepsNinthWordAndRejectsOverflowWithoutEviction() {
+        let frames = [DictionaryMatchFrames(hiddenSize: 2, values: [1, 0])]
+        let entryBytes = 2 * MemoryLayout<Float>.size
+        var cache = FluidAudioProvider.TemporalReferenceCache(byteLimit: 9 * entryBytes)
+        for index in 0..<9 { XCTAssertTrue(cache.insert(frames, for: String(index))) }
+        XCTAssertEqual(cache.byteCount, 9 * entryBytes)
+        XCTAssertEqual(cache["0"], frames, "Adding a ninth word must preserve earlier references")
+        XCTAssertFalse(cache.insert(frames, for: "overflow"))
+        XCTAssertNil(cache["missing"], "An unprepared reference is a pure lookup miss")
+        XCTAssertEqual(cache["0"], frames, "A miss or full cache must not evict existing words")
+        XCTAssertTrue(cache.insert(frames, for: "0"))
+        XCTAssertEqual(cache.byteCount, 9 * entryBytes, "Duplicate warming must not count memory twice")
+        cache.retain(keys: ["0", "8"])
+        XCTAssertEqual(cache.byteCount, 2 * entryBytes)
+        XCTAssertNil(cache["1"])
+        XCTAssertTrue(cache.insert(frames, for: "new"), "Deleting old profiles releases their memory")
+        cache.removeAll()
+        XCTAssertEqual(cache.byteCount, 0)
+        XCTAssertNil(cache["0"])
+    }
+    #endif
+
+    func testOriginalLearningPreservesThreeManualReferences() {
+        let manual = (0..<3).map { index in
+            PronunciationEnrollmentCapture(values: [Float(index)], sourceFrameCount: 1, modelKey: "parakeet-v2", inspectionID: UUID())
+        }
+        let original = (0..<12).map { index in
+            PronunciationEnrollmentCapture(values: [Float(index)], sourceFrameCount: 1, modelKey: "parakeet-v2", originalAudioID: UUID())
+        }
+        let kept = PronunciationDictionaryStore.retainedEnrollments(manual + original)
+        XCTAssertEqual(kept.count, 10)
+        XCTAssertEqual(Array(kept.prefix(3)), manual)
+        XCTAssertEqual(Array(kept.suffix(7)), Array(original.suffix(7)))
+        XCTAssertEqual(PronunciationDictionaryStore.retainedEnrollments(original), Array(original.suffix(10)))
+        XCTAssertEqual(PronunciationDictionaryStore.retainedEnrollments(Array(repeating: manual[0], count: 12)).count, 10)
+    }
+
+    func testOriginalReferenceReadsOnlyFocalPCMAndChecksEntry() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PronunciationDictionaryStore(fileURL: directory.appendingPathComponent("profiles.json"))
+        let entryID = UUID()
+        let evidence = DictionaryLearningAudioEvidence(
+            recordingID: UUID(),
+            modelKey: "parakeet-v2",
+            observedText: "word",
+            sourceWordRange: 0..<1,
+            sourceSampleRange: 0..<4,
+            focalSampleRange: 1..<3,
+            samples: [0.1, 0.2, 0.3, 0.4]
+        )
+        let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 1, modelKey: evidence.modelKey)
+        let revision = await store.revision(for: entryID)
+        _ = try await store.learnOriginalAudio(entryID: entryID, label: "Word", evidenceID: UUID(), evidence: evidence, capture: capture, expectedRevision: revision)
+        let profiles = await store.allProfiles()
+        let saved = try XCTUnwrap(profiles.first?.enrollments.first)
+        let samples = try await store.originalAudioSamples(for: saved, entryID: entryID)
+        XCTAssertEqual(samples, [0.2, 0.3])
+        do {
+            _ = try await store.originalAudioSamples(for: saved, entryID: UUID())
+            XCTFail("A different entry must not reuse another word's recording")
+        } catch {}
+    }
+
     func testVoiceTrainingKeepsPronunciationWithoutEverydayTextAliases() async {
         let filtered = await VoiceTrainingAliasFilter.filter(["but", "now", "right now"]) { _ in .checked([]) }
         let entries = CustomDictionaryTrainingMerge.mergedEntries(
@@ -340,7 +424,13 @@ extension CustomDictionaryManualEntryTests {
         let before = SettingsStore.shared.customDictionaryEntries
         let audio = self.inspectionFixture()
         let capture = PronunciationEnrollmentCapture(values: [1, 0], sourceFrameCount: 1, modelKey: "parakeet-v2", inspectionID: UUID())
-        let profile = PronunciationDictionaryProfile(dictionaryEntryID: UUID(), label: "Manimekalai", modelKey: "parakeet-v2", hiddenSize: 2, enrollments: [capture, capture, capture])
+        let profile = PronunciationDictionaryProfile(
+            dictionaryEntryID: UUID(),
+            label: "Manimekalai",
+            modelKey: "parakeet-v2",
+            hiddenSize: 2,
+            enrollments: [capture, capture, capture]
+        )
         let candidate = DictionaryMatchReport.Candidate(id: "sample", word: profile.label, sampleNumber: 1, enrollmentCount: 1, eligible: false, score: 0.6, start: 0, end: 0.08)
         let report = DictionaryMatchReport(
             createdAt: Date(),
