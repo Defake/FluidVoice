@@ -672,7 +672,8 @@ final class DirectAudioReliabilityTests: XCTestCase {
                 .components(separatedBy: "private func hideOverlayAfterOutput()").first
         )
         XCTAssertTrue(deliveryHandlerSection.contains("self.overlayLifecycleID == expectedOverlayLifecycleID"))
-        XCTAssertTrue(normalOutputSection.contains("shouldHideOverlay: deliveryResult.wasDispatched && !shouldShowAIProcessingFailure && !stopOverlay.didRequestHide && !spokenSendRequested"))
+        XCTAssertTrue(normalOutputSection
+            .contains("shouldHideOverlay: deliveryResult.wasDispatched && !shouldShowAIProcessingFailure && !stopOverlay.didRequestHide && !spokenSendRequested"))
         XCTAssertTrue(deliveryHandlerSection.contains("guard shouldHideOverlay else { return }"))
         XCTAssertFalse(deliveryHandlerSection.contains("await self.menuBarManager.beginProcessingCompletionAndHideOverlay"))
 
@@ -750,9 +751,17 @@ final class DirectAudioReliabilityTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("Sources/Fluid/ContentView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(source.contains(
-            "await self.processDictationPromptTest(transcribedText, lifecycleID: expectedOverlayLifecycleID)"
+        // Formatting may wrap this call; the same arguments and lifecycle binding must remain.
+        let compactSource = source.filter { !$0.isWhitespace }
+        XCTAssertTrue(compactSource.contains(
+            "awaitself.routePromptTestResult(transcribedText,sessionID:promptTestSessionID,lifecycleID:expectedOverlayLifecycleID)"
         ))
+        let routingSection = try XCTUnwrap(
+            source.components(separatedBy: "private func routePromptTestResult(").last?
+                .components(separatedBy: "private func makeAIProcessingFeedback(").first
+        )
+        XCTAssertTrue(routingSection.contains("await self.processDictationPromptTest(text, lifecycleID: lifecycleID)"))
+        XCTAssertTrue(routingSection.contains("acceptsResult(for: sessionID)"))
         let promptTestSection = try XCTUnwrap(
             source.components(separatedBy: "private func processDictationPromptTest(").last?
                 .components(separatedBy: "private func makeAIProcessingFeedback(").first

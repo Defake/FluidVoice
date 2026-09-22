@@ -1457,7 +1457,8 @@ struct ContentView: View {
             self.navigateToApp(.history)
         case let .transcript(id):
             FileTranscriptionHistoryStore.shared.selectedEntryID = id
-            self.navigateToApp(.meetingTools)
+            self.appSearchRevealTarget = hit.target
+            self.navigateToApp(.fileTranscription)
         case let .chat(id):
             self.commandModeService.switchToChat(id: id)
             self.navigateToApp(.commandMode)
@@ -2165,7 +2166,8 @@ struct ContentView: View {
     private var fileTranscriptionView: some View {
         FileTranscriptionView(
             asrService: self.asr,
-            transcriptionService: self.appServices.fileTranscriptionService
+            transcriptionService: self.appServices.fileTranscriptionService,
+            revealTarget: self.$appSearchRevealTarget
         )
     }
 
@@ -2910,6 +2912,9 @@ struct ContentView: View {
         }
     }
 
+    // Keep the ordered dictation delivery path intact during integration.
+
+    // swiftlint:disable:next function_body_length
     private func processStoppedTranscription(route: DictationOutputRoute, pipelineID: String, toggleStopRequestedAt: TimeInterval?) async {
         let pipelineStartedAt = ProcessInfo.processInfo.systemUptime
         let expectedOverlayLifecycleID = self.overlayLifecycleID
@@ -3055,7 +3060,10 @@ struct ContentView: View {
 
         let practiceModelID = route == .onboardingSandbox && self.settings.onboardingCurrentStep == 5
             ? PrivateAIProviderPromptFormat.verifiedModelID(settings: self.settings) : nil
-        let shouldUseAI = !sendsExistingDraft && (practiceModelID != nil || (stopSnapshot?.usesAI ?? DictationAIPostProcessingGate.isConfigured(for: activeDictationSlot ?? .primary, appBundleID: appInfo.bundleId)))
+        let shouldUseAI = !sendsExistingDraft && (practiceModelID != nil || (stopSnapshot?.usesAI ?? DictationAIPostProcessingGate.isConfigured(
+            for: activeDictationSlot ?? .primary,
+            appBundleID: appInfo.bundleId
+        )))
         let transcriptionModelInfo = self.currentTranscriptionModelInfo()
         let postProcessingModelInfo = self.recordDictationUsage(
             shouldUseAI: shouldUseAI,
@@ -3197,7 +3205,8 @@ struct ContentView: View {
             self.pendingAIReprocessText = nil
         }
 
-        let isFluidFrontmost = stopSnapshot.map { $0.target?.pid == ProcessInfo.processInfo.processIdentifier } ?? (NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier)
+        let isFluidFrontmost = stopSnapshot
+            .map { $0.target?.pid == ProcessInfo.processInfo.processIdentifier } ?? (NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier)
 
         // Save to transcription history (transcription mode only, if enabled)
         if shouldPersistOutputs, !sendsExistingDraft, SettingsStore.shared.saveTranscriptionHistory {
@@ -4290,7 +4299,10 @@ struct ContentView: View {
     ) async {
         self.rewriteModeService.setPromptAppBundleID(appInfo.bundleId)
         let hasOriginalText = !self.rewriteModeService.originalText.isEmpty
-        DebugLogger.shared.info("Processing \(hasOriginalText ? "rewrite" : "write/improve") - instruction: '\(instruction)', originalText length: \(self.rewriteModeService.originalText.count)", source: "ContentView")
+        DebugLogger.shared.info(
+            "Processing \(hasOriginalText ? "rewrite" : "write/improve") - instruction: '\(instruction)', originalText length: \(self.rewriteModeService.originalText.count)",
+            source: "ContentView"
+        )
 
         // Show processing animation
         self.menuBarManager.setProcessing(true)

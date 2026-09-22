@@ -1,15 +1,24 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum FileTranscriptionSearchReveal {
+    static func transcriptID(_ target: AppSearchHit.Target?) -> UUID? {
+        guard case let .transcript(id) = target else { return nil }
+        return id
+    }
+}
+
 struct FileTranscriptionView: View {
     @ObservedObject var asrService: ASRService
     @ObservedObject private var transcriptionService: FileTranscriptionService
     @ObservedObject private var fileHistoryStore = FileTranscriptionHistoryStore.shared
     @ObservedObject private var settings = SettingsStore.shared
+    @Binding private var revealTarget: AppSearchHit.Target?
     @State private var selectedFileURL: URL?
     @Environment(\.theme) private var theme
 
-    init(asrService: ASRService, transcriptionService: FileTranscriptionService) {
+    init(asrService: ASRService, transcriptionService: FileTranscriptionService, revealTarget: Binding<AppSearchHit.Target?> = .constant(nil)) {
+        self._revealTarget = revealTarget
         self.asrService = asrService
         _transcriptionService = ObservedObject(wrappedValue: transcriptionService)
     }
@@ -153,6 +162,13 @@ struct FileTranscriptionView: View {
                 (entry.id, RowMetadata(preview: entry.previewText, relativeDate: entry.relativeTimeString, fullDate: entry.fullDateString))
             }, uniquingKeysWith: { _, latest in latest })
             self.updateSearchResults(entries: entries)
+        }
+        .task(id: self.revealTarget) {
+            guard let id = FileTranscriptionSearchReveal.transcriptID(self.revealTarget) else { return }
+            self.searchQuery = ""
+            self.updateSearchResults(entries: self.fileHistoryStore.entries)
+            self.fileHistoryStore.selectedEntryID = id
+            self.revealTarget = nil
         }
         .onChange(of: self.searchQuery) { _, _ in
             self.updateSearchResults(entries: self.fileHistoryStore.entries)
@@ -547,8 +563,14 @@ struct FileTranscriptionView: View {
                         }
                         .padding(self.theme.metrics.spacing.sm)
                     }
-                    .onChange(of: self.fileHistoryStore.selectedEntryID) { _, id in
-                        if let id { proxy.scrollTo(id, anchor: .top) }
+                    .task(id: self.fileHistoryStore.selectedEntryID) {
+                        await Task.yield()
+                        guard !Task.isCancelled, let id = self.fileHistoryStore.selectedEntryID else { return }
+                        proxy.scrollTo(id, anchor: .top)
+                    }
+                    .onChange(of: self.filteredEntries.map(\.id)) { _, _ in
+                        guard let id = self.fileHistoryStore.selectedEntryID else { return }
+                        DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
                     }
                 }
             }

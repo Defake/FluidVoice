@@ -19,6 +19,10 @@ link-map-derived archive contains no protobuf or Perfetto object, no concrete AE
 uses WebRTC's null AEC dump factory. All public app-facing declarations are C ABI; WebRTC C++
 headers are not exposed by the package product.
 
+The static archive intentionally has no root `module.modulemap`: callers import the source
+`FluidAEC3Bridge` module. A binary module map would collide with other static XCFrameworks
+(such as Zeppelin) when Xcode copies their headers into the shared build include directory.
+
 Run `Scripts/verify.sh` to verify hashes, architectures, symbols, revision/configuration strings,
 and a clean SwiftPM link. `Scripts/refresh.sh` documents and automates the reproducible rebuild from
 an exact gclient checkout plus depot_tools. The refresh script rejects any revision mismatch.

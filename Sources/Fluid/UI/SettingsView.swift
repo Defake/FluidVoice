@@ -1104,7 +1104,7 @@ struct SettingsView: View {
                 .shownInSettingsSection(.dictationFormatting, selectedSection: self.selectedSection)
 
                 if self.selectedSection == .dictationFormatting {
-                    CustomDictionaryView(formattingOnly: true)
+                    CustomDictionaryView(formattingOnly: true, revealTarget: .constant(nil))
                         .settingsSearchTarget(.spokenFormatting)
                     ThemedCard(style: .standard) {
                         VStack(alignment: .leading, spacing: 14) {
@@ -1999,9 +1999,11 @@ struct SettingsView: View {
                     Text("Audio Storage")
                         .font(self.theme.typography.bodyStrong)
                         .foregroundStyle(self.settingsTitleText)
-                    Text("Audio history: \(DictationAudioHistoryStore.formattedGigabytes(self.audioHistoryUsageBytes)) / \(Self.audioBudgetText(for: SettingsStore.shared.audioHistoryBudgetGB)) GB Budget")
-                        .font(self.theme.typography.bodySmall)
-                        .foregroundStyle(self.settingsSecondaryText)
+                    Text(
+                        "Audio history: \(DictationAudioHistoryStore.formattedGigabytes(self.audioHistoryUsageBytes)) / \(Self.audioBudgetText(for: SettingsStore.shared.audioHistoryBudgetGB)) GB Budget"
+                    )
+                    .font(self.theme.typography.bodySmall)
+                    .foregroundStyle(self.settingsSecondaryText)
 
                     ProgressView(value: self.audioHistoryUsageFraction())
                         .progressViewStyle(.linear)

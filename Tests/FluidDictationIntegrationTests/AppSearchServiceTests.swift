@@ -67,11 +67,13 @@ final class AppSearchServiceTests: XCTestCase {
         XCTAssertTrue(service.groups.isEmpty)
     }
 
-    func testTranscriptSearchSelectionTargetsItsDetailCard() {
+    func testFileTranscriptRevealIgnoresOtherSearchDestinations() {
         let id = UUID()
 
-        XCTAssertEqual(MeetingTranscriptionScrollTarget.selectedDetail(id), .detail(id))
-        XCTAssertNil(MeetingTranscriptionScrollTarget.selectedDetail(nil))
+        XCTAssertEqual(FileTranscriptionSearchReveal.transcriptID(.transcript(id)), id)
+        XCTAssertNil(FileTranscriptionSearchReveal.transcriptID(.history(id)))
+        XCTAssertNil(FileTranscriptionSearchReveal.transcriptID(.dictionaryEntry(id)))
+        XCTAssertNil(FileTranscriptionSearchReveal.transcriptID(nil))
     }
 
     // MARK: - Snippets
