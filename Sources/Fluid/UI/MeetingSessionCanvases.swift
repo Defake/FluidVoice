@@ -317,13 +317,15 @@ private struct MeetingCloseTranscriptButton: View {
 /// The same label box gives Button and Menu identical native control geometry.
 private struct MeetingDocumentActionLabel: View {
     let title: String
-    let symbol: String
+    var symbol: String? = nil
     var disclosure = false
     @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: self.theme.metrics.spacing.sm) {
-            Image(systemName: self.symbol).frame(width: 14, height: 14)
+            if let symbol {
+                Image(systemName: symbol).frame(width: 14, height: 14)
+            }
             Text(self.title)
             if self.disclosure {
                 Image(systemName: "chevron.down")
@@ -353,6 +355,8 @@ struct MeetingResultCanvas: View {
     let onAssignSpeakers: ([SessionSpeakerID: String]) async -> String?
     let onClose: (() -> Void)?
 
+    var summaryASRService: ASRService? = nil
+
     @Environment(\.theme) private var theme
     @State private var pendingRenameSpeaker: MeetingSessionSpeaker?
     @State private var pendingRenameText = ""
@@ -365,6 +369,7 @@ struct MeetingResultCanvas: View {
     @State private var copied = false
     @State private var copyRevision = 0
     @State private var documentSection: MeetingDocumentSection = .transcript
+    @ObservedObject private var summaryActivity = MeetingSummaryActivityCoordinator.shared
 
     /// Naming is reached by clicking a speaker's name, so the sheet opens on the one clicked.
     private func presentAssignSpeakers(focusing speakerID: SessionSpeakerID?) {
@@ -424,20 +429,24 @@ struct MeetingResultCanvas: View {
         // One scroller preserves a readable document at short window heights.
         ScrollView {
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xxl) {
-                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-                    MeetingDocumentTitle(title: self.session.title)
-                        .contextMenu { self.renameMeetingAction }
-                    self.meetingMetadata
-                    if self.session.state != .completed { self.documentStatus }
+                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
+                    self.documentHeader(hasText: !visibleSegments.isEmpty)
+                    MeetingDocumentTabs(selection: self.$documentSection, isEnabled: self.summaryActivity.selectionLock == nil)
                 }
 
-                self.documentToolbar(hasText: !visibleSegments.isEmpty)
-
                 if self.documentSection == .summary {
-                    MeetingSummaryComingSoon()
+                    MeetingSummaryView(session: self.session, asrService: self.summaryASRService, isQuiescent: self.isQuiescent)
+                        .id("\(self.session.id)-\(self.session.updatedAt)")
                 } else {
                     if !activeSpeakers.isEmpty {
-                        self.speakerStrip(activeSpeakers)
+                        VStack(alignment: .leading, spacing: self.theme.metrics.spacing.sm) {
+                            self.speakerStrip(activeSpeakers)
+                            if self.session.state == .completed,
+                               let note = Self.speakerAccuracyNote(speakerCount: self.session.activeSpeakers.count)
+                            {
+                                self.speakerAccuracyNoteView(note, speakerCount: self.session.activeSpeakers.count)
+                            }
+                        }
                     }
 
                     if visibleSegments.isEmpty {
@@ -558,27 +567,28 @@ struct MeetingResultCanvas: View {
         }
     }
 
-    private func documentToolbar(hasText: Bool) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: self.theme.metrics.spacing.lg) {
-                MeetingDocumentTabs(selection: self.$documentSection)
-                    .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
-                FluidGlassControlGroup {
-                    HStack(spacing: self.theme.metrics.spacing.sm) {
-                        self.transcriptActions(hasText: hasText)
-                    }
-                }
-            }
+    /// Actions sit beside the title so the header has no empty corner above the tabs.
+    private func documentHeader(hasText: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: self.theme.metrics.spacing.lg) {
             VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
-                FluidGlassControlGroup {
-                    HStack(spacing: self.theme.metrics.spacing.sm) {
-                        Spacer(minLength: 0)
-                        self.transcriptActions(hasText: hasText)
-                    }
-                }
-                MeetingDocumentTabs(selection: self.$documentSection)
+                MeetingDocumentTitle(title: self.session.title)
+                    .editableTitle(
+                        self.session.title,
+                        id: String(describing: self.session.id),
+                        enabled: self.isQuiescent,
+                        editorFont: .system(.largeTitle, design: .serif).weight(.medium),
+                        onRename: self.onRenameSession
+                    )
+                self.meetingMetadata
+                if self.session.state != .completed { self.documentStatus }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            FluidGlassControlGroup {
+                HStack(spacing: self.theme.metrics.spacing.sm) {
+                    self.transcriptActions(hasText: hasText)
+                }
+            }
+            .fixedSize()
         }
     }
 
@@ -587,6 +597,29 @@ struct MeetingResultCanvas: View {
             .font(self.theme.typography.caption)
             .foregroundStyle(self.statusColor)
             .fixedSize()
+    }
+
+    /// Diarization stays dependable up to this many voices; beyond it, speakers merge or split.
+    static let reliableSpeakerLimit = 8
+
+    /// Uses the same count as the history row, so both places describe the same number.
+    static func speakerAccuracyNote(speakerCount: Int) -> String? {
+        guard speakerCount > 0 else { return nil }
+        guard speakerCount > self.reliableSpeakerLimit else {
+            return "Speaker labels are automatic and may not be exact. Click a name to fix it."
+        }
+        return "\(speakerCount) speakers found. Above \(self.reliableSpeakerLimit), labels are less reliable: one person may show up twice, or two people as one."
+    }
+
+    private func speakerAccuracyNoteView(_ note: String, speakerCount: Int) -> some View {
+        Label {
+            Text(note).fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: speakerCount > Self.reliableSpeakerLimit ? "exclamationmark.circle" : "info.circle")
+        }
+        .font(self.theme.typography.caption)
+        .foregroundStyle(self.theme.palette.tertiaryText)
+        .accessibilityElement(children: .combine)
     }
 
     private func speakerStrip(_ speakers: [MeetingSessionSpeaker]) -> some View {
@@ -626,16 +659,12 @@ struct MeetingResultCanvas: View {
         .help("Copy transcript")
         .accessibilityLabel(self.copied ? "Transcript copied" : "Copy transcript")
         Menu {
-            Button("Text…") { self.onExportTranscript(self.session, .text, self.showsProbableEchoes) }
-            Button("JSON…") { self.onExportTranscript(self.session, .json, self.showsProbableEchoes) }
-        } label: {
-            MeetingDocumentActionLabel(title: "Export", symbol: "square.and.arrow.up", disclosure: true)
-        }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .meetingGlassAction()
-        .disabled(!hasText || self.documentSection != .transcript)
-        Menu {
+            Menu("Export", systemImage: "square.and.arrow.up") {
+                Button("Text…") { self.onExportTranscript(self.session, .text, self.showsProbableEchoes) }
+                Button("JSON…") { self.onExportTranscript(self.session, .json, self.showsProbableEchoes) }
+            }
+            .disabled(!hasText || self.documentSection != .transcript)
+            Divider()
             self.renameMeetingAction
             Button("Undo correction", systemImage: "arrow.uturn.backward", action: self.onUndo)
                 .disabled(!self.canUndo || !self.isQuiescent)
@@ -643,17 +672,18 @@ struct MeetingResultCanvas: View {
                 Divider()
                 Toggle("Show probable echo", isOn: self.$showsProbableEchoes)
             }
+            if let onClose {
+                Divider()
+                Button("Close transcript", systemImage: "xmark", action: onClose)
+                    .keyboardShortcut(.cancelAction)
+            }
         } label: {
-            MeetingDocumentActionLabel(title: "More", symbol: "ellipsis", disclosure: true)
+            MeetingDocumentActionLabel(title: "More", disclosure: true)
         }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .meetingGlassAction()
+        .fluidGlassMenuAction()
+        .meetingHoverFeedback()
         .help("More transcript actions")
         .accessibilityLabel("More transcript actions")
-        if let onClose {
-            MeetingCloseTranscriptButton(action: onClose)
-        }
     }
 
     private var renameMeetingAction: some View {

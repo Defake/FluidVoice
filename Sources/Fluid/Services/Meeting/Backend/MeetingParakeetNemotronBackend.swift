@@ -5,7 +5,7 @@ import Foundation
 // backend owns orchestration — per-epoch materialization, unit construction, slot assignment and
 // exactly-tiling coverage receipts — while the host-injected runtime owns the two model
 // capabilities. It never touches the filesystem outside the frozen request's session directory,
-// never merges speaker slots across tracks or epochs, and never invents timing: clamping happens
+// never equates speaker slots across tracks or epochs, and never invents timing: clamping happens
 // only at physical epoch bounds, and text without word timings becomes one epoch-covering
 // utterance rather than fabricated words.
 
@@ -13,7 +13,7 @@ import Foundation
 final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
     static let descriptor = MeetingBackendDescriptor(
         id: .parakeetNemotron,
-        version: "3",
+        version: "4",
         execution: .local,
         supportedLanguageCodes: ["en"],
         supportedTrackKinds: Set(MeetingAudioTrackKind.allCases),
@@ -21,10 +21,10 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         resultContract: .canonicalEvidence,
         knownLimits: [
             "Nemotron-3 has 8 speaker slots per analysis epoch; a ninth voice is not reliably announced or separated.",
-            "Speaker slots are epoch-scoped: no identity is merged across tracks or analysis epochs.",
+            "Speaker slots are epoch-scoped; conservative local voice matching can reconnect identities across epochs of the same track.",
             "English only; the fixed Parakeet TDT v2 meeting policy rejects other requested options.",
             "When ASR returns text without usable word timings, one utterance covering the epoch is emitted instead of fabricated words.",
-            "Local Nemotron model must be installed before planning; execute performs no downloads.",
+            "Local Nemotron model must be installed before planning. Voice matching downloads its local embedding model on first use.",
         ],
         analysisSampleRate: 16_000
     )
@@ -116,6 +116,9 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
     // MARK: - Orchestration (background context)
 
     /// One epoch's work item: its manifest spans in analysis order.
+    /// Silence placed between a track's epochs when they are diarized as one stream.
+    private nonisolated static let epochJoinSilenceSeconds = 0.5
+
     private nonisolated struct EpochWork: Sendable {
         let track: MeetingAnalysisTrackManifest
         let epoch: MeetingAnalysisEpochRecord
@@ -150,6 +153,17 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
         }
     }
 
+    /// Check the whole track, including separators, before allocating its combined buffer.
+    nonisolated static func validateTrackSampleCount(current: Int, incoming: Int, separator: Int, spanID: String) throws {
+        let limit = MeetingEpochAudioMaterializer.conservativeSampleLimit
+        guard current >= 0, incoming >= 0, separator >= 0,
+              current <= limit, separator <= limit - current,
+              incoming <= limit - current - separator
+        else {
+            throw MeetingEpochMaterializationError.sampleLimitExceeded(spanID: spanID, sampleCount: limit + 1)
+        }
+    }
+
     private nonisolated static func runAttempt(
         request: MeetingBackendRequest,
         manifest: MeetingAnalysisManifest,
@@ -174,59 +188,89 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
 
         let pcmMaterializations = MaterializationCache()
 
-        // Phase A: Nemotron diarization, one fresh state per epoch, then drained.
+        // Phase A: Nemotron diarization, one continuous state per track, then drained. A track's
+        // epochs are diarized in order as one stream, so a voice keeps its slot across a reset;
+        // each epoch still maps its own segments back through its own spans.
         await progress(.identifyingSpeakers)
         let phaseA = try await runtime.withNemotronDiarization(artifact: artifact) { factory in
             var result = MeetingNemotronPhaseResult()
-            for work in epochWork {
-                try Task.checkCancellation()
-                let materialized: MeetingMaterializedEpoch
-                do {
-                    materialized = try await Self.materialize(
-                        work: work,
-                        manifest: manifest,
-                        request: request,
-                        materializer: materializer,
-                        cache: pcmMaterializations
+            for track in manifest.tracks {
+                var pieces: [(work: EpochWork, materialized: MeetingMaterializedEpoch, offset: Int)] = []
+                var trackSamples: [Float] = []
+                for work in epochWork where work.track.id == track.id {
+                    try Task.checkCancellation()
+                    let materialized: MeetingMaterializedEpoch
+                    do {
+                        materialized = try await Self.materialize(
+                            work: work,
+                            manifest: manifest,
+                            request: request,
+                            materializer: materializer,
+                            cache: pcmMaterializations
+                        )
+                    } catch let error as CancellationError {
+                        throw error
+                    } catch let error as MeetingEpochMaterializationError where error.isSampleLimitExceeded {
+                        throw error
+                    } catch {
+                        result.failures[work.epoch.id] = "epochMaterializationFailed"
+                        continue
+                    }
+                    let separatorSamples = trackSamples.isEmpty ? 0 : Int(Self.epochJoinSilenceSeconds * materialized.sampleRate)
+                    try Self.validateTrackSampleCount(
+                        current: trackSamples.count,
+                        incoming: materialized.samples.count,
+                        separator: separatorSamples,
+                        spanID: work.spans.last?.id ?? "unknown"
                     )
-                } catch let error as CancellationError {
-                    throw error
-                } catch let error as MeetingEpochMaterializationError where error.isSampleLimitExceeded {
-                    throw error
-                } catch {
-                    result.failures[work.epoch.id] = "epochMaterializationFailed"
-                    continue
+                    if !trackSamples.isEmpty {
+                        // Silence keeps a turn from running across the reset boundary.
+                        trackSamples += [Float](repeating: 0, count: separatorSamples)
+                    }
+                    pieces.append((work, materialized, trackSamples.count))
+                    trackSamples += materialized.samples
                 }
+                guard let first = pieces.first else { continue }
                 try Task.checkCancellation()
                 do {
-                    let diarizer = try await factory.makeDiarizer(epoch: work.epoch.id)
-                    let segments = try await diarizer.diarize(samples: materialized.samples)
-                    for segment in segments {
-                        guard let start = Self.analysisTime(
-                            forMaterializedSeconds: segment.start,
-                            boundary: .start,
-                            materialized: materialized,
-                            spans: work.spans
-                        ), let end = Self.analysisTime(
-                            forMaterializedSeconds: segment.end,
-                            boundary: .end,
-                            materialized: materialized,
-                            spans: work.spans
-                        ) else { continue }
-                        guard end > start else { continue }
-                        result.activity.append(MeetingBackendSpeakerActivity(
-                            token: MeetingBackendSpeakerToken(
-                                analysisEpochID: work.epoch.id,
-                                label: "slot-\(segment.slotIndex)"
-                            ),
-                            start: start,
-                            end: end
-                        ))
+                    let diarizer = try await factory.makeDiarizer(epoch: first.work.epoch.id)
+                    let segments = try await diarizer.diarize(samples: trackSamples)
+                    for piece in pieces {
+                        let pieceStart = Double(piece.offset) / piece.materialized.sampleRate
+                        let pieceEnd = pieceStart + piece.materialized.durationSeconds
+                        for segment in segments {
+                            let localStart = max(segment.start, pieceStart) - pieceStart
+                            let localEnd = min(segment.end, pieceEnd) - pieceStart
+                            guard localEnd > localStart,
+                                  let start = Self.analysisTime(
+                                      forMaterializedSeconds: localStart,
+                                      boundary: .start,
+                                      materialized: piece.materialized,
+                                      spans: piece.work.spans
+                                  ), let end = Self.analysisTime(
+                                      forMaterializedSeconds: localEnd,
+                                      boundary: .end,
+                                      materialized: piece.materialized,
+                                      spans: piece.work.spans
+                                  )
+                            else { continue }
+                            guard end > start else { continue }
+                            result.activity.append(MeetingBackendSpeakerActivity(
+                                token: MeetingBackendSpeakerToken(
+                                    analysisEpochID: piece.work.epoch.id,
+                                    label: "slot-\(segment.slotIndex)"
+                                ),
+                                start: start,
+                                end: end
+                            ))
+                        }
                     }
                 } catch let error as CancellationError {
                     throw error
                 } catch {
-                    result.failures[work.epoch.id] = "diarizationFailed"
+                    for piece in pieces {
+                        result.failures[piece.work.epoch.id] = "diarizationFailed"
+                    }
                     continue
                 }
             }
@@ -374,7 +418,8 @@ final class MeetingParakeetNemotronBackend: MeetingTranscriptionBackend {
                 backendID: .parakeetNemotron,
                 attemptID: request.attemptID,
                 units: units,
-                speakerActivity: phaseA.activity.filter { failures[$0.token.analysisEpochID] == nil }
+                speakerActivity: phaseA.activity.filter { failures[$0.token.analysisEpochID] == nil },
+                speakerSlotsContinueAcrossEpochs: true
             ),
             coverageReceipts: receipts
         )

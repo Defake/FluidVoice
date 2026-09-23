@@ -107,8 +107,70 @@ final class AIEnhancementSettingsViewModel {
         let vm = AIEnhancementSettingsViewModel()
         vm.refreshProviderItems()
         check(vm.cachedAddedProviderItems.isEmpty, "Fresh catalog stays hidden")
+        let connectionEdits: [(inout ProviderSetupDraft) -> Void] = [
+            { $0.providerID = "ollama" },
+            { $0.baseURL = "http://localhost:4321/v1" },
+            { $0.apiKey = "replacement-key" },
+        ]
+        for edit in connectionEdits {
+            var fetched = ProviderSetupDraft(name: "Server", baseURL: "http://localhost:1234/v1")
+            let oldIdentity = fetched.connectionIdentity
+            check(fetched.applyFetchedModels(["second", "first", "first"], for: oldIdentity), "Current discovery is accepted")
+            check(fetched.model == "first", "Discovery selects its first sorted result")
+            fetched.selectFetchedModel("second")
+            edit(&fetched)
+            check(fetched.model.isEmpty && fetched.fetchedModels.isEmpty, "Connection edits clear automatic and picker selections immediately")
+            check(fetched.modelsToSave(defaults: []).isEmpty, "Saving a new custom connection cannot retain an old fetched model")
+            check(!fetched.applyFetchedModels(["stale"], for: oldIdentity), "Late discovery from the old connection is rejected")
+            check(fetched.model.isEmpty && fetched.fetchedModels.isEmpty, "Rejected discovery cannot repopulate the cleared selection")
+
+            var manual = ProviderSetupDraft(name: "Server", baseURL: "http://localhost:1234/v1")
+            manual.applyFetchedModels(["first"], for: manual.connectionIdentity)
+            // Typing even the same ID explicitly makes it a manual choice.
+            manual.model = "first"
+            edit(&manual)
+            check(manual.model == "first" && manual.fetchedModels.isEmpty, "Connection edits preserve an explicitly entered ID")
+            check(manual.modelsToSave(defaults: []) == ["first"], "Manual IDs remain available to save")
+            manual.applyFetchedModels([], for: manual.connectionIdentity)
+            check(manual.model == "first", "Empty discovery must not erase manual entry")
+        }
+        var reloaded = ProviderSetupDraft(name: "Server", baseURL: "http://localhost:1234/v1")
+        reloaded.applyFetchedModels(["first", "second"], for: reloaded.connectionIdentity)
+        reloaded.selectFetchedModel("second")
+        reloaded.name = "Renamed server"
+        reloaded.baseURL = " http://localhost:1234/v1 "
+        check(reloaded.model == "second", "Name and URL whitespace edits preserve a valid fetched choice")
+        reloaded.applyFetchedModels(["second", "third"], for: reloaded.connectionIdentity)
+        check(reloaded.model == "second", "Reload preserves a selection still returned by the server")
+        reloaded.applyFetchedModels(["third"], for: reloaded.connectionIdentity)
+        check(reloaded.model == "third", "Reload replaces a fetched selection the server no longer returns")
+        reloaded.applyFetchedModels([], for: reloaded.connectionIdentity)
+        check(reloaded.model.isEmpty, "Empty discovery clears an old fetched selection")
+        reloaded.applyFetchedModels(["old-server-model"], for: reloaded.connectionIdentity)
+        reloaded.baseURL = "http://localhost:4321/v1"
+        reloaded.apiKey = "new-key"
+        let freshVM = AIEnhancementSettingsViewModel()
+        check(freshVM.addProvider(reloaded), "A custom provider can be saved after rapid connection edits")
+        check(freshVM.savedProviders.first?.models == [], "Persistence receives no model from the previous connection")
+        check(freshVM.settings.selectedProviderID == "fluid", "Saving the new connection leaves the current dictation route intact")
         var draft = ProviderSetupDraft(name: "Local", baseURL: "http://localhost:1234/v1", model: "tiny")
         check(draft.isValid && vm.saves == 0, "Editing a valid draft has no persistence effects")
+        var discoveryDraft = draft
+        discoveryDraft.fetchedModels = ["first", "second"]
+        discoveryDraft.model = "second"
+        check(discoveryDraft.modelsToSave(defaults: []) == ["second", "first"], "Selected discovered model is saved first without dropping other models")
+        discoveryDraft.model = "manual"
+        check(discoveryDraft.modelsToSave(defaults: []) == ["manual", "first", "second"], "Manual entry preserves discovered models")
+        discoveryDraft.model = ""
+        check(discoveryDraft.modelsToSave(defaults: ["default"]) == ["first", "second"], "Discovery replaces fallback defaults")
+        discoveryDraft.fetchedModels = []
+        check(discoveryDraft.modelsToSave(defaults: ["default"]) == ["default"], "Empty discovery preserves default fallback")
+        let originalConnection = discoveryDraft.connectionIdentity
+        discoveryDraft.model = "another"
+        check(discoveryDraft.connectionIdentity == originalConnection, "Model selection does not invalidate a connection request")
+        discoveryDraft.apiKey = "changed"
+        check(discoveryDraft.connectionIdentity != originalConnection, "Credential edits invalidate stale discovery")
+        check(vm.saves == 0 && vm.providerAPIKeys.isEmpty && vm.savedProviders.isEmpty, "Model discovery drafts do not persist credentials or providers")
         draft.baseURL = "file:///tmp/model"
         check(!draft.isValid && !vm.addProvider(draft), "Reject non-HTTP endpoints without persistence")
         draft.baseURL = "https://user:secret@example.com"
@@ -121,7 +183,9 @@ final class AIEnhancementSettingsViewModel {
             "Keychain failure keeps records, keys, and model maps unchanged"
         )
         vm.failKeychain = false
+        draft.fetchedModels = ["other", "tiny"]
         check(vm.addProvider(draft) && vm.savedProviders.count == 1, "Explicit Add saves a custom provider")
+        check(vm.savedProviders.first?.models == ["tiny", "other"], "Add persists the selected model and complete discovered list")
         check(vm.settings.selectedProviderID == "fluid" && vm.selectedModelByProvider["fluid"] == "mini", "Adding does not change current route/model")
         check(vm.addProvider(draft) && vm.savedProviders.count == 2, "Same display name cannot overwrite another provider")
         check(vm.cachedAddedProviderItems.count == 2, "Saved custom providers appear without verification")
@@ -219,8 +283,16 @@ final class AIEnhancementSettingsViewModel {
         check(!closing.saveManagedProviderBeforeClosing("ollama"), "Busy editor cannot dismiss")
         check(manager.contains(".interactiveDismissDisabled()"), "Interactive dismissal cannot bypass failed persistence")
         let historySource = try String(contentsOfFile: "Sources/Fluid/UI/TranscriptionHistoryView.swift", encoding: .utf8)
-        let audioRequest = historySource.components(separatedBy: "private struct AudioAvailabilityRequest")[1]
-            .components(separatedBy: "private var filteredEntries")[0]
+        // Inspect only the request type and its inputs. Unrelated properties may
+        // legitimately sit between these declarations and the filtered list.
+        func declaration(_ marker: String) -> String {
+            guard let start = historySource.range(of: marker),
+                  let end = historySource.range(of: "\n    }", range: start.upperBound..<historySource.endIndex)
+            else { preconditionFailure("Missing history declaration: \(marker)") }
+            return String(historySource[start.lowerBound..<end.upperBound])
+        }
+        let audioRequest = declaration("private struct AudioAvailabilityRequest")
+            + declaration("private var audioAvailabilityRequest:")
         check(!audioRequest.contains("selectedEntry") && !audioRequest.contains("selectedID"), "Row selection cannot restart audio scans")
         print("Passed \(count) provider setup assertions")
     }

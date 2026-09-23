@@ -268,11 +268,9 @@ struct CustomDictionaryView: View {
                 HStack(spacing: 0) {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.xl) {
-                            self.pageHeader
                             self.trainReplacementSection
                         }
-                        .frame(maxWidth: 860, alignment: .leading)
-                        .padding(self.theme.metrics.spacing.xl)
+                        .fluidPageContent(width: .reading, alignment: .center)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -290,7 +288,9 @@ struct CustomDictionaryView: View {
                                 .accessibilityHidden(true)
                         }
                         .overlay(alignment: .leading) {
-                            Divider()
+                            Rectangle()
+                                .fill(self.theme.palette.separator)
+                                .frame(width: 1)
                                 .ignoresSafeArea(.container, edges: [.top, .bottom])
                                 .allowsHitTesting(false)
                                 .accessibilityHidden(true)
@@ -304,14 +304,8 @@ struct CustomDictionaryView: View {
                 .animation(self.drawerAnimation, value: self.isWordDrawerPresented)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if !self.formattingOnly {
-                self.dictionaryDrawerToggle
-                    .offset(x: self.isWordDrawerPresented ? -40 : 0)
-                    .animation(self.drawerAnimation, value: self.isWordDrawerPresented)
-                    .padding(.trailing, self.theme.metrics.spacing.xl)
-                    .padding(.top, self.theme.metrics.spacing.xl)
-            }
+        .fluidPageActions(enabled: !self.formattingOnly) {
+            self.dictionaryDrawerToggle
         }
         .dismissTextFocusOnBackgroundTap()
         .task(id: self.revealTarget) {
@@ -396,24 +390,6 @@ struct CustomDictionaryView: View {
 
     // MARK: - Page Header
 
-    private var pageHeader: some View {
-        HStack(alignment: .center, spacing: self.theme.metrics.spacing.md) {
-            self.settingsIconTile(systemName: "text.book.closed.fill")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Custom Dictionary")
-                    .font(self.theme.typography.title)
-                Text("Your words, recognised your way.")
-                    .font(self.theme.typography.bodySmall)
-                    .foregroundStyle(self.theme.palette.secondaryText)
-            }
-
-            Spacer(minLength: self.theme.metrics.spacing.md)
-
-            Color.clear.frame(width: self.isWordDrawerPresented ? 0 : 150, height: 32).accessibilityHidden(true)
-        }
-    }
-
     private var drawerAnimation: Animation? {
         self.reduceMotion ? nil : .timingCurve(0.22, 0.8, 0.25, 1, duration: 0.34)
     }
@@ -421,17 +397,12 @@ struct CustomDictionaryView: View {
     private var dictionaryDrawerToggle: some View {
         Button {
             self.isDrawerActionsPresented = false
-            self.isWordDrawerPresented.toggle()
+            withAnimation(self.drawerAnimation) { self.isWordDrawerPresented.toggle() }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "sidebar.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(self.isWordDrawerPresented ? self.theme.palette.accent : self.theme.palette.primaryText)
-                    .frame(width: 20, height: 20)
-                Text("Your Dictionary")
-            }
+            Label("Your Dictionary", systemImage: self.isWordDrawerPresented ? "rectangle.righthalf.inset.filled" : "sidebar.right")
+                .foregroundStyle(self.isWordDrawerPresented ? self.theme.palette.accent : self.theme.palette.primaryText)
         }
-        .fluidGlassAction()
+
         .accessibilityLabel(self.isWordDrawerPresented ? "Collapse your dictionary" : "Expand your dictionary")
         .help(self.isWordDrawerPresented ? "Collapse your dictionary" : "Expand your dictionary")
     }
@@ -446,7 +417,7 @@ struct CustomDictionaryView: View {
     private var wordDrawer: some View {
         VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
             HStack(alignment: .center, spacing: 8) {
-                Color.clear.frame(width: 150, height: 32).accessibilityHidden(true)
+                Text("Your dictionary").font(self.theme.typography.sectionTitle)
                 Spacer()
                 Button { self.isDrawerActionsPresented.toggle() } label: {
                     Image(systemName: "ellipsis")
@@ -2474,8 +2445,9 @@ struct CustomDictionaryView: View {
             return
         }
 
+        let originalEntries = SettingsStore.shared.customDictionaryEntries
         let updatedEntries = CustomDictionaryTrainingMerge.mergedEntries(
-            current: SettingsStore.shared.customDictionaryEntries,
+            current: originalEntries,
             replacement: replacementText,
             triggers: filtered.accepted,
             savePronunciation: savePronunciation
@@ -2491,12 +2463,18 @@ struct CustomDictionaryView: View {
                     modelKey: modelKey,
                     enrollments: enrollments,
                     automaticMatchingEnabled: true,
-                    canPersist: { DictionaryMatcherExperiment.sharedFeaturesEnabled && DictionaryMatcherExperiment.generation == pronunciationGeneration }
+                    canPersist: {
+                        DictionaryMatcherExperiment.sharedFeaturesEnabled &&
+                            DictionaryMatcherExperiment.generation == pronunciationGeneration &&
+                            SettingsStore.shared.customDictionaryEntries == originalEntries
+                    }
                 )
             } catch {
-                self.isTrainingProcessing = false
+                guard self.trainingSaveID == saveID, !Task.isCancelled, self.pronunciationEnabled else { return }
                 self.trainingHasError = true
-                self.trainingStatusMessage = "Couldn't save the voice profile. Try again."
+                self.trainingStatusMessage = SettingsStore.shared.customDictionaryEntries == originalEntries
+                    ? "Couldn't save the voice profile. Try again."
+                    : "Your dictionary changed while saving. Try again."
                 DebugLogger.shared.error(
                     "Failed to save pronunciation profile: \(error.localizedDescription)",
                     source: "PronunciationMatching"
@@ -2505,6 +2483,13 @@ struct CustomDictionaryView: View {
             }
         }
         guard self.trainingSaveID == saveID, !Task.isCancelled, self.pronunciationEnabled else { return }
+        // Profile persistence suspends this view. Never publish a snapshot over a newer
+        // manual edit, import, or deletion; keep the recordings available for a retry.
+        guard SettingsStore.shared.customDictionaryEntries == originalEntries else {
+            self.trainingHasError = true
+            self.trainingStatusMessage = "Your dictionary changed while saving. Try again."
+            return
+        }
         self.entries = updatedEntries
         self.saveEntries()
         self.wizardSavedWord = replacementText

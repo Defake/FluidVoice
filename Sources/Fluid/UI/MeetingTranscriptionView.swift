@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Combine
 import CoreGraphics
 import SwiftUI
 
@@ -86,10 +87,56 @@ struct MeetingSetupReadiness: Equatable {
     )
 }
 
+/// Owned by the window, so leaving FluidMeet does not discard its last loaded history.
+@MainActor
+final class MeetingHistorySnapshot: ObservableObject {
+    @Published private(set) var sessions: [MeetingSession] = []
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var hasLoaded = false
+    private let load: @Sendable () async throws -> [MeetingSession]
+    private var refreshTask: Task<Void, Never>?
+    private var refreshRequested = false
+
+    init(load: @escaping @Sendable () async throws -> [MeetingSession] = {
+        try await MeetingSessionStore.shared.loadAll()
+    }) {
+        self.load = load
+    }
+
+    func refresh() async {
+        self.refreshRequested = true
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+        let task = Task { @MainActor in
+            // A mutation during a disk read requests one follow-up, never a competing read.
+            while self.refreshRequested {
+                self.refreshRequested = false
+                do {
+                    let sessions = try await self.load()
+                    guard !self.refreshRequested else { continue }
+                    self.sessions = sessions
+                    self.errorMessage = nil
+                    self.hasLoaded = true
+                } catch {
+                    guard !self.refreshRequested else { continue }
+                    self.errorMessage = "Meeting history could not be loaded."
+                    self.hasLoaded = true
+                }
+            }
+            self.refreshTask = nil
+        }
+        self.refreshTask = task
+        await task.value
+    }
+}
+
 struct MeetingTranscriptionView: View {
     @ObservedObject var coordinator: MeetingSessionCoordinator
     @ObservedObject var asrService: ASRService
     @ObservedObject private var appServices = AppServices.shared
+    @ObservedObject private var summaryActivity = MeetingSummaryActivityCoordinator.shared
     let onOpenVoiceEngine: () -> Void
 
     @Environment(\.theme) private var theme
@@ -108,11 +155,11 @@ struct MeetingTranscriptionView: View {
     @State private var cachedMicrophoneStatus: AVAuthorizationStatus = .notDetermined
     @State private var cachedScreenCaptureAccess = false
     @State private var cachedModelReady = false
+    @State private var modelReadinessRevision = 0
     @State private var cachedStorageStatus = "Checking…"
     @State private var cachedStorageReady = false
-    @State private var meetingHistory: [MeetingSession] = []
+    @ObservedObject var historySnapshot: MeetingHistorySnapshot
     @State private var selectedHistorySessionID: MeetingSessionID?
-    @State private var meetingHistoryError: String?
     @State private var pendingDeleteSessionID: MeetingSessionID?
     @State private var pendingDeleteAudioSessionID: MeetingSessionID?
     @State private var draftMeetingAudioRetentionPolicy = SettingsStore.shared.meetingAudioRetentionPolicy
@@ -121,10 +168,12 @@ struct MeetingTranscriptionView: View {
     init(
         coordinator: MeetingSessionCoordinator,
         asrService: ASRService,
+        historySnapshot: MeetingHistorySnapshot,
         onOpenVoiceEngine: @escaping () -> Void
     ) {
         self.coordinator = coordinator
         self.asrService = asrService
+        self.historySnapshot = historySnapshot
         self.onOpenVoiceEngine = onOpenVoiceEngine
 
         let initialDraft = MeetingTranscriptionSetupDraft(settings: .shared)
@@ -135,24 +184,6 @@ struct MeetingTranscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MeetingTranscriptionHeader(
-                state: self.canvasState,
-                isMeetingHistoryVisible: self.isMeetingHistoryVisible,
-                onNewMeeting: self.startNewMeeting,
-                onOpenMeetingSettings: self.openMeetingSettings,
-                onToggleMeetingHistory: {
-                    let willShowHistory = !self.isMeetingHistoryVisible
-                    withAnimation(self.accessibilityReduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                        self.isMeetingHistoryVisible.toggle()
-                    }
-                    if willShowHistory, self.meetingHistory.isEmpty {
-                        Task { await self.loadMeetingHistory() }
-                    }
-                }
-            )
-
-            Divider()
-
             GeometryReader { geometry in
                 ZStack(alignment: .trailing) {
                     MeetingTranscriptionCanvas(
@@ -177,11 +208,12 @@ struct MeetingTranscriptionView: View {
                         onRenameSession: self.renameMeetingSession,
                         onAssignSpeakers: self.assignSpeakers,
                         canUndoCorrection: { self.coordinator.canUndoCorrection(sessionID: $0) },
-                        isQuiescent: self.coordinator.isQuiescent,
+                        isQuiescent: self.coordinator.isQuiescent && self.summaryActivity.selectionLock == nil,
                         onRepairSetup: self.repairRecordingSetup,
                         onEditSetup: self.openMeetingSettings,
                         isRetrying: self.isRetrying,
-                        onCloseSelection: self.closeCanvasAction
+                        onCloseSelection: self.closeCanvasAction,
+                        summaryASRService: self.asrService
                     )
                     .padding(.trailing, self.isMeetingHistoryVisible && geometry.size.width >= 900 ? 272 : 0)
                     .allowsHitTesting(!self.isMeetingHistoryVisible || geometry.size.width >= 900)
@@ -198,17 +230,18 @@ struct MeetingTranscriptionView: View {
                             .accessibilityLabel("Close meeting history")
                         }
                         MeetingHistoryInspector(
-                            sessions: self.meetingHistory,
+                            sessions: self.historySnapshot.sessions,
                             selectedSessionID: Binding(
                                 get: { self.selectedHistorySessionID },
                                 set: {
-                                    if self.canBrowseMeetingHistory {
+                                    if self.canBrowseMeetingHistory, self.summaryActivity.selectionLock == nil {
                                         self.selectedHistorySessionID = $0
                                         if geometry.size.width < 900 { self.isMeetingHistoryVisible = false }
                                     }
                                 }
                             ),
-                            errorMessage: self.meetingHistoryError,
+                            errorMessage: self.historySnapshot.errorMessage,
+                            isLoading: !self.historySnapshot.hasLoaded,
                             isQuiescent: self.coordinator.isQuiescent,
                             onRefresh: { Task { await self.loadMeetingHistory() } },
                             onRetry: { self.retryProcessingSession(id: $0) },
@@ -217,18 +250,45 @@ struct MeetingTranscriptionView: View {
                             onExportTranscript: { self.exportTranscript($0, format: $1, includeEchoes: false) },
                             onDeleteAudioRequest: { self.pendingDeleteAudioSessionID = $0 },
                             onDeleteRequest: { self.pendingDeleteSessionID = $0 },
+                            onRename: { self.renameMeetingSession(sessionID: $0, to: $1) },
                             onRecordAgain: self.recordAgain
                         )
                         .frame(width: min(272, geometry.size.width))
-                        .overlay(alignment: .leading) { Divider() }
+                        .disabled(self.summaryActivity.selectionLock != nil)
+                        .help(self.summaryActivity.selectionLock == nil ? "Meeting history" : "Finish or cancel the summary before switching meetings.")
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(self.theme.palette.separator)
+                                .frame(width: 1)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
             }
         }
-        .background(self.theme.palette.windowBackground)
+        .background(self.theme.palette.contentBackground)
+        .fluidPageActions {
+            MeetingTranscriptionHeader(
+                state: self.canvasState,
+                isMeetingHistoryVisible: self.isMeetingHistoryVisible,
+                onNewMeeting: self.startNewMeeting,
+                onOpenMeetingSettings: self.openMeetingSettings,
+                onToggleMeetingHistory: {
+                    let willShowHistory = !self.isMeetingHistoryVisible
+                    withAnimation(self.accessibilityReduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                        self.isMeetingHistoryVisible.toggle()
+                    }
+                    if willShowHistory, self.historySnapshot.sessions.isEmpty {
+                        Task { await self.loadMeetingHistory() }
+                    }
+                }
+            )
+        }
         .clipped()
         .task {
+            MeetingDiarizationModelStore.shared.prepareInBackground()
             async let sources: Void = self.refreshSources(requestPermissions: false)
             if self.isMeetingHistoryVisible {
                 await self.loadMeetingHistory()
@@ -277,7 +337,8 @@ struct MeetingTranscriptionView: View {
                 onOpenScreenRecordingSettings: { self.openScreenRecordingSettings() },
                 onOpenVoiceEngine: self.onOpenVoiceEngine,
                 onCancel: self.cancelMeetingSettings,
-                onSave: self.saveMeetingSettings
+                onSave: self.saveMeetingSettings,
+                onModelImported: { Task { await self.refreshModelReadiness() } }
             )
             .background(FluidSheetOutsideDismiss(onCancel: self.cancelMeetingSettings))
             .interactiveDismissDisabled()
@@ -372,14 +433,18 @@ struct MeetingTranscriptionView: View {
 
     private var selectedHistorySession: MeetingSession? {
         guard let selectedHistorySessionID else { return nil }
-        return self.meetingHistory.first(where: { $0.id == selectedHistorySessionID })
+        return self.historySnapshot.sessions.first(where: { $0.id == selectedHistorySessionID })
     }
 
     /// Closing a history selection returns to whatever is underneath; closing the just-finished
     /// meeting's own result/failure returns to the new-meeting screen.
     private var closeCanvasAction: (() -> Void)? {
+        guard self.summaryActivity.selectionLock == nil else { return nil }
         if self.selectedHistorySessionID != nil {
-            return { self.selectedHistorySessionID = nil }
+            return {
+                guard self.summaryActivity.selectionLock == nil else { return }
+                self.selectedHistorySessionID = nil
+            }
         }
         switch self.coordinator.state {
         case .completed, .failed, .interrupted:
@@ -448,8 +513,6 @@ struct MeetingTranscriptionView: View {
             blockingMessage = "Free at least \(MeetingPCMStoragePolicy.requiredFreeSpaceDescription(trackCount: trackCount)) of storage before recording."
         } else if !CPUArchitecture.isAppleSilicon {
             blockingMessage = "FluidMeet requires an Apple silicon Mac."
-        } else if !modelReady {
-            blockingMessage = "Load the supplied speaker separation model in FluidMeet settings before recording."
         } else {
             blockingMessage = nil
         }
@@ -460,7 +523,7 @@ struct MeetingTranscriptionView: View {
             meetingAudioReady: meetingAudioReady,
             microphoneStatus: microphoneStatusText,
             microphoneReady: microphoneReady && !self.microphones.isEmpty,
-            modelStatus: modelReady ? "Speaker model installed · transcription prepares after Stop" : "Load speaker model in Settings",
+            modelStatus: modelReady ? "Speaker model installed · transcription prepares after Stop" : "Speaker model downloads before transcription",
             modelReady: modelReady,
             storageStatus: self.cachedStorageStatus,
             storageReady: self.cachedStorageReady,
@@ -477,12 +540,22 @@ struct MeetingTranscriptionView: View {
     }
 
     @MainActor
+    private func refreshModelReadiness() async {
+        self.modelReadinessRevision += 1
+        let revision = self.modelReadinessRevision
+        let ready = await Task.detached(priority: .utility) {
+            CPUArchitecture.isAppleSilicon && (try? MeetingNemotronModelLocator().locate()) != nil
+        }.value
+        // An older check must not overwrite an import completion's newer result.
+        guard self.modelReadinessRevision == revision else { return }
+        self.cachedModelReady = ready
+    }
+
+    @MainActor
     private func refreshSources(requestPermissions: Bool) async {
         guard !self.isRefreshingSources else { return }
         self.isRefreshingSources = true
-        self.cachedModelReady = await Task.detached(priority: .utility) {
-            CPUArchitecture.isAppleSilicon && (try? MeetingNemotronModelLocator().locate()) != nil
-        }.value
+        await self.refreshModelReadiness()
         self.refreshCachedReadiness()
         defer {
             self.refreshCachedReadiness()
@@ -590,7 +663,6 @@ struct MeetingTranscriptionView: View {
         guard !self.isStarting else { return }
         let readiness = self.readiness
         guard readiness.activityReady,
-              readiness.modelReady,
               readiness.storageReady,
               readiness.microphoneReady,
               readiness.meetingAudioReady,
@@ -665,7 +737,7 @@ struct MeetingTranscriptionView: View {
     }
 
     private func retryProcessingSession(id: MeetingSessionID) {
-        guard !self.isRetrying else { return }
+        guard !self.isRetrying, self.summaryActivity.selectionLock == nil else { return }
         self.isRetrying = true
         self.actionErrorMessage = nil
         self.selectedHistorySessionID = nil
@@ -773,6 +845,7 @@ struct MeetingTranscriptionView: View {
     }
 
     private func deleteSession(id: MeetingSessionID) {
+        guard self.summaryActivity.selectionLock == nil else { return }
         self.pendingDeleteSessionID = nil
         self.actionErrorMessage = nil
         Task {
@@ -787,6 +860,7 @@ struct MeetingTranscriptionView: View {
     }
 
     private func deleteAudio(id: MeetingSessionID) {
+        guard self.summaryActivity.selectionLock == nil else { return }
         self.pendingDeleteAudioSessionID = nil
         self.actionErrorMessage = nil
         Task {
@@ -800,6 +874,7 @@ struct MeetingTranscriptionView: View {
     }
 
     private func recordAgain(_ session: MeetingSession) {
+        guard self.summaryActivity.selectionLock == nil else { return }
         guard let configuration = self.recordAgainConfiguration(from: session) else { return }
         self.actionErrorMessage = nil
         Task {
@@ -894,6 +969,7 @@ struct MeetingTranscriptionView: View {
         panel.prompt = "Choose"
         guard panel.runModal() == .OK, let destinationFolder = panel.url else { return }
 
+        self.actionErrorMessage = nil
         Task {
             do {
                 // Reload fresh: the passed-in session may predate a since-completed audio deletion.
@@ -911,17 +987,38 @@ struct MeetingTranscriptionView: View {
                     self.actionErrorMessage = "Export failed: recording no longer on disk."
                     return
                 }
-                try Self.stageExport(of: freshSession, from: sourceDirectory, into: destinationFolder)
+                try await Self.exportAudioFiles(of: freshSession, from: sourceDirectory, into: destinationFolder)
             } catch {
                 self.actionErrorMessage = "Export failed: \(error.localizedDescription)"
             }
         }
     }
 
-    private static func stageExport(
+    private nonisolated static let audioExportLock = NSLock()
+
+    nonisolated static func exportAudioFiles(
         of session: MeetingSession,
         from sourceDirectory: URL,
-        into destinationFolder: URL
+        into destinationFolder: URL,
+        copyItem: @escaping @Sendable (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) }
+    ) async throws {
+        // The session and URLs are immutable snapshots; no view state crosses to the worker.
+        try await Task.detached(priority: .utility) {
+            let accessing = destinationFolder.startAccessingSecurityScopedResource()
+            defer { if accessing { destinationFolder.stopAccessingSecurityScopedResource() } }
+            // Preserve the old serial export semantics when users request another export
+            // while copying. The lock and all filesystem work stay off the main actor.
+            try Self.audioExportLock.withLock {
+                try Self.stageExport(of: session, from: sourceDirectory, into: destinationFolder, copyItem: copyItem)
+            }
+        }.value
+    }
+
+    private nonisolated static func stageExport(
+        of session: MeetingSession,
+        from sourceDirectory: URL,
+        into destinationFolder: URL,
+        copyItem: (URL, URL) throws -> Void
     ) throws {
         let fileManager = FileManager.default
         let baseName = Self.sanitizedExportName(session.title)
@@ -935,10 +1032,7 @@ struct MeetingTranscriptionView: View {
                     let sourceURL = chunk.fileURL(relativeTo: sourceDirectory)
                     let ext = sourceURL.pathExtension.isEmpty ? "m4a" : sourceURL.pathExtension
                     let fileName = "\(track.kind.rawValue)-\(String(format: "%03d", chunk.sequence)).\(ext)"
-                    try fileManager.copyItem(
-                        at: sourceURL,
-                        to: stagingDirectory.appendingPathComponent(fileName, isDirectory: false)
-                    )
+                    try copyItem(sourceURL, stagingDirectory.appendingPathComponent(fileName, isDirectory: false))
                 }
             }
             var destinationName = name
@@ -955,13 +1049,13 @@ struct MeetingTranscriptionView: View {
         }
     }
 
-    private static func sanitizedExportName(_ title: String) -> String {
+    private nonisolated static func sanitizedExportName(_ title: String) -> String {
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _.-")
         let sanitized = String(title.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }.prefix(80))
         return sanitized.isEmpty ? "Meeting" : sanitized
     }
 
-    private static func uniqueExportName(_ baseName: String, in folder: URL, fileManager: FileManager) -> String {
+    private nonisolated static func uniqueExportName(_ baseName: String, in folder: URL, fileManager: FileManager) -> String {
         var candidate = baseName
         var suffix = 2
         while fileManager.fileExists(atPath: folder.appendingPathComponent(candidate).path) {
@@ -972,6 +1066,7 @@ struct MeetingTranscriptionView: View {
     }
 
     private func startNewMeeting() {
+        guard self.summaryActivity.selectionLock == nil else { return }
         do {
             try self.coordinator.resetForNewMeeting()
             self.selectedHistorySessionID = nil
@@ -986,16 +1081,12 @@ struct MeetingTranscriptionView: View {
 
     @MainActor
     private func loadMeetingHistory() async {
-        do {
-            self.meetingHistory = try await MeetingSessionStore.shared.loadAll()
-            self.meetingHistoryError = nil
-            if let selectedHistorySessionID,
-               !self.meetingHistory.contains(where: { $0.id == selectedHistorySessionID })
-            {
-                self.selectedHistorySessionID = nil
-            }
-        } catch {
-            self.meetingHistoryError = "Meeting history could not be loaded."
+        await self.historySnapshot.refresh()
+        guard self.historySnapshot.errorMessage == nil else { return }
+        if let selectedHistorySessionID,
+           !self.historySnapshot.sessions.contains(where: { $0.id == selectedHistorySessionID })
+        {
+            self.selectedHistorySessionID = nil
         }
     }
 
@@ -1204,6 +1295,8 @@ struct MeetingTranscriptionCanvas: View {
     let isRetrying: Bool
     let onCloseSelection: (() -> Void)?
 
+    var summaryASRService: ASRService? = nil
+
     @Environment(\.theme) private var theme
 
     /// Recording renders outside the ScrollView so the live captions card can fill the height;
@@ -1249,7 +1342,9 @@ struct MeetingTranscriptionCanvas: View {
                     recentSession: recentSession,
                     onStart: self.onStart,
                     onRepairSetup: self.onRepairSetup,
-                    onEditSetup: self.onEditSetup ?? self.onRepairSetup
+                    onEditSetup: self.onEditSetup ?? self.onRepairSetup,
+                    summaryASRService: self.summaryASRService,
+                    isQuiescent: self.isQuiescent
                 )
             case let .recording(session, trackHealth, liveTranscript):
                 MeetingRecordingCanvas(
@@ -1270,29 +1365,41 @@ struct MeetingTranscriptionCanvas: View {
             case let .processing(session, stage):
                 MeetingProcessingCanvas(session: session, stage: stage)
             case let .result(session):
-                MeetingResultCanvas(
-                    session: session,
-                    isQuiescent: self.isQuiescent,
-                    canUndo: self.canUndoCorrection(session.id),
-                    onCopyTranscript: self.onCopyTranscript,
-                    onExportTranscript: self.onExportTranscript,
-                    onReassignSegment: { segmentID, speakerID in
-                        self.onReassignSegment(session.id, segmentID, speakerID)
-                    },
-                    onNameUnknownSegment: { segmentID, name in
-                        self.onNameUnknownSegment(session.id, segmentID, name)
-                    },
-                    onRenameSpeaker: { speakerID, name in
-                        self.onRenameSpeaker(session.id, speakerID, name)
-                    },
-                    onMergeSpeakers: { source, target in
-                        self.onMergeSpeakers(session.id, source, target)
-                    },
-                    onUndo: { self.onUndoCorrection(session.id) },
-                    onRenameSession: { title in self.onRenameSession(session.id, title) },
-                    onAssignSpeakers: { names in await self.onAssignSpeakers(session.id, names) },
-                    onClose: self.onCloseSelection
-                )
+                VStack(alignment: .leading, spacing: self.theme.metrics.spacing.md) {
+                    if let errorMessage, !errorMessage.isEmpty {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(self.theme.typography.bodySmall)
+                            .foregroundStyle(self.theme.palette.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 760, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityIdentifier("meeting-result-action-error")
+                    }
+                    MeetingResultCanvas(
+                        session: session,
+                        isQuiescent: self.isQuiescent,
+                        canUndo: self.canUndoCorrection(session.id),
+                        onCopyTranscript: self.onCopyTranscript,
+                        onExportTranscript: self.onExportTranscript,
+                        onReassignSegment: { segmentID, speakerID in
+                            self.onReassignSegment(session.id, segmentID, speakerID)
+                        },
+                        onNameUnknownSegment: { segmentID, name in
+                            self.onNameUnknownSegment(session.id, segmentID, name)
+                        },
+                        onRenameSpeaker: { speakerID, name in
+                            self.onRenameSpeaker(session.id, speakerID, name)
+                        },
+                        onMergeSpeakers: { source, target in
+                            self.onMergeSpeakers(session.id, source, target)
+                        },
+                        onUndo: { self.onUndoCorrection(session.id) },
+                        onRenameSession: { title in self.onRenameSession(session.id, title) },
+                        onAssignSpeakers: { names in await self.onAssignSpeakers(session.id, names) },
+                        onClose: self.onCloseSelection,
+                        summaryASRService: self.summaryASRService
+                    )
+                }
             case let .failed(session, message):
                 MeetingFailureCanvas(
                     session: session,
@@ -1315,58 +1422,34 @@ private struct MeetingTranscriptionHeader: View {
     let onOpenMeetingSettings: () -> Void
     let onToggleMeetingHistory: () -> Void
 
-    @Environment(\.theme) private var theme
-
     var body: some View {
-        HStack(spacing: self.theme.metrics.spacing.md) {
-            Label("FluidMeet", systemImage: "person.2")
-                .font(self.theme.typography.bodyStrong)
-                .foregroundStyle(self.theme.palette.primaryText)
-
-            Spacer()
-
-            ViewThatFits(in: .horizontal) {
-                self.actions(showsLabels: true)
-                self.actions(showsLabels: false)
-            }
-        }
-        .padding(.horizontal, self.theme.metrics.spacing.xxl)
-        .padding(.vertical, self.theme.metrics.spacing.md)
-    }
-
-    private func actions(showsLabels: Bool) -> some View {
-        FluidGlassControlGroup {
-            HStack(spacing: self.theme.metrics.spacing.sm) {
-                if self.canStartNewMeeting {
-                    MeetingHeaderIconButton(
-                        systemImage: "plus",
-                        label: "New Meeting",
-                        visibleTitle: showsLabels ? "New meeting" : nil,
-                        action: self.onNewMeeting
-                    )
-                    .keyboardShortcut("n", modifiers: .command)
-                    .accessibilityHint("Clear the current meeting and return to recording setup")
-                }
-
+        Group {
+            if self.canStartNewMeeting {
                 MeetingHeaderIconButton(
-                    systemImage: "gearshape",
-                    label: "FluidMeet settings",
-                    visibleTitle: showsLabels ? "Settings" : nil,
-                    action: self.onOpenMeetingSettings
+                    systemImage: "plus",
+                    label: "New Meeting",
+                    action: self.onNewMeeting
                 )
-                .disabled(!self.canEditSetup)
-                .accessibilityHint("Change the saved recording application, microphone, and meeting defaults")
-
-                MeetingHeaderIconButton(
-                    systemImage: self.isMeetingHistoryVisible
-                        ? "rectangle.righthalf.inset.filled"
-                        : "sidebar.right",
-                    label: self.isMeetingHistoryVisible ? "Hide meeting history" : "Show meeting history",
-                    visibleTitle: showsLabels ? "Meetings" : nil,
-                    isSelected: self.isMeetingHistoryVisible,
-                    action: self.onToggleMeetingHistory
-                )
+                .keyboardShortcut("n", modifiers: .command)
+                .accessibilityHint("Clear the current meeting and return to recording setup")
             }
+
+            MeetingHeaderIconButton(
+                systemImage: "gearshape",
+                label: "FluidMeet settings",
+                action: self.onOpenMeetingSettings
+            )
+            .disabled(!self.canEditSetup)
+            .accessibilityHint("Change the saved recording application, microphone, and meeting defaults")
+
+            MeetingHeaderIconButton(
+                systemImage: self.isMeetingHistoryVisible
+                    ? "rectangle.righthalf.inset.filled"
+                    : "sidebar.right",
+                label: self.isMeetingHistoryVisible ? "Hide meeting history" : "Show meeting history",
+                isSelected: self.isMeetingHistoryVisible,
+                action: self.onToggleMeetingHistory
+            )
         }
     }
 
@@ -1391,20 +1474,16 @@ private struct MeetingTranscriptionHeader: View {
 private struct MeetingHeaderIconButton: View {
     let systemImage: String
     let label: String
-    var visibleTitle: String? = nil
     var isSelected = false
     let action: () -> Void
 
     @Environment(\.theme) private var theme
     var body: some View {
         Button(action: self.action) {
-            HStack(spacing: self.theme.metrics.spacing.sm) {
-                Image(systemName: self.systemImage)
-                if let visibleTitle { Text(visibleTitle) }
-            }
-            .foregroundStyle(self.isSelected ? self.theme.palette.accent : self.theme.palette.primaryText)
+            Label(self.label, systemImage: self.systemImage)
+                .foregroundStyle(self.isSelected ? self.theme.palette.accent : self.theme.palette.primaryText)
         }
-        .meetingGlassAction(circular: self.visibleTitle == nil)
+        .buttonStyle(.automatic)
         .help(self.label)
         .accessibilityLabel(self.label)
         .accessibilityAddTraits(self.isSelected ? .isSelected : [])
@@ -1415,6 +1494,7 @@ private struct MeetingHistoryInspector: View {
     let sessions: [MeetingSession]
     @Binding var selectedSessionID: MeetingSessionID?
     let errorMessage: String?
+    let isLoading: Bool
     let isQuiescent: Bool
     let onRefresh: () -> Void
     let onRetry: (MeetingSessionID) -> Void
@@ -1423,7 +1503,11 @@ private struct MeetingHistoryInspector: View {
     let onExportTranscript: (MeetingSession, MeetingTranscriptExportFormat) -> Void
     let onDeleteAudioRequest: (MeetingSessionID) -> Void
     let onDeleteRequest: (MeetingSessionID) -> Void
+    let onRename: (MeetingSessionID, String) -> Void
     let onRecordAgain: (MeetingSession) -> Void
+
+    @State private var renameSessionID: MeetingSessionID?
+    @State private var renameDraft = ""
 
     @Environment(\.theme) private var theme
     @State private var searchText = ""
@@ -1501,12 +1585,22 @@ private struct MeetingHistoryInspector: View {
 
             Divider()
 
-            if let errorMessage {
+            if let errorMessage, !self.sessions.isEmpty {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(self.theme.metrics.spacing.md)
+            }
+
+            if let errorMessage, self.sessions.isEmpty {
                 ContentUnavailableView(
                     "History unavailable",
                     systemImage: "exclamationmark.triangle",
                     description: Text(errorMessage)
                 )
+            } else if self.isLoading, self.sessions.isEmpty {
+                ProgressView("Loading meetings…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if self.filteredSessions.isEmpty {
                 ContentUnavailableView(
                     self.searchText.isEmpty ? "No meetings yet" : "No matching meetings",
@@ -1520,7 +1614,7 @@ private struct MeetingHistoryInspector: View {
                 // so a plain ScrollView replaces List here instead of fighting its native highlight.
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2, pinnedViews: [.sectionHeaders]) {
+                        LazyVStack(alignment: .leading, spacing: 2) {
                             ForEach(self.groupedSessions, id: \.key) { group in
                                 Section {
                                     ForEach(group.sessions) { session in
@@ -1530,6 +1624,7 @@ private struct MeetingHistoryInspector: View {
                                             isQuiescent: self.isQuiescent,
                                             onSelect: { self.selectedSessionID = session.id },
                                             onRetry: { self.onRetry(session.id) },
+                                            onRename: { self.onRename(session.id, $0) },
                                             onRecordAgain: { self.onRecordAgain(session) }
                                         )
                                         .id(session.id)
@@ -1549,16 +1644,14 @@ private struct MeetingHistoryInspector: View {
                                         }
                                     }
                                 } header: {
+                                    // Matches the Command sidebar: unpinned, aligned with the row icons.
                                     Text(group.key)
-                                        .font(self.theme.typography.captionSmall)
-                                        .tracking(1.1)
-                                        .textCase(.uppercase)
-                                        .foregroundStyle(self.theme.palette.tertiaryText)
+                                        .font(self.theme.typography.caption)
+                                        .foregroundStyle(self.theme.palette.secondaryText)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, self.theme.metrics.spacing.lg)
-                                        .padding(.top, self.theme.metrics.spacing.md)
+                                        .padding(.horizontal, self.theme.metrics.spacing.md)
+                                        .padding(.top, self.theme.metrics.spacing.lg)
                                         .padding(.bottom, self.theme.metrics.spacing.xs)
-                                        .background(self.theme.palette.elevatedCardBackground)
                                 }
                             }
                         }
@@ -1576,7 +1669,24 @@ private struct MeetingHistoryInspector: View {
                 }
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(self.theme.materials.sidebar)
+        .alert("Rename Meeting", isPresented: Binding(
+            get: { self.renameSessionID != nil },
+            set: { if !$0 { self.renameSessionID = nil } }
+        )) {
+            TextField("Meeting title", text: self.$renameDraft)
+            Button("Cancel", role: .cancel) { self.renameSessionID = nil }
+            Button("Rename") {
+                if self.isQuiescent, let id = self.renameSessionID,
+                   self.sessions.contains(where: { $0.id == id })
+                {
+                    self.onRename(id, self.renameDraft)
+                }
+                self.renameSessionID = nil
+            }
+            .disabled(!self.isQuiescent || self.renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
 
     private func sessionID(
@@ -1592,6 +1702,12 @@ private struct MeetingHistoryInspector: View {
 
     @ViewBuilder
     private func contextMenu(for session: MeetingSession) -> some View {
+        Button("Rename…", systemImage: "pencil") {
+            self.renameDraft = session.title
+            self.renameSessionID = session.id
+        }
+        .disabled(!self.isQuiescent)
+        Divider()
         if session.hasRetryableAudio, session.state == .failed || session.state == .interrupted {
             Button("Retry Transcription", systemImage: "arrow.clockwise") {
                 self.onRetry(session.id)
@@ -1649,6 +1765,7 @@ private struct MeetingHistoryRow: View {
     let isQuiescent: Bool
     let onSelect: () -> Void
     let onRetry: () -> Void
+    let onRename: (String) -> Void
     let onRecordAgain: () -> Void
 
     @Environment(\.theme) private var theme
@@ -1680,6 +1797,7 @@ private struct MeetingHistoryRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(self.session.title), \(self.statusText), \(self.sourceName)")
             .accessibilityAddTraits(self.isSelected ? .isSelected : [])
+            .editableTitle(self.session.title, id: String(describing: self.session.id), enabled: self.isQuiescent, onRename: self.onRename)
             if let actionLabel {
                 Button(actionLabel, action: self.performAction)
                     .buttonStyle(.borderless)
@@ -1836,6 +1954,8 @@ private struct MeetingSetupCanvas: View {
     let onStart: () -> Void
     let onRepairSetup: () -> Void
     let onEditSetup: () -> Void
+    var summaryASRService: ASRService? = nil
+    var isQuiescent = true
 
     @Environment(\.theme) private var theme
     @State private var documentSection = MeetingDocumentSection.transcript
@@ -1845,7 +1965,6 @@ private struct MeetingSetupCanvas: View {
             self.readiness.microphoneReady &&
             self.readiness.storageReady &&
             self.readiness.activityReady &&
-            self.readiness.modelReady &&
             self.readiness.meetingAudioReady
     }
 
@@ -1906,7 +2025,7 @@ private struct MeetingSetupCanvas: View {
             MeetingDocumentTabs(selection: self.$documentSection, primaryTitle: "Meeting home", primaryIcon: "house", isEnabled: !self.isStarting)
 
             if self.documentSection == .summary {
-                MeetingSummaryComingSoon()
+                MeetingSummaryView(asrService: self.summaryASRService, isQuiescent: self.isQuiescent)
             } else {
                 self.recordingSetup
             }
@@ -2060,12 +2179,12 @@ private struct MeetingSetupCanvas: View {
         if !self.readiness.isCheckingSources,
            self.readiness.showScreenRecordingSettingsAction ||
            (!self.canStart && (self.readiness.showMicrophoneSettingsAction ||
-                   !self.readiness.modelReady || !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil))
+                   !self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil))
         {
             Button(
                 self.readiness.showMicrophoneSettingsAction ? "Allow microphone access" :
                     (self.readiness.showScreenRecordingSettingsAction ? "Allow meeting audio access" :
-                        (!self.readiness.microphoneReady || self.draft.selectedMicrophoneID == nil ? "Set up microphone…" : "Set up speaker labels…")),
+                        "Set up microphone…"),
                 systemImage: self.readiness.showMicrophoneSettingsAction || self.readiness.showScreenRecordingSettingsAction ? "arrow.up.right" : "gearshape",
                 action: self.onRepairSetup
             )

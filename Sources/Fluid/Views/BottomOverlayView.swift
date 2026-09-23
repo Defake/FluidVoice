@@ -45,6 +45,23 @@ final class BottomOverlayWindowController {
         self.window?.isVisible != true || self.window?.alphaValue == 0
     }
 
+    /// Drops the cached panel so a test can exercise the launch-time prepare path.
+    func destroyWindowForTests() {
+        self.pendingResizeWorkItem?.cancel()
+        self.pendingResizeWorkItem = nil
+        self.pendingIgnoreMouseWorkItem?.cancel()
+        self.pendingIgnoreMouseWorkItem = nil
+        self.audioSubscription?.cancel()
+        self.audioSubscription = nil
+        self.window?.orderOut(nil)
+        self.window = nil
+    }
+
+    var isParkedOffscreenForTests: Bool {
+        guard let window else { return false }
+        return !NSScreen.screens.contains { $0.frame.intersects(window.frame) }
+    }
+
     var windowSizeForTests: NSSize? {
         self.window?.frame.size
     }
@@ -70,6 +87,10 @@ final class BottomOverlayWindowController {
                 self.targetScreen = OverlayScreenResolver.screenForCurrentPointer()
                 if NotchContentState.shared.isBottomOverlayPresented {
                     self.positionWindow()
+                } else {
+                    // macOS drags fully offscreen windows back onto a screen
+                    // after a display change (login, wake, monitor plug).
+                    self.parkWindowOffscreen()
                 }
             }
         }
@@ -83,8 +104,10 @@ final class BottomOverlayWindowController {
         self.targetScreen = OverlayScreenResolver.screenForCurrentPointer()
         guard let window else { return }
 
+        // Alpha 0 like a completed hide: if a later display change pulls the
+        // parked panel back onto a screen, it must stay invisible.
         self.parkWindowOffscreen()
-        window.alphaValue = 1
+        window.alphaValue = 0
         window.orderFrontRegardless()
         CATransaction.flush()
         Self.overlayBench("bottom_prepared")
@@ -2667,6 +2690,10 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorDisplayLabel: String {
+        if self.layout.showsTopControls {
+            let label = self.selectedPromptLabel
+            return label.count > 12 ? "\(label.prefix(11))…" : label
+        }
         if self.activePromptMode?.normalized == .dictate {
             let label = self.selectedPromptLabel
             let limit = self.isCompactControls ? 12 : 18
@@ -2704,8 +2731,8 @@ struct BottomOverlayView: View {
 
     private var promptSelectorFontSize: CGFloat {
         if self.isPillSize { return 8 }
-        if self.isCompactControls { return 10 }
-        return max(self.layout.modeFontSize - 1, 9)
+        if self.isCompactControls { return 9 }
+        return max(self.layout.modeFontSize - 3, 9)
     }
 
     private var promptSelectorLabelFontSize: CGFloat {
@@ -2732,11 +2759,14 @@ struct BottomOverlayView: View {
 
     private var promptSelectorTriggerMaxWidth: CGFloat {
         guard self.layout.showsTopControls else { return 120 }
-        // Trailing controls are overlaid on the waveform row. Reserve the waveform,
-        // an 8pt gap, and the 32pt actions button plus its 8pt spacing.
+        // Use 6pt more on each side of the selector while retaining a 6pt
+        // clearance from the visible bars and a 12pt outer trailing inset.
+        // Keep the waveform and leading app control in place.
         let rowWidth = self.layout.containerWidth - self.layout.hPadding * 2
-        let waveformRight = rowWidth / 2 + self.waveformHorizontalOffset + self.layout.waveformWidth / 2
-        return max(0, rowWidth - waveformRight - 8 - 32 - 8)
+        let barsWidth = CGFloat(self.layout.barCount) * self.layout.barWidth
+            + CGFloat(max(self.layout.barCount - 1, 0)) * self.layout.barSpacing
+        let waveformRight = rowWidth / 2 + self.waveformHorizontalOffset + barsWidth / 2
+        return max(0, rowWidth + 6 - waveformRight - 6 - 32 - 4)
     }
 
     private var previewMaxHeight: CGFloat {
@@ -3094,8 +3124,8 @@ struct BottomOverlayView: View {
     }
 
     private var promptSelectorTrigger: some View {
-        HStack(spacing: 5) {
-            if !self.isPillSize, let promptSelectorIconName = self.promptSelectorIconName {
+        HStack(spacing: self.layout.showsTopControls ? 7 : 5) {
+            if !self.isPillSize, !self.layout.showsTopControls, let promptSelectorIconName = self.promptSelectorIconName {
                 Image(systemName: promptSelectorIconName)
                     .font(.fluidSystem(size: max(self.promptSelectorFontSize - 1, 9), weight: .semibold))
                     .foregroundStyle(.white.opacity(0.72))
@@ -3124,7 +3154,10 @@ struct BottomOverlayView: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, self.promptSelectorVerticalPadding)
-        .frame(maxWidth: self.promptSelectorTriggerMaxWidth, alignment: .trailing)
+        .frame(
+            width: self.layout.showsTopControls ? self.promptSelectorTriggerMaxWidth : nil,
+            alignment: .trailing
+        )
         .help(self.selectedPromptLabel)
         .background(
             RoundedRectangle(cornerRadius: self.promptSelectorCornerRadius, style: .continuous)
@@ -3631,10 +3664,11 @@ struct BottomOverlayView: View {
                 }
                 .overlay(alignment: .trailing) {
                     if self.layout.showsTopControls {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 4) {
                             self.promptSelectorView
                             self.actionsSelectorView
                         }
+                        .offset(x: 6)
                     }
                 }
             }

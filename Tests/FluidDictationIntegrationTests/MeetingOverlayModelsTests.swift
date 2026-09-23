@@ -10,6 +10,34 @@ final class MeetingOverlayGeometryTests: XCTestCase {
     private let captions = MeetingOverlayPresentation.captions.visibleSize
     private let screen = CGRect(x: 100, y: 50, width: 1440, height: 900)
 
+    func testNewMeetingPillStartsAtScreenCenterAndDictationOffset() {
+        let full = CGRect(x: -1920, y: 200, width: 1920, height: 1080)
+        let visible = CGRect(x: -1860, y: 250, width: 1860, height: 1000)
+        let anchor = MeetingOverlayGeometry.initialPillAnchor(screenFrame: full, screenVisible: visible, bottomOffset: 40)
+        XCTAssertEqual(anchor.centerX, full.midX) // A side Dock must not shift the center.
+        XCTAssertEqual(anchor.bottomY, visible.minY + 40)
+        let layout = MeetingOverlayGeometry.layout(anchor: anchor, visibleSize: self.pill, padding: 24, screenVisible: visible)
+        XCTAssertEqual(layout.visibleSurfaceFrame.midX, full.midX)
+        XCTAssertEqual(layout.visibleSurfaceFrame.minY, visible.minY + 40)
+    }
+
+    func testInitialPillOffsetStaysInsideVisibleScreen() {
+        let low = MeetingOverlayGeometry.initialPillAnchor(screenFrame: self.screen, screenVisible: self.screen, bottomOffset: -500)
+        let high = MeetingOverlayGeometry.initialPillAnchor(screenFrame: self.screen, screenVisible: self.screen, bottomOffset: 5000)
+        XCTAssertEqual(low.bottomY, self.screen.minY + 10)
+        XCTAssertEqual(high.bottomY, self.screen.maxY - self.pill.height - 40)
+    }
+
+    func testDraggedAnchorSurvivesLayoutButDoesNotBecomeNextMeetingDefault() {
+        let dragged = MeetingOverlayVisibleAnchor(centerX: 300, bottomY: 450)
+        let layout = MeetingOverlayGeometry.layout(anchor: dragged, visibleSize: self.pill, padding: 24, screenVisible: self.screen)
+        XCTAssertEqual(layout.visibleSurfaceFrame.midX, dragged.centerX)
+        XCTAssertEqual(layout.visibleSurfaceFrame.minY, dragged.bottomY)
+        let next = MeetingOverlayGeometry.initialPillAnchor(screenFrame: self.screen, screenVisible: self.screen, bottomOffset: 30)
+        XCTAssertEqual(next.centerX, self.screen.midX)
+        XCTAssertEqual(next.bottomY, self.screen.minY + 30)
+    }
+
     func testCanonicalPresentationVisibleSizes() {
         XCTAssertGreaterThan(self.captions.width, self.pill.width)
         XCTAssertGreaterThan(self.captions.height, self.pill.height)
@@ -341,5 +369,174 @@ final class MeetingOverlayPresentationReducerTests: XCTestCase {
             let decoded = try JSONDecoder().decode(MeetingOverlayPreference.self, from: data)
             XCTAssertEqual(decoded, preference)
         }
+    }
+}
+
+@MainActor
+final class MeetingMenuBarStartTests: XCTestCase {
+    func testRepeatedStartIsIgnoredAndNeverNavigates() async {
+        let manager = MenuBarManager()
+        var calls = 0
+        await manager.startMeetingRecordingInBackground {
+            calls += 1
+            XCTAssertTrue(manager.meetingStartRequested)
+            await manager.startMeetingRecordingInBackground { calls += 1 }
+        }
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(manager.meetingStartRequested)
+        XCTAssertNil(manager.meetingStartError)
+        XCTAssertNil(manager.requestedNavigationDestination)
+    }
+
+    func testFailureClearsPendingStartAndAllowsRetryWithoutNavigation() async {
+        let manager = MenuBarManager()
+        await manager.startMeetingRecordingInBackground { throw MeetingCaptureError.microphoneUnavailable }
+        XCTAssertFalse(manager.meetingStartRequested)
+        XCTAssertNotNil(manager.meetingStartError)
+        XCTAssertNil(manager.requestedNavigationDestination)
+        var retried = false
+        await manager.startMeetingRecordingInBackground { retried = true }
+        XCTAssertTrue(retried)
+        XCTAssertNil(manager.meetingStartError)
+        XCTAssertFalse(manager.meetingStartRequested)
+        XCTAssertNil(manager.requestedNavigationDestination)
+    }
+
+    func testAutomaticSourceUsesExactProcessAndWindow() throws {
+        let configuration = try self.configuration(targetPID: 42, availablePID: 42)
+        XCTAssertEqual(configuration.mode, .onlineCall)
+        XCTAssertEqual(configuration.application?.processID, 42)
+        XCTAssertEqual(configuration.application?.windowID, 123)
+        XCTAssertEqual(configuration.microphone.coreAudioUID, "system-mic")
+        XCTAssertEqual(configuration.microphone.role, .unknown)
+    }
+
+    func testStaleProcessCannotFallBackToAnotherApplication() {
+        XCTAssertThrowsError(try self.configuration(targetPID: 42, availablePID: 43))
+    }
+
+    func testNoDetectedMeetingUsesMicrophoneOnly() throws {
+        let configuration = try self.configuration(targetPID: nil, availablePID: 43)
+        XCTAssertEqual(configuration.mode, .inRoom)
+        XCTAssertNil(configuration.application)
+        XCTAssertNil(configuration.platform)
+    }
+
+    func testInRoomModeIgnoresDetectedApplication() throws {
+        let configuration = try self.configuration(targetPID: 42, availablePID: 42, mode: .inRoom)
+        XCTAssertEqual(configuration.mode, .inRoom)
+        XCTAssertNil(configuration.application)
+    }
+
+    private func configuration(
+        targetPID: Int32?,
+        availablePID: Int32,
+        mode: MeetingCaptureMode = .onlineCall
+    ) throws -> MeetingCaptureConfiguration {
+        var defaults = MeetingRecordingDefaults.unconfigured
+        defaults.mode = mode
+        return try AppServices.menuBarMeetingConfiguration(
+            defaults: defaults,
+            target: targetPID.map { MeetingAutoDetector.ResolvedTarget(bundleIdentifier: "meeting.app", pid: $0, windowID: 123) },
+            microphones: MeetingMicrophoneCatalogSnapshot(
+                identities: [MeetingMicrophoneIdentity(captureDeviceID: "system-mic", coreAudioUID: "system-mic", displayName: "Microphone")],
+                defaultCoreAudioUID: "system-mic"
+            ),
+            applications: [MeetingApplicationIdentity(bundleIdentifier: "meeting.app", processID: availablePID, displayName: "Meeting App")],
+            preferredInputUID: nil
+        )
+    }
+}
+
+@MainActor
+final class MeetingHistorySnapshotTests: XCTestCase {
+    private func session() -> MeetingSession {
+        MeetingSession(
+            configuration: MeetingCaptureConfiguration(mode: .inRoom, title: "History", microphone: MeetingMicrophoneIdentity(captureDeviceID: "mic", displayName: "Mic")),
+            timebase: MeetingTimebaseMetadata(startedHostTime: 0, machTimebaseNumerator: 1, machTimebaseDenominator: 1, firstPresentationTime: nil)
+        )
+    }
+
+    func testSnapshotKeepsRowsDuringRefreshAndFailureThenRecovers() async {
+        let loader = HistorySnapshotLoader()
+        let snapshot = MeetingHistorySnapshot { try await loader.load() }
+        XCTAssertFalse(snapshot.hasLoaded)
+        XCTAssertEqual(loader.calls, 0)
+        let original = self.session()
+        let initial = Task { await snapshot.refresh() }
+        await loader.waitForCall(1)
+        loader.finish(.success([original]))
+        await initial.value
+        XCTAssertEqual(snapshot.sessions.map(\.id), [original.id])
+        XCTAssertTrue(snapshot.hasLoaded)
+
+        let refresh = Task { await snapshot.refresh() }
+        await loader.waitForCall(2)
+        XCTAssertEqual(snapshot.sessions.map(\.id), [original.id])
+        XCTAssertTrue(snapshot.hasLoaded)
+        loader.finish(.failure(NSError(domain: "test", code: 1)))
+        await refresh.value
+        XCTAssertEqual(snapshot.sessions.map(\.id), [original.id])
+        XCTAssertNotNil(snapshot.errorMessage)
+
+        let retry = Task { await snapshot.refresh() }
+        await loader.waitForCall(3)
+        loader.finish(.success([]))
+        await retry.value
+        XCTAssertTrue(snapshot.sessions.isEmpty)
+        XCTAssertNil(snapshot.errorMessage)
+    }
+
+    func testRefreshDuringReadDoesNotPublishStaleRows() async {
+        let loader = HistorySnapshotLoader()
+        let snapshot = MeetingHistorySnapshot { try await loader.load() }
+        let stale = self.session()
+        let first = Task { await snapshot.refresh() }
+        await loader.waitForCall(1)
+        let secondStarted = self.expectation(description: "Second refresh registered")
+        let second = Task {
+            secondStarted.fulfill()
+            await snapshot.refresh()
+        }
+        await self.fulfillment(of: [secondStarted], timeout: 2)
+        loader.finish(.success([stale]))
+        await loader.waitForCall(2)
+        XCTAssertFalse(snapshot.hasLoaded)
+        XCTAssertTrue(snapshot.sessions.isEmpty)
+        loader.finish(.success([]))
+        await first.value
+        await second.value
+        XCTAssertEqual(loader.calls, 2)
+        XCTAssertTrue(snapshot.hasLoaded)
+        XCTAssertTrue(snapshot.sessions.isEmpty)
+    }
+}
+
+@MainActor
+private final class HistorySnapshotLoader {
+    private(set) var calls = 0
+    private var pending: CheckedContinuation<[MeetingSession], Error>?
+    private var observer: (Int, CheckedContinuation<Void, Never>)?
+
+    func load() async throws -> [MeetingSession] {
+        try await withCheckedThrowingContinuation { continuation in
+            self.pending = continuation
+            self.calls += 1
+            if let observer = self.observer, self.calls >= observer.0 {
+                self.observer = nil
+                observer.1.resume()
+            }
+        }
+    }
+
+    func waitForCall(_ count: Int) async {
+        if self.calls >= count { return }
+        await withCheckedContinuation { self.observer = (count, $0) }
+    }
+
+    func finish(_ result: Result<[MeetingSession], Error>) {
+        let pending = self.pending
+        self.pending = nil
+        pending?.resume(with: result)
     }
 }

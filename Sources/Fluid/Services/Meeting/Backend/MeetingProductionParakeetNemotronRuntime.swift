@@ -6,13 +6,14 @@ import FluidAudio
 #endif
 
 // Stage E of `MEETING_TRANSCRIPTION_IMPLEMENTATION_PLAN.md`: the production runtime behind
-// `MeetingParakeetNemotronRunning`. It owns exactly two capabilities for one attempt:
+// `MeetingParakeetNemotronRunning`. It owns the model capabilities for one attempt:
 //
 // - Nemotron diarization: one shared weight load per attempt, one *fresh* `SortformerDiarizer`
-//   state per epoch (`initialize(models:)` re-creates streaming state), released before the ASR
+//   state per track (`initialize(models:)` re-creates streaming state), released before the ASR
 //   phase begins — the loaded-set sequence is none -> Nemotron -> drained -> Parakeet -> drained.
 // - Parakeet ASR: one `ASRService.withPreparedMeetingASR` scope per attempt, with the heavy body
 //   bounced off the main actor so materialization and inference never block the UI.
+// - Optional local WeSpeaker encoding between those phases, using bounded voice excerpts.
 //
 // Parakeet does ASR only; Nemotron does diarization only. Neither capability sees anything beyond
 // the request the host froze.
@@ -30,8 +31,8 @@ nonisolated enum MeetingParakeetNemotronRuntimeError: LocalizedError, Equatable 
 
 #if arch(arm64)
 
-/// Shared-weight Nemotron factory: one `SortformerModels` load, fresh streaming state per
-/// epoch. Slots can never merge across epochs because each epoch's diarizer is a new instance.
+/// Shared-weight Nemotron factory: one `SortformerModels` load, fresh streaming state for each
+/// diarizer it makes. The backend makes one per track, so slots never merge across tracks.
 private final nonisolated class NemotronDiarizerFactory: MeetingNemotronDiarizerFactory, @unchecked Sendable {
     let config: SortformerConfig
     let models: SortformerModels
@@ -116,6 +117,49 @@ final nonisolated class MeetingParakeetNemotronRuntime: MeetingParakeetNemotronR
         self.modelLocator = modelLocator
     }
 
+    /// Runs between Nemotron and ASR, so the additional encoder never overlaps their residency.
+    /// Only short, admitted single-speaker excerpts reach this local model; no audio is uploaded.
+    func speakerVoiceProfiles(samples: [MeetingSpeakerVoiceSamples]) async throws -> [MeetingSpeakerVoiceProfile] {
+        guard !samples.isEmpty else { return [] }
+        try Task.checkCancellation()
+        let models = try await DownloadUtils.loadModels(
+            .diarizer,
+            modelNames: [ModelNames.Diarizer.embeddingFile],
+            directory: DiarizerModels.defaultModelsDirectory().deletingLastPathComponent(),
+            computeUnits: .cpuAndNeuralEngine
+        )
+        try Task.checkCancellation()
+        guard let model = models[ModelNames.Diarizer.embeddingFile],
+              let maskFrames = model.modelDescription.inputDescriptionsByName["mask"]?
+              .multiArrayConstraint?.shape.last?.intValue,
+              (1...4096).contains(maskFrames)
+        else {
+            throw NSError(domain: "MeetingSpeakerVoice", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The speaker voice model has an unsupported input format.",
+            ])
+        }
+        let extractor = EmbeddingExtractor(embeddingModel: model)
+        let mask = [Float](repeating: 1, count: maskFrames)
+        var profiles: [MeetingSpeakerVoiceProfile] = []
+        for sample in samples.prefix(MeetingSpeakerVoiceSamples.maximumProfiles) {
+            try Task.checkCancellation()
+            guard sample.clips.count == 2 else { continue }
+            var embeddings: [[Float]] = []
+            for clip in sample.clips {
+                try Task.checkCancellation()
+                guard (48_000...160_000).contains(clip.count) else { continue }
+                let output = try extractor.getEmbeddings(audio: clip, masks: [mask])
+                if let embedding = output.first, embedding.count == 256, embedding.allSatisfy(\.isFinite) {
+                    embeddings.append(embedding)
+                }
+            }
+            if embeddings.count == 2 {
+                profiles.append(.init(token: sample.token, embeddings: embeddings))
+            }
+        }
+        return profiles
+    }
+
     func withNemotronDiarization(
         artifact: MeetingNemotronModelArtifact,
         _ body: @escaping @Sendable (any MeetingNemotronDiarizerFactory) async throws -> MeetingNemotronPhaseResult
@@ -123,12 +167,15 @@ final nonisolated class MeetingParakeetNemotronRuntime: MeetingParakeetNemotronR
         // Recheck at open time: the artifact located at plan/readiness time is validated again
         // before CoreML touches it (plan §5).
         let artifact = try self.modelLocator.recheck(artifact)
-        // Reference Nemotron streaming configuration (conversion script cadence, kept exact by
-        // the FluidAudio factory; it validates instead of clamping).
+        // The checkpoint's trained cache settings: one silence frame per speaker, filled with its
+        // learned silence embedding. Anything else splits one voice across several slots.
         let config = try SortformerConfig.nemotron(
             spkcacheUpdatePeriod: 300,
-            spkcacheSilFramesPerSpk: 3,
-            predScoreThreshold: 0.25
+            spkcacheSilFramesPerSpk: 1,
+            predScoreThreshold: 0.25,
+            learnedSilenceEmbedding: MeetingModelInstaller.validatedSilenceEmbedding(
+                at: MeetingModelInstaller.silenceEmbeddingURL(besides: artifact.packageURL)
+            )
         )
         let mlConfiguration = MLModelConfiguration()
         mlConfiguration.computeUnits = .cpuAndGPU
