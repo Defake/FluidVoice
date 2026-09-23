@@ -226,3 +226,9 @@ sample/
 .codex
 AGENTS.md
 builds/
+
+# Internal Markdown plans and reports stay local by default
+*.md
+!README.md
+!CONTRIBUTING.md
+!.github/pull_request_template.md
